@@ -69,6 +69,14 @@ abstract class HttpApiFixture {
         return client.send(request, BodyHandlers.ofString());
     }
 
+    /** POST sin cuerpo ni Content-Type: el contrato lo rechaza. */
+    HttpResponse<String> postSinCuerpo() throws Exception {
+        HttpRequest request = HttpRequest.newBuilder(URI.create(baseUrl() + "/api/links"))
+                .POST(BodyPublishers.noBody())
+                .build();
+        return client.send(request, BodyHandlers.ofString());
+    }
+
     HttpResponse<String> get(String path) throws Exception {
         HttpRequest request = HttpRequest.newBuilder(URI.create(baseUrl() + path)).GET().build();
         return client.send(request, BodyHandlers.ofString());

@@ -110,6 +110,11 @@ class DestinationValidationHttpTest extends HttpApiFixture {
     }
 
     @Test
+    void rechazaSolicitudSinCuerpo() throws Exception {
+        assertError(postSinCuerpo(), "INVALID_REQUEST");
+    }
+
+    @Test
     void unRechazoNoCreaAsignacionNiConsumeAlias() throws Exception {
         long indiceAntes = proximoIndice();
         long aliasAntes = countRows("alias");
