@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Acortador de enlaces</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<main>
+    <h1>Acortador de enlaces</h1>
+    <form id="shorten-form">
+        <label for="destination">Dirección a acortar</label>
+        <div class="field-row">
+            <input id="destination" name="destination" type="url" required
+                   placeholder="https://ejemplo.com/documento-muy-largo" maxlength="8192">
+            <button type="submit">Acortar</button>
+        </div>
+    </form>
+    <p id="error" class="error" hidden></p>
+    <section id="result" hidden>
+        <p>
+            Tu enlace:
+            <a id="short-url" href="#" target="_blank" rel="noopener"></a>
+        </p>
+        <p>Vence: <time id="expires-at"></time></p>
+        <p id="reuse-notice" class="notice"></p>
+    </section>
+</main>
+<script src="app.js"></script>
+</body>
+</html>
