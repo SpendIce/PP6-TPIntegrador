@@ -173,10 +173,12 @@ components:
 
             Codificación exigida (caracteres internacionales):
 
-            - Solo se aceptan caracteres ASCII imprimibles según
-              RFC 3986. Un destino con caracteres Unicode en crudo (en
-              host, ruta, consulta o fragmento) se rechaza como
-              `MALFORMED_DESTINATION`.
+            - El destino debe ser una URI formada solo por caracteres
+              ASCII válidos según la gramática de RFC 3986 (los
+              caracteres de control y los delimitadores fuera de lugar
+              también se rechazan). Un destino con caracteres Unicode en
+              crudo (en host, ruta, consulta o fragmento) se rechaza
+              como `MALFORMED_DESTINATION`.
             - Un dominio internacional viaja en forma punycode
               (`xn--bcher-kva.ch`); el texto en ruta, consulta o
               fragmento viaja con percent-encoding UTF-8 (`%C3%A9`).
