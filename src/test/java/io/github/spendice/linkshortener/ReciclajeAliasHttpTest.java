@@ -25,6 +25,7 @@ import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -32,6 +33,7 @@ import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -235,32 +237,50 @@ class ReciclajeAliasHttpTest {
         var pool = Executors.newFixedThreadPool(concurrent);
         var ready = new CountDownLatch(concurrent);
         var go = new CountDownLatch(1);
-        var futures = new ArrayList<Future<HttpResponse<String>>>();
+        var futures = new ArrayList<Future<Map.Entry<String, HttpResponse<String>>>>();
         for (int i = 0; i < concurrent; i++) {
+            String destino = "https://ejemplo.com/hilo-" + i;
             futures.add(pool.submit(() -> {
                 ready.countDown();
-                go.await();
-                return postJson("{\"destination\":\"https://ejemplo.com/concurrente\"}");
+                // Timeout en todos los puntos de espera: un hilo trabado
+                // falla la prueba en lugar de colgar la suite.
+                assertThat(go.await(30, TimeUnit.SECONDS)).isTrue();
+                return Map.entry(destino,
+                        postJson("{\"destination\":\"" + destino + "\"}"));
             }));
         }
-        ready.await();
+        assertThat(ready.await(30, TimeUnit.SECONDS)).isTrue();
         go.countDown();
 
-        Set<String> aliases = new HashSet<>();
-        for (Future<HttpResponse<String>> future : futures) {
-            HttpResponse<String> response = future.get();
+        Map<String, String> destinosPorAlias = new HashMap<>();
+        for (Future<Map.Entry<String, HttpResponse<String>>> future : futures) {
+            Map.Entry<String, HttpResponse<String>> intento = future.get(60, TimeUnit.SECONDS);
+            HttpResponse<String> response = intento.getValue();
             assertThat(response.statusCode()).isEqualTo(201);
-            aliases.add(json.readTree(response.body()).get("alias").asText());
+            JsonNode body = json.readTree(response.body());
+            // Cada creación exitosa tiene duración propia: vence a los
+            // 60 minutos del instante de creación T0.
+            assertThat(Instant.parse(body.get("expiresAt").asText()))
+                    .isEqualTo(T0.plus(DURACION));
+            destinosPorAlias.put(body.get("alias").asText(), intento.getKey());
         }
         pool.shutdown();
+        assertThat(pool.awaitTermination(30, TimeUnit.SECONDS)).isTrue();
 
         // La reserva serializada entrega el vencido a una sola creación;
         // las demás emiten códigos nuevos. Todos los alias son exclusivos.
-        assertThat(aliases).containsExactlyInAnyOrder("5", "1", "2", "3");
-        // La asignación vencida original quedó conservada: son dos, no una.
+        assertThat(destinosPorAlias.keySet())
+                .containsExactlyInAnyOrder("5", "1", "2", "3");
+        // La asignación vencida original quedó conservada: son dos, no una,
+        // y la referencia actual apunta a la asignación nueva del ganador.
         assertThat(db.queryForObject(
                 "SELECT COUNT(*) FROM asignacion WHERE alias_codigo = ?",
                 Long.class, "5")).isEqualTo(2);
+        assertThat(db.queryForObject(
+                "SELECT a.destino FROM alias al"
+                        + " JOIN asignacion a ON a.id = al.asignacion_actual_id"
+                        + " AND a.alias_codigo = al.codigo WHERE al.codigo = ?",
+                String.class, "5")).isEqualTo(destinosPorAlias.get("5"));
     }
 
     /** Alias con su asignación actual ya vencida al instante T0. */
