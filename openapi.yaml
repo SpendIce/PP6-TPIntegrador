@@ -1,0 +1,180 @@
+openapi: 3.0.3
+info:
+  title: Acortador de enlaces — API pública
+  version: "0.1.0"
+  description: >
+    Contrato de la primera entrega del acortador de enlaces (issue #2).
+    La API permite crear una asignación a partir de una URL de destino y
+    resolver el enlace acortado hacia ese destino mientras la asignación
+    esté vigente. Cada asignación dura exactamente 60 minutos desde su
+    creación, tiene identidad propia y no se deduplica por destino.
+servers:
+  - url: /
+    description: Mismo origen que sirve la web; la dirección pública del servicio es configurable por despliegue.
+paths:
+  /api/links:
+    post:
+      summary: Crear un enlace acortado
+      description: >
+        Crea una asignación independiente para la URL de destino recibida.
+        Repetir la solicitud con el mismo destino produce otra asignación
+        con identidad y vencimiento propios: no hay deduplicación ni
+        idempotencia. El servidor no consulta la disponibilidad, permisos
+        ni autenticación del destino para aceptarlo.
+      operationId: crearEnlace
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateLinkRequest'
+            examples:
+              valida:
+                value:
+                  destination: "https://docs.ejemplo.com/carpeta/archivo?a=1&b=2#seccion"
+      responses:
+        '201':
+          description: Asignación creada. El alias queda reservado para esta asignación durante su vigencia.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LinkCreated'
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+                example: no-store
+        '400':
+          description: Entrada rechazada. El destino no se trunca ni se corrige silenciosamente.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+  /{alias}:
+    get:
+      summary: Resolver un enlace acortado
+      description: >
+        Si el alias tiene una asignación vigente en el instante de
+        resolución del servidor, responde HTTP 302 hacia la URL de destino
+        conservada verbatim. Si el alias es desconocido o su asignación
+        venció, responde HTTP 404 con una página «Este enlace no existe o
+        venció». Ambas respuestas usan `Cache-Control: no-store` para que
+        caches conformes no reutilicen una redirección vencida. Las rutas
+        de la aplicación (por ejemplo `/api`, `/error` y los archivos
+        estáticos) están reservadas y nunca se emiten como alias.
+      operationId: resolverEnlace
+      parameters:
+        - name: alias
+          in: path
+          required: true
+          description: >
+            Código público del enlace. Alfabeto de 58 símbolos
+            `123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz`
+            (sin `0`, `O`, `I` ni `l`), sensible a mayúsculas, longitud
+            variable comenzando por un carácter.
+          schema:
+            type: string
+            pattern: '^[1-9A-HJ-NP-Za-km-z]{1,32}$'
+      responses:
+        '302':
+          description: Asignación vigente; redirección al destino registrado.
+          headers:
+            Location:
+              required: true
+              description: URL de destino exactamente como fue registrada.
+              schema:
+                type: string
+                format: uri
+            Cache-Control:
+              required: true
+              schema:
+                type: string
+                example: no-store
+        '404':
+          description: Alias desconocido o sin asignación vigente.
+          headers:
+            Cache-Control:
+              required: true
+              schema:
+                type: string
+                example: no-store
+          content:
+            text/html:
+              schema:
+                type: string
+                description: Página que contiene el mensaje «Este enlace no existe o venció».
+components:
+  schemas:
+    CreateLinkRequest:
+      type: object
+      required:
+        - destination
+      properties:
+        destination:
+          type: string
+          minLength: 1
+          maxLength: 8192
+          description: >
+            URL de destino absoluta con esquema `http` o `https`
+            (RFC 3986). Debe estar codificada de forma válida: los
+            espacios requieren percent-encoding (`%20`) y los caracteres
+            internacionales deben enviarse codificados o con el dominio
+            en forma punycode. Se conservan parámetros, fragmento,
+            credenciales incrustadas y codificación exactamente como se
+            reciben. Se rechazan los destinos que pertenecen a los
+            orígenes propios del servicio (dirección pública configurada
+            y equivalentes localhost/LAN del mismo puerto). Los destinos
+            de otras máquinas de la red local son válidos.
+      additionalProperties: false
+    LinkCreated:
+      type: object
+      required:
+        - shortUrl
+        - alias
+        - expiresAt
+        - reuseNotice
+      properties:
+        shortUrl:
+          type: string
+          format: uri
+          description: >
+            URL pública acortada: dirección base configurada del
+            servicio más el alias. No se deriva de la solicitud recibida.
+          example: "http://192.168.1.50:8080/7"
+        alias:
+          type: string
+          pattern: '^[1-9A-HJ-NP-Za-km-z]{1,32}$'
+          description: Código asignado dentro del alfabeto acordado.
+          example: "7"
+        expiresAt:
+          type: string
+          format: date-time
+          description: Instante de vencimiento, exactamente 60 minutos después de la creación.
+        reuseNotice:
+          type: string
+          description: >
+            Aviso al usuario de que el alias puede reutilizarse con otro
+            destino después del vencimiento.
+          example: "Este alias puede reutilizarse con otro destino después del vencimiento."
+    ApiError:
+      type: object
+      required:
+        - error
+        - message
+      properties:
+        error:
+          type: string
+          description: Código estable del rechazo.
+          enum:
+            - EMPTY_DESTINATION
+            - DESTINATION_TOO_LONG
+            - MALFORMED_DESTINATION
+            - UNSUPPORTED_SCHEME
+            - OWN_ORIGIN
+            - INVALID_REQUEST
+        message:
+          type: string
+          description: Descripción legible del problema para mostrar al usuario.
+      example:
+        error: MALFORMED_DESTINATION
+        message: "La URL de destino no tiene un formato válido."
