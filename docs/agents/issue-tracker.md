@@ -6,8 +6,8 @@ Usar `gh` y especificar `--repo SpendIce/PP6-TPIntegrador` en operaciones de iss
 ## Operaciones
 
 - Crear: `gh issue create --repo SpendIce/PP6-TPIntegrador --title "..." --body-file <archivo>`.
-- Leer: `gh issue view <n> --repo SpendIce/PP6-TPIntegrador --comments`; consultar también etiquetas.
-- Listar: `gh issue list --repo SpendIce/PP6-TPIntegrador` con filtros de estado y etiquetas.
+- Leer: `gh issue view <n> --repo SpendIce/PP6-TPIntegrador`; `--comments` solo si el hilo hace falta (los cuerpos largos inflan la salida).
+- Listar: `gh issue list --repo SpendIce/PP6-TPIntegrador` con filtros de estado y etiquetas. Para barridos, salida compacta: `gh issue list --repo SpendIce/PP6-TPIntegrador --json number,title,labels,state` (sin `body`/`comments`).
 - Comentar: `gh issue comment <n> --repo SpendIce/PP6-TPIntegrador --body-file <archivo>`.
 - Etiquetar: `gh issue edit <n> --repo SpendIce/PP6-TPIntegrador --add-label "..."`. Para retirar etiquetas, usar `--remove-label`.
 - Cerrar: `gh issue close <n> --repo SpendIce/PP6-TPIntegrador`.
@@ -23,13 +23,17 @@ PRs as a request surface: no.
 
 ## Wayfinding
 
-El mapa es un issue con etiqueta `wayfinder:map`.
-Los tickets se vinculan como sub-issues y usan `wayfinder:<tipo>`.
-Si sub-issues no está disponible, usar una lista de tareas en el mapa y `Part of #<mapa>` en cada ticket.
-
 Registrar bloqueos mediante dependencias nativas de GitHub.
 Si no están disponibles, usar `Blocked by: #<n>`.
-Un ticket está disponible cuando sus bloqueantes están cerrados y no tiene responsable asignado.
 
-Reclamar asignando el ticket al desarrollador.
-Al resolverlo, comentar el resultado, cerrar el ticket y agregar el enlace y la decisión al mapa.
+Si existe un issue mapa con etiqueta `wayfinder:map`, los tickets se vinculan
+como sub-issues o con `Part of #<mapa>`; si no existe, no crearlo sin pedido
+del usuario.
+
+Un ticket está disponible cuando sus bloqueantes están cerrados.
+Una rama `issue/<n>-*` o un comentario de trabajo en curso ya lo reclama; no
+hace falta asignar responsables en este proyecto.
+
+Al resolverlo, comentar el resultado y cerrar el ticket. Los pasos que requieren
+verificación humana física (instalación de complementos, celular, visual) no
+cierran un ticket `ready-for-agent`: van en uno propio con `ready-for-human`.
