@@ -126,7 +126,50 @@ Prefijo `shortener` (`ShortenerProperties`):
   propios (no se exponen entidades JPA) y `ApiExceptionHandler`.
 - `infrastructure.config`: `ShortenerProperties` y el cableado de los puertos
   del dominio (`DomainConfig`).
-- `resources/static`: web `index.html`, `app.js`, `styles.css`.
+- `resources/static`: web `index.html`, `app.js`, `styles.css`, módulo
+  `qr-code.js` y biblioteca vendorizada `vendor/qrcode.js`
+  (ver «QR del enlace»).
+
+## QR del enlace (issue #7)
+
+El QR se genera íntegramente en el cliente, sobre el `shortUrl` devuelto
+por `POST /api/links` (la dirección pública del enlace, no el destino ni
+una asignación histórica; ver «Código QR del enlace» en
+[CONTEXT.md](../CONTEXT.md)). El backend no almacena ni sirve imágenes
+QR y el cliente no recibe entidades JPA: consume solo el DTO del
+contrato.
+
+- `static/vendor/qrcode.js`: qrcode-generator 1.4.4 (Kazuhiko Arase,
+  MIT), vendorizada porque la demo corre en LAN sin garantía de
+  Internet (nada de CDN). Produce la matriz del código con corrección
+  de error `M` y versión automática. Procedencia y licencia en
+  `static/vendor/README.md`.
+- `static/qr-code.js`: módulo propio `QrPng` que transforma la matriz en
+  un PNG de escala de grises (8 px por módulo, zona de silencio de 4
+  módulos). Implementa el contenedor PNG (IHDR/IDAT/IEND con CRC-32) y
+  la envoltura zlib con bloques deflate almacenados, sin canvas ni
+  dependencias extra: el mismo archivo genera los bytes que se muestran
+  y los que se descargan. También exporta `module.exports` para las
+  pruebas de Node.
+- `app.js`: tras una creación exitosa, `renderQr` arma un `Blob` con los
+  bytes PNG, lo muestra en `img#qr-image` y lo ofrece como descarga en
+  `a#qr-download` (`qr-<alias>.png`), revocando el object URL anterior.
+  Los errores de creación mantienen `#result` oculto: nunca se renderiza
+  un QR de un resultado inexistente. Enlace, vencimiento y
+  `reuseNotice` se muestran junto al QR; el aviso del contrato deja
+  claro que el alias puede reasignarse y no es permanente.
+
+Verificación automatizable (`src/test/js/`): `qr-code.test.mjs` genera
+el PNG con el propio `QrPng` y lo decodifica con bibliotecas
+vendorizadas independientes del encoder: `UPNG.js` (PNG → píxeles,
+MIT) y `jsQR` (píxeles → texto, Apache-2.0), comprobando que el
+contenido es exactamente el `shortUrl`. También valida estructura
+(firma, dimensiones, zona de silencio, reproducción de la matriz). Se
+ejecuta con Node (`node --test` dentro de `src/test/js/`); no forma
+parte de `mvn test`. El wiring HTTP (la página referencia y sirve los
+recursos del QR) se cubre en `LinkApiHttpTest`. Procedimiento completo,
+incluida la verificación visual manual, en
+[verificacion-qr.md](verificacion-qr.md).
 
 ## Reloj
 
@@ -139,6 +182,7 @@ pública para mover el reloj.
 No implementa: reciclaje de alias vencidos (ticket «Reutilizar los alias más
 cortos conservando el historial»), pruebas de reinicio del servicio y reglas
 completas de vencimiento límite a nivel HTTP (ticket «Vencer enlaces y
-conservar su estado al reiniciar»), QR ni complementos (tickets posteriores).
-El contrato OpenAPI ya contempla el aviso de reutilización (`reuseNotice`)
-para que la web lo muestre desde el inicio.
+conservar su estado al reiniciar») ni complementos (ticket posterior). El
+QR de la web se resuelve en el cliente (ver «QR del enlace»). El contrato
+OpenAPI ya contempla el aviso de reutilización (`reuseNotice`) para que la
+web lo muestre desde el inicio.

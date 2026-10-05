@@ -42,9 +42,22 @@ mvn test
 
 Compila y corre las pruebas: unitarias de dominio y casos de uso, más el
 recorrido HTTP completo sobre PostgreSQL real con Testcontainers
-(creación, contrato de respuesta, persistencia, redirección 302/404 y
-rechazos del contrato). No ejecutar `mvn package` ni `mvn verify` como
-verificación de cambios: `mvn test` es la evidencia acordada.
+(creación, contrato de respuesta, persistencia, redirección 302/404,
+rechazos del contrato y recursos estáticos de la web, incluido el QR).
+No ejecutar `mvn package` ni `mvn verify` como verificación de cambios:
+`mvn test` es la evidencia acordada.
+
+Las pruebas del QR del cliente (`src/test/js/`) corren aparte con Node
+y no intervienen en el build de Maven:
+
+```bash
+cd src/test/js && node --test
+```
+
+Generan el PNG real del QR y lo decodifican con bibliotecas
+vendorizadas para comprobar que codifica el `shortUrl` exacto. El
+procedimiento completo está en
+[docs/verificacion-qr.md](docs/verificacion-qr.md).
 
 ## Esquema y migraciones
 
