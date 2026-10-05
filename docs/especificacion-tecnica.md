@@ -109,6 +109,8 @@ Prefijo `shortener` (`ShortenerProperties`):
 - `link-duration` (`Duration`, `LINK_DURATION`): duración de las nuevas
   asignaciones; `PT60M` por defecto. El experimento de adaptación la cambia
   sin tocar las asignaciones existentes, cuyo `vence_en` ya está persistido.
+  Evidencia ejecutada y análisis de los demás cambios representativos en
+  [evidencia-evolucion.md](evidencia-evolucion.md) (issue #10).
 
 ## Estructura de paquetes
 
@@ -207,3 +209,12 @@ cortos conservando el historial») ni complementos (ticket posterior). El
 QR de la web se resuelve en el cliente (ver «QR del enlace»). El contrato
 OpenAPI ya contempla el aviso de reutilización (`reuseNotice`) para que la
 web lo muestre desde el inicio.
+
+El experimento de adaptación (issue #10) se verificó en
+`EvolucionDuracionHttpTest`: dos contextos sucesivos sobre el mismo
+PostgreSQL — `PT60M` y luego `PT5M` solo para nuevas creaciones —
+demuestran que cada asignación conserva el `vence_en` que persistió al
+crearse, con la duración de entrega restituida a 60 minutos. El
+procedimiento reproducible y el análisis de alias personalizados,
+consola y estadísticas están en
+[evidencia-evolucion.md](evidencia-evolucion.md).
