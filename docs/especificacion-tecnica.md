@@ -1,6 +1,7 @@
 # Especificación técnica — creación y resolución de enlaces
 
-Estado: decisiones técnicas fijadas para el issue #2. Cierra los puntos que
+Estado: decisiones técnicas fijadas para el issue #2, extendidas con la
+evidencia de vencimiento y reinicio del issue #3. Cierra los puntos que
 [arquitectura y validación](arquitectura-y-validacion.md) dejó pendientes de
 especificación técnica: versiones concretas, ejecución de PostgreSQL, mecanismo
 de migraciones, coordinación transaccional, reservas de rutas y configuración de
@@ -174,15 +175,35 @@ incluida la verificación visual manual, en
 ## Reloj
 
 Los casos de uso usan `java.time.Clock` inyectado (`Clock.systemUTC()` en
-producción; `Clock.fixed` o un reloj mutable en pruebas). No existe operación
-pública para mover el reloj.
+producción). No existe operación pública para mover el reloj.
+
+La vigencia se evalúa en el servidor en el instante de resolución: la
+consulta compara `clock.instant()` con el `vence_en` persistido de la
+asignación actual del alias. No hay tarea de limpieza: las asignaciones
+vencidas permanecen en `asignacion` y `alias.asignacion_actual_id` puede
+seguir apuntándolas hasta la próxima reutilización. Las visitas no
+modifican la asignación: resolver no renueva el vencimiento.
+
+En las pruebas de integración el reloj es un bean primario mutable
+(`MutableClock` vía `ClockTestConfiguration`, solo en `src/test`), lo que
+permite fijar instantes exactos alrededor del vencimiento sin esperas
+reales ni endpoints de control. El reinicio se prueba levantando un
+segundo contexto Spring contra el mismo contenedor PostgreSQL después de
+cerrar el primero (`ReinicioServicioHttpTest`).
 
 ## Alcance explícito de esta entrega
 
+El vencimiento y el reinicio (issue #3) están verificados en
+`VencimientoHttpTest` y `ReinicioServicioHttpTest`: límites temporales
+exactos a nivel HTTP (un instante antes redirige; al alcanzar el límite
+responde 404), visitas sin renovación de `vence_en`, validez evaluada en
+el servidor al resolver, alias desconocido o vencido con la página
+acordada, asignaciones vencidas conservadas en el historial y
+conservación de destino, identidad, creación y vencimiento tras
+reiniciar contra el mismo PostgreSQL.
+
 No implementa: reciclaje de alias vencidos (ticket «Reutilizar los alias más
-cortos conservando el historial»), pruebas de reinicio del servicio y reglas
-completas de vencimiento límite a nivel HTTP (ticket «Vencer enlaces y
-conservar su estado al reiniciar») ni complementos (ticket posterior). El
+cortos conservando el historial») ni complementos (ticket posterior). El
 QR de la web se resuelve en el cliente (ver «QR del enlace»). El contrato
 OpenAPI ya contempla el aviso de reutilización (`reuseNotice`) para que la
 web lo muestre desde el inicio.
