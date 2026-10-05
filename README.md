@@ -34,6 +34,13 @@ resolución en `GET /{alias}`.
 Las rutas reservadas del generador de alias se configuran con
 `shortener.reserved-routes` (por defecto `api` y `error`).
 
+## Complementos de navegador
+
+`extensiones/` contiene los complementos instalables manualmente para
+Chrome y Firefox: acortan la URL de la pestaña activa con la misma API,
+muestran el resultado con QR descargable y permiten configurar la
+dirección de la API. Instrucciones en [extensiones/README.md](extensiones/README.md).
+
 ## Verificación
 
 ```bash
