@@ -66,8 +66,9 @@ la respuesta `400` de `openapi.yaml`):
   con base `acortador`, usuario `acortador` y puerto `5432`. Las credenciales se
   pueden sobreescribir con variables de entorno (`DB_HOST`, `DB_PORT`,
   `DB_NAME`, `DB_USER`, `DB_PASSWORD`).
-- Pruebas de integración: Testcontainers levanta `postgres:16.4-alpine` por
-  clase de test con `@ServiceConnection`; no se usa H2 (ADR 0004).
+- Pruebas de integración: Testcontainers levanta `postgres:16.4-alpine` con
+  `@ServiceConnection`; las suites HTTP extienden `HttpApiFixture` y comparten
+  un único contenedor (singleton); no se usa H2 (ADR 0004).
 
 ## Migraciones
 
