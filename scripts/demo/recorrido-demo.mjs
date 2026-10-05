@@ -305,7 +305,7 @@ async function phaseA() {
       res.status === 400 && body?.error === codigo,
       body ? `${body.error}: ${body.message}` : `HTTP ${res.status}`);
   }
-  const { res: cJson, body: bJson } = await createRaw('{"destino":"https://x.com"');
+  const { res: cJson, body: bJson } = await createRaw('{"destino":"https://x.com"}');
   check('Propiedad desconocida -> 400 INVALID_REQUEST',
     cJson.status === 400 && bJson?.error === 'INVALID_REQUEST');
   const { res: cBad, body: bBad } = await createRaw('{no es json');
