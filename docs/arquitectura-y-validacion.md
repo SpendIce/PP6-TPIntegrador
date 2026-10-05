@@ -101,7 +101,7 @@ Las reglas se prueban sin servidor HTTP ni base cuando sea posible; la reserva c
 
 Iniciar el servicio y PostgreSQL, preparar 1.000 asignaciones vigentes y comprobar conectividad LAN. Ejecutar una fase de calentamiento antes de medir. Mantener 10 clientes concurrentes y registrar al menos 1.000 solicitudes de cada operación, evaluando creación y resolución por separado. Registrar duración, estado HTTP, cantidad de errores y cumplimiento de invariantes; un error inesperado no cuenta como éxito por responder rápido.
 
-La medición termina al recibir la respuesta del acortador. Para resolución, desactivar el seguimiento automático de redirecciones: el tiempo de carga del destino externo queda excluido. En cada operación, al menos el 95 % de las solicitudes deben completar su respuesta en un segundo o menos. Conservar el entorno, el tamaño del historial, el volumen de datos y los resultados para repetir la comparación en etapas posteriores. La ejecución de esta prueba permanece pendiente.
+La medición termina al recibir la respuesta del acortador. Para resolución, desactivar el seguimiento automático de redirecciones: el tiempo de carga del destino externo queda excluido. En cada operación, al menos el 95 % de las solicitudes deben completar su respuesta en un segundo o menos. Conservar el entorno, el tamaño del historial, el volumen de datos y los resultados para repetir la comparación en etapas posteriores. Ejecutada en el issue #9: procedimiento automatizado en `scripts/capacidad/` y resultados en [evidencia-capacidad.md](evidencia-capacidad.md) (100 % ≤ 1 s en ambas operaciones, sin errores, contra la dirección LAN del servicio).
 
 ## Cambios representativos
 

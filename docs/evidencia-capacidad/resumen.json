@@ -1,0 +1,74 @@
+{
+  "generated_at": "2026-10-05T17:12:20.352Z",
+  "measured_base": "http://192.168.1.7:8080",
+  "public_base_url": "http://192.168.1.7:8080",
+  "parameters": {
+    "clients": 10,
+    "seed": 1000,
+    "requests": 1000,
+    "warmup": 200,
+    "limit_ms": 1000
+  },
+  "create": {
+    "requests": 1000,
+    "errors": 0,
+    "by_status": {
+      "201": 1000
+    },
+    "min_ms": 19.022,
+    "p50_ms": 89.279,
+    "p95_ms": 112.827,
+    "p99_ms": 147.603,
+    "max_ms": 175.468,
+    "mean_ms": 87.938,
+    "within_1s": 1000,
+    "pct_within_1s": 100,
+    "ok_within_1s": 1000,
+    "pct_ok_within_1s": 100
+  },
+  "resolve": {
+    "requests": 1000,
+    "errors": 0,
+    "by_status": {
+      "302": 1000
+    },
+    "min_ms": 2.572,
+    "p50_ms": 4.948,
+    "p95_ms": 7.464,
+    "p99_ms": 8.929,
+    "max_ms": 9.757,
+    "mean_ms": 5.114,
+    "within_1s": 1000,
+    "pct_within_1s": 100,
+    "ok_within_1s": 1000,
+    "pct_ok_within_1s": 100
+  },
+  "invariants": {
+    "unique_aliases": true,
+    "resolve_coherence": true,
+    "persistence_sample": {
+      "sample": 300,
+      "failures": 0,
+      "ok": true
+    },
+    "unknown_alias_404": true,
+    "create_beyond_reference_201": true
+  },
+  "db_after_seed": {
+    "assignments_total": 1000,
+    "aliases_total": 1000,
+    "active_assignments": 1000,
+    "asignacion_size": "344 kB",
+    "alias_size": "168 kB",
+    "proximo_indice": 1000
+  },
+  "db_final": {
+    "assignments_total": 2201,
+    "aliases_total": 2201,
+    "active_assignments": 2201,
+    "asignacion_size": "592 kB",
+    "alias_size": "240 kB",
+    "proximo_indice": 2201
+  },
+  "verdict": "PASS"
+}

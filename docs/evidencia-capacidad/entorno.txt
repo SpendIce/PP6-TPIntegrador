@@ -1,0 +1,16 @@
+date: 2026-10-05T14:12:20-03:00
+hostname: arcanetako
+kernel: Linux 7.2.5-3-omarchy x86_64 GNU/Linux
+os: Omarchy
+cpu: 11th Gen Intel(R) Core(TM) i7-1180G7 @ 1.30GHz
+cores: 8
+memory: 15Gi total, 6.8Gi available
+java: openjdk version "17.0.20.1" 2026-08-18
+maven: Apache Maven 3.9.16 (2bdd9fddda4b155ebf8000e807eb73fd829a51d5)
+node: v26.7.0
+docker: 29.7.2
+postgres_image: sha256:5660c2cbfea50c7a9127d17dc4e48543eedd3d7a41a595a2dfa572471e37e64c
+postgres_server: 16.4
+app_port: 8080 | db_host_port: 55433 | db_container: pp6-capacidad-pg
+public_base_url: http://192.168.1.7:8080 | measured_base: http://192.168.1.7:8080 | lan_check_http: 200
+link_duration: PT60M (default) | hikari pool & tomcat: Boot 3.5.16 defaults

@@ -66,6 +66,12 @@ vendorizadas para comprobar que codifica el `shortUrl` exacto. El
 procedimiento completo está en
 [docs/verificacion-qr.md](docs/verificacion-qr.md).
 
+La prueba de capacidad (1.000 asignaciones vigentes, 10 clientes
+simultáneos, ≥ 95 % de cada operación en un segundo o menos) corre
+aparte con `scripts/capacidad/ejecutar-medicion.sh`; procedimiento y
+resultados medidos en
+[docs/evidencia-capacidad.md](docs/evidencia-capacidad.md).
+
 ## Esquema y migraciones
 
 Flyway versiona el esquema desde `src/main/resources/db/migration/`.
