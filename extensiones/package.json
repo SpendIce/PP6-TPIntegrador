@@ -1,0 +1,12 @@
+{
+  "name": "extensiones-acortador",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Complementos de Chrome y Firefox del acortador de enlaces. Logica compartida testeable con node --test, sin dependencias npm.",
+  "scripts": {
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
