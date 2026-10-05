@@ -1,0 +1,11 @@
+{
+  "aliasA": "1",
+  "destinoA": "https://docs.ejemplo.com/carpeta%20compartida/informe?a=1&b=2#seccion-3",
+  "expiresAtA": "2026-10-05T18:45:54.950065276Z",
+  "shortUrlA": "http://192.168.1.7:8080/1",
+  "aliasS": "7",
+  "destinoS": "https://laboratorio.ejemplo.com/demo-vencimiento",
+  "expiresAtS": "2026-10-05T17:47:28.575422101Z",
+  "shortUrlS": "http://192.168.1.7:8080/7",
+  "aliasDos": "11"
+}
