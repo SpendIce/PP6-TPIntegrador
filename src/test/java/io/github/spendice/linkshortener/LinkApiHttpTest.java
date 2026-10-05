@@ -211,6 +211,25 @@ class LinkApiHttpTest {
         assertThat(response.body()).contains("Dirección a acortar");
     }
 
+    @Test
+    void laWebReferenciaYSirveLosRecursosDelQr() throws Exception {
+        HttpResponse<String> page = get("/");
+
+        assertThat(page.body())
+                .contains("vendor/qrcode.js")
+                .contains("qr-code.js")
+                .contains("qr-image")
+                .contains("qr-download");
+
+        HttpResponse<String> lib = get("/vendor/qrcode.js");
+        assertThat(lib.statusCode()).isEqualTo(200);
+        assertThat(lib.body()).contains("Kazuhiko Arase");
+
+        HttpResponse<String> module = get("/qr-code.js");
+        assertThat(module.statusCode()).isEqualTo(200);
+        assertThat(module.body()).contains("QrPng");
+    }
+
     private String createAliasFor(String destination) throws Exception {
         JsonNode body = json.readTree(postJson("{\"destination\":\"" + destination + "\"}").body());
         return body.get("alias").asText();

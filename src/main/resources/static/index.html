@@ -26,8 +26,17 @@
         </p>
         <p>Vence: <time id="expires-at"></time></p>
         <p id="reuse-notice" class="notice"></p>
+        <figure id="qr-figure">
+            <img id="qr-image" alt="Código QR del enlace acortado">
+            <figcaption>El QR contiene tu enlace acortado.</figcaption>
+        </figure>
+        <p>
+            <a id="qr-download" class="button-link" download>Descargar QR como PNG</a>
+        </p>
     </section>
 </main>
+<script src="vendor/qrcode.js"></script>
+<script src="qr-code.js"></script>
 <script src="app.js"></script>
 </body>
 </html>
