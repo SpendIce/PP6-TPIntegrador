@@ -19,12 +19,19 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
+import java.net.http.HttpRequest.BodyPublishers;
 import java.net.http.HttpResponse;
 import java.net.http.HttpResponse.BodyHandlers;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -169,6 +176,33 @@ class LinkApiHttpTest {
     }
 
     @Test
+    void creacionesConcurrentesReservanAliasExclusivos() throws Exception {
+        int concurrent = 10;
+        var pool = Executors.newFixedThreadPool(concurrent);
+        var ready = new CountDownLatch(concurrent);
+        var go = new CountDownLatch(1);
+        var futures = new ArrayList<Future<HttpResponse<String>>>();
+        for (int i = 0; i < concurrent; i++) {
+            futures.add(pool.submit(() -> {
+                ready.countDown();
+                go.await();
+                return postJson("{\"destination\":\"https://ejemplo.com/concurrente\"}");
+            }));
+        }
+        ready.await();
+        go.countDown();
+
+        Set<String> aliases = new HashSet<>();
+        for (Future<HttpResponse<String>> future : futures) {
+            HttpResponse<String> response = future.get();
+            assertThat(response.statusCode()).isEqualTo(201);
+            aliases.add(json.readTree(response.body()).get("alias").asText());
+        }
+        pool.shutdown();
+        assertThat(aliases).hasSize(concurrent);
+    }
+
+    @Test
     void laWebSeSirveDesdeElBackend() throws Exception {
         HttpResponse<String> response = get("/");
 
@@ -185,7 +219,7 @@ class LinkApiHttpTest {
     private HttpResponse<String> postJson(String jsonBody) throws Exception {
         HttpRequest request = HttpRequest.newBuilder(URI.create(baseUrl() + "/api/links"))
                 .header("Content-Type", "application/json")
-                .POST(HttpRequest.BodyPublishers.ofString(jsonBody))
+                .POST(BodyPublishers.ofString(jsonBody))
                 .build();
         return client.send(request, BodyHandlers.ofString());
     }

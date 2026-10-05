@@ -37,6 +37,8 @@ class JpaAliasStore implements AliasStore {
         long index = sequence.indexOfNextCode(counter.getProximoIndice());
         counter.setProximoIndice(index + 1);
         String code = sequence.codeAt(index);
+        // La asignación inserta de inmediato (IDENTITY) y referencia
+        // alias.codigo: la fila del alias tiene que existir antes.
         aliases.saveAndFlush(new AliasEntity(code));
         return new Alias(code, null);
     }
