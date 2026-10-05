@@ -3,10 +3,13 @@ package io.github.spendice.linkshortener.application;
 import io.github.spendice.linkshortener.application.port.AliasStore;
 import io.github.spendice.linkshortener.application.port.AssignmentStore;
 import io.github.spendice.linkshortener.domain.Alias;
+import io.github.spendice.linkshortener.domain.AliasRecycling;
 import io.github.spendice.linkshortener.domain.AliasSequence;
 import io.github.spendice.linkshortener.domain.Assignment;
 
+import java.time.Instant;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -17,11 +20,27 @@ final class InMemoryStores {
 
     static final class FakeAliasStore implements AliasStore {
         private final AliasSequence sequence = new AliasSequence(Set.of());
+        private final AssignmentStore assignments;
         private final Map<String, Alias> byCode = new HashMap<>();
         private long nextIndex = 0;
 
+        FakeAliasStore(AssignmentStore assignments) {
+            this.assignments = assignments;
+        }
+
         @Override
-        public Alias claimNewCode() {
+        public Alias claim(Instant instant) {
+            List<String> expiredCodes = byCode.values().stream()
+                    .filter(alias -> alias.currentAssignment()
+                            .flatMap(assignments::findById)
+                            .filter(assignment -> !assignment.isActiveAt(instant))
+                            .isPresent())
+                    .map(Alias::code)
+                    .toList();
+            Optional<String> recycled = AliasRecycling.chooseRecyclable(expiredCodes);
+            if (recycled.isPresent()) {
+                return byCode.get(recycled.get());
+            }
             long index = sequence.indexOfNextCode(nextIndex);
             nextIndex = index + 1;
             Alias alias = new Alias(sequence.codeAt(index), null);

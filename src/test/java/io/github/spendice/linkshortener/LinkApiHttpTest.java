@@ -6,6 +6,7 @@ import io.github.spendice.linkshortener.application.port.AliasStore;
 import io.github.spendice.linkshortener.application.port.AssignmentStore;
 import io.github.spendice.linkshortener.domain.Alias;
 import io.github.spendice.linkshortener.domain.Assignment;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -70,6 +71,14 @@ class LinkApiHttpTest {
     @Autowired
     AssignmentStore assignmentStore;
 
+    @BeforeEach
+    void espacioDeCodigosVacio() {
+        // Un alias vencido es candidato a reciclaje en cualquier
+        // creación: el espacio vacío mantiene los escenarios aislados.
+        db.execute("TRUNCATE TABLE alias, asignacion RESTART IDENTITY");
+        db.update("UPDATE generador_alias SET proximo_indice = 0");
+    }
+
     @Test
     void creaAsignacionYDevuelveEnlacePublicoConVencimiento() throws Exception {
         Instant before = Instant.now();
@@ -120,7 +129,7 @@ class LinkApiHttpTest {
     @Test
     void aliasVencidoDevuelveElMismo404() throws Exception {
         Instant now = Instant.now();
-        Alias alias = aliasStore.claimNewCode();
+        Alias alias = aliasStore.claim(now);
         Assignment vencida = assignmentStore.save(Assignment.pending(
                 alias.code(), "https://ejemplo.com/viejo",
                 now.minus(Duration.ofHours(2)), now.minus(Duration.ofHours(1))));

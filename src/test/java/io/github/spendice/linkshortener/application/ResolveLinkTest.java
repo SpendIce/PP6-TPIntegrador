@@ -20,8 +20,8 @@ class ResolveLinkTest {
     private static final Instant T0 = Instant.parse("2026-10-05T12:00:00Z");
 
     private final MutableClock clock = new MutableClock(T0);
-    private final FakeAliasStore aliases = new FakeAliasStore();
     private final FakeAssignmentStore assignments = new FakeAssignmentStore();
+    private final FakeAliasStore aliases = new FakeAliasStore(assignments);
     private final CreateLink createLink = new CreateLink(
             new DestinationValidator(Set.of()),
             new ExpirationPolicy(Duration.ofMinutes(60)),
