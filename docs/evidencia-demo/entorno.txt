@@ -1,0 +1,14 @@
+date: 2026-10-05T14:48:52-03:00
+hostname: arcanetako
+kernel: Linux 7.2.5-3-omarchy x86_64 GNU/Linux
+os: Omarchy
+java: openjdk version "17.0.20.1" 2026-08-18
+maven: Apache Maven 3.9.16 (2bdd9fddda4b155ebf8000e807eb73fd829a51d5)
+node: v26.7.0
+zbarimg: 0.23.93
+docker: 29.7.2
+postgres_server: 16.4
+app_port: 8080 | db_host_port: 55434 | db_container: pp6-demo-pg
+public_base_url: http://192.168.1.7:8080 | lan_check_http: 200
+own_origins: http://arcanetako:8080,http://10.210.0.1:8080,http://172.17.0.1:8080,http://10.210.1.1:8080,http://10.8.0.17:8080
+link_duration: PT60M (fases a/c) | PT1M (fase b, vencimiento observable)

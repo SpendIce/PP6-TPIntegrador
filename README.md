@@ -6,6 +6,12 @@ PostgreSQL. Contrato en [openapi.yaml](openapi.yaml); decisiones en
 [CONTEXT.md](CONTEXT.md), [docs/adr/](docs/adr/) y
 [docs/especificacion-tecnica.md](docs/especificacion-tecnica.md).
 
+**Estado de la etapa 1**: integrada y verificada. La consolidación
+(estado del contrato, mapa de evidencia por requisito, límites reales y
+el procedimiento de demo con su checklist manual) está en
+[docs/demo-etapa-1.md](docs/demo-etapa-1.md); la evidencia cruda de la
+corrida automatizada en `docs/evidencia-demo/`.
+
 ## Requisitos
 
 - Java 17 y Maven 3.9.x.
@@ -71,6 +77,12 @@ simultáneos, ≥ 95 % de cada operación en un segundo o menos) corre
 aparte con `scripts/capacidad/ejecutar-medicion.sh`; procedimiento y
 resultados medidos en
 [docs/evidencia-capacidad.md](docs/evidencia-capacidad.md).
+
+La demo integrada de la etapa (recorrido completo con reinicios reales:
+creación, QR verificado por decodificación, errores, vencimiento,
+reciclaje con historial y QR viejo a asignación nueva) corre con
+`scripts/demo/ejecutar-demo.sh`; resultados y checklist manual en
+[docs/demo-etapa-1.md](docs/demo-etapa-1.md).
 
 ## Esquema y migraciones
 

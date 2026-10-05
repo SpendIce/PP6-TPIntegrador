@@ -1,0 +1,92 @@
+== Demo integrada etapa 1 ==
+   PUBLIC_BASE_URL=http://192.168.1.7:8080
+   OWN_ORIGINS=http://arcanetako:8080,http://10.210.0.1:8080,http://172.17.0.1:8080,http://10.210.1.1:8080,http://10.8.0.17:8080
+   PostgreSQL: pp6-demo-pg en 127.0.0.1:55434
+== Arranque 1/3: LINK_DURATION=PT60M (duración de entrega) ==
+Chequeo de alcanzabilidad LAN http://192.168.1.7:8080 -> HTTP 200
+== Fase A — entorno documentado, duración de entrega 60 min ==
+  [OK] GET / sirve la web (200)
+  [OK] La web referencia el formulario y el stack QR
+  [OK] Recurso estático servido: /app.js
+  [OK] Recurso estático servido: /qr-code.js
+  [OK] Recurso estático servido: /styles.css
+  [OK] Recurso estático servido: /vendor/qrcode.js
+  [OK] POST /api/links -> 201
+  [OK] 201 con Cache-Control: no-store
+  [OK] Contrato completo: shortUrl, alias, expiresAt, reuseNotice
+  [OK] reuseNotice avisa la posible reutilización del alias — Este alias puede reutilizarse con otro destino después del vencimiento.
+  [OK] shortUrl usa la dirección pública LAN configurada — http://192.168.1.7:8080/1
+  [OK] expiresAt ≈ ahora + 60 min — 2026-10-05T18:45:54.950065276Z
+  [OK] QR de 1: PNG decodifica exactamente el shortUrl (UPNG+jsQR) — http://192.168.1.7:8080/1
+  [OK] QR de 1: zbarimg decodifica el shortUrl — http://192.168.1.7:8080/1
+  [OK] GET /1 -> 302
+  [OK] 302 con Location al destino verbatim (parámetros y fragmento conservados) — https://docs.ejemplo.com/carpeta%20compartida/informe?a=1&b=2#seccion-3
+  [OK] 302 con Cache-Control: no-store
+  [OK] Acepta destino LAN — 2
+  [OK]   … y resuelve verbatim (destino LAN)
+  [OK] Acepta credenciales incrustadas — 3
+  [OK]   … y resuelve verbatim (credenciales incrustadas)
+  [OK] Acepta punycode + percent-encoding UTF-8 — 4
+  [OK]   … y resuelve verbatim (punycode + percent-encoding UTF-8)
+  [OK] Acepta puerto explícito y query repetida — 5
+  [OK]   … y resuelve verbatim (puerto explícito y query repetida)
+  [OK] Acepta destino de exactamente 8.192 caracteres
+  [OK] Rechaza vacío -> 400 EMPTY_DESTINATION — EMPTY_DESTINATION: La URL de destino es obligatoria.
+  [OK] Rechaza esquema no admitido -> 400 UNSUPPORTED_SCHEME — UNSUPPORTED_SCHEME: La URL de destino debe usar esquema http o https.
+  [OK] Rechaza sin esquema -> 400 UNSUPPORTED_SCHEME — UNSUPPORTED_SCHEME: La URL de destino debe usar esquema http o https.
+  [OK] Rechaza espacio sin codificar -> 400 MALFORMED_DESTINATION — MALFORMED_DESTINATION: La URL de destino no tiene un formato válido: Illegal character in path
+  [OK] Rechaza escape % inválido -> 400 MALFORMED_DESTINATION — MALFORMED_DESTINATION: La URL de destino no tiene un formato válido: Malformed escape pair
+  [OK] Rechaza unicode en crudo -> 400 MALFORMED_DESTINATION — MALFORMED_DESTINATION: Los caracteres internacionales deben ir codificados (percent-encoding o dominio punycode).
+  [OK] Rechaza más de 8.192 caracteres -> 400 DESTINATION_TOO_LONG — DESTINATION_TOO_LONG: La URL de destino supera el máximo de 8192 caracteres.
+  [OK] Rechaza origen propio loopback -> 400 OWN_ORIGIN — OWN_ORIGIN: La URL de destino pertenece al propio acortador.
+  [OK] Rechaza origen propio 127.0.0.1 -> 400 OWN_ORIGIN — OWN_ORIGIN: La URL de destino pertenece al propio acortador.
+  [OK] Rechaza origen propio público LAN -> 400 OWN_ORIGIN — OWN_ORIGIN: La URL de destino pertenece al propio acortador.
+  [OK] Rechaza origen propio configurado (http://arcanetako:8080) -> 400 OWN_ORIGIN — OWN_ORIGIN: La URL de destino pertenece al propio acortador.
+  [OK] Rechaza origen propio configurado (http://10.210.0.1:8080) -> 400 OWN_ORIGIN — OWN_ORIGIN: La URL de destino pertenece al propio acortador.
+  [OK] Rechaza origen propio configurado (http://172.17.0.1:8080) -> 400 OWN_ORIGIN — OWN_ORIGIN: La URL de destino pertenece al propio acortador.
+  [OK] Rechaza origen propio configurado (http://10.210.1.1:8080) -> 400 OWN_ORIGIN — OWN_ORIGIN: La URL de destino pertenece al propio acortador.
+  [OK] Rechaza origen propio configurado (http://10.8.0.17:8080) -> 400 OWN_ORIGIN — OWN_ORIGIN: La URL de destino pertenece al propio acortador.
+  [OK] Propiedad desconocida -> 400 INVALID_REQUEST
+  [OK] JSON inválido -> 400 INVALID_REQUEST
+  [OK] Ningún rechazo creó alias ni consumió el generador — alias=6, proximo_indice=6
+  [OK] Alias jamás emitido -> 404
+  [OK] 404 con la página «Este enlace no existe o venció»
+  [OK] 404 con Cache-Control: no-store
+== Fase A terminada: 47/47 verificaciones OK ==
+== Arranque 2/3: LINK_DURATION=PT1M (vencimiento observable) ==
+== Fase B — reinicio con duración corta: vencimiento, reciclaje y QR viejo ==
+   (duración configurada en este arranque: 1 min; la entrega sigue siendo 60 min)
+  [OK] Tras reinicio, /1 sigue 302
+  [OK] … al destino original conservado
+  [OK] Su vencimiento persistido no se recalculó con la nueva duración — vence_en_ms=1791225954950.065, expiresAt=2026-10-05T18:45:54.950065276Z
+  [OK] Creación de corta duración -> 201
+  [OK] expiresAt ≈ ahora + 1 min — 2026-10-05T17:47:28.575422101Z
+  [OK] QR de 7: PNG decodifica exactamente el shortUrl (UPNG+jsQR) — http://192.168.1.7:8080/7
+  [OK] QR de 7: zbarimg decodifica el shortUrl — http://192.168.1.7:8080/7
+  [OK] /7 vigente -> 302 al destino
+  [OK] Visitar no renueva el vencimiento (vence_en estable tras 3 visitas) — vence_en_ms=1791222448575.422
+  … esperando vencimiento real de 7 (62 s)
+  [OK] /7 vencido -> 404
+  [OK] 404 de vencido con la página acordada
+  [OK] 404 de vencido con Cache-Control: no-store
+  [OK] La creación siguiente recicla el alias vencido — esperado=7, obtenido=7
+  [OK] El alias reciclado resuelve al NUEVO destino — https://laboratorio.ejemplo.com/destino-nuevo
+  [OK] El QR viejo sigue decodificando el mismo enlace público — http://192.168.1.7:8080/7
+  [OK] … y ese enlace ahora conduce a la asignación nueva — http://192.168.1.7:8080/7 -> https://laboratorio.ejemplo.com/destino-nuevo
+  [OK] Historial del alias 7: conserva ambas asignaciones — 7, 8
+  [OK] La asignación anterior conserva su destino original
+  … emitiendo enlaces hasta agotar los alias de un carácter
+  [OK] Se emitió un alias de dos caracteres tras agotar los de uno — 11
+  [OK] Sin alias duplicados en la emisión — 52 creaciones, 52 alias distintos
+  … esperando vencimiento real de 11 (63 s)
+  [OK] El grupo de corta duración venció (11 -> 404)
+  [OK] Con vencidos de 1 y 2 caracteres, se reutiliza uno de 1 — elegido=7, vencido de dos=11
+== Fase B terminada: 22/22 verificaciones OK ==
+== Arranque 3/3: LINK_DURATION=PT60M (restitución de la entrega) ==
+== Fase C — restitución a 60 min y continuidad final ==
+  [OK] Tras el segundo reinicio, /1 sigue 302
+  [OK] … al mismo destino de la fase A
+  [OK] Nueva creación -> 201
+  [OK] La duración de entrega volvió a 60 minutos — 2026-10-05T18:48:51.868123592Z
+== Fase C terminada: 4/4 verificaciones OK ==
+== Fin. Artefactos en docs/evidencia-demo (rc=0) ==

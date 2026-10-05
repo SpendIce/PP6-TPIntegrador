@@ -1,0 +1,87 @@
+[0.0s] Base medida: http://192.168.1.7:8080 | clients=10 seed=1000 requests=1000 warmup=200
+[0.0s] Semilla: creando asignaciones vigentes por la API...
+[12.0s] Semilla completa: 1000 vigentes. DB: {"assignments_total":1000,"aliases_total":1000,"active_assignments":1000,"asignacion_size":"360 kB","alias_size":"168 kB","proximo_indice":1000}
+[12.0s] Calentamiento...
+[14.0s] Calentamiento completo (200 creaciones + 200 resoluciones).
+[14.0s] Midiendo CREACIÓN...
+[23.6s] Midiendo RESOLUCIÓN (sin seguir redirects)...
+[24.1s] Verificando persistencia: re-resolución de muestra...
+[24.8s] Verificando alias jamás emitido (404)...
+[24.8s] Creación adicional por encima del volumen de referencia...
+
+================ RESUMEN ================
+{
+  "generated_at": "2026-10-05T17:49:48.252Z",
+  "measured_base": "http://192.168.1.7:8080",
+  "public_base_url": "http://192.168.1.7:8080",
+  "parameters": {
+    "clients": 10,
+    "seed": 1000,
+    "requests": 1000,
+    "warmup": 200,
+    "limit_ms": 1000
+  },
+  "create": {
+    "requests": 1000,
+    "errors": 0,
+    "by_status": {
+      "201": 1000
+    },
+    "min_ms": 12.294,
+    "p50_ms": 93.678,
+    "p95_ms": 114.618,
+    "p99_ms": 162.607,
+    "max_ms": 185.251,
+    "mean_ms": 95.342,
+    "within_1s": 1000,
+    "pct_within_1s": 100,
+    "ok_within_1s": 1000,
+    "pct_ok_within_1s": 100
+  },
+  "resolve": {
+    "requests": 1000,
+    "errors": 0,
+    "by_status": {
+      "302": 1000
+    },
+    "min_ms": 2.318,
+    "p50_ms": 4.742,
+    "p95_ms": 7.694,
+    "p99_ms": 10.829,
+    "max_ms": 12.666,
+    "mean_ms": 4.979,
+    "within_1s": 1000,
+    "pct_within_1s": 100,
+    "ok_within_1s": 1000,
+    "pct_ok_within_1s": 100
+  },
+  "invariants": {
+    "unique_aliases": true,
+    "resolve_coherence": true,
+    "persistence_sample": {
+      "sample": 300,
+      "failures": 0,
+      "ok": true
+    },
+    "unknown_alias_404": true,
+    "create_beyond_reference_201": true
+  },
+  "db_after_seed": {
+    "assignments_total": 1000,
+    "aliases_total": 1000,
+    "active_assignments": 1000,
+    "asignacion_size": "360 kB",
+    "alias_size": "168 kB",
+    "proximo_indice": 1000
+  },
+  "db_final": {
+    "assignments_total": 2201,
+    "aliases_total": 2201,
+    "active_assignments": 2201,
+    "asignacion_size": "552 kB",
+    "alias_size": "296 kB",
+    "proximo_indice": 2201
+  },
+  "verdict": "PASS"
+}
+Veredicto: CUMPLE
