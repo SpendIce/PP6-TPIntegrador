@@ -18,7 +18,7 @@ El contrato REST de creación y resolución está en [openapi.yaml](../openapi.y
   `UNSUPPORTED_SCHEME`, `OWN_ORIGIN`, `INVALID_REQUEST`).
 - `GET /{alias}` devuelve `302` con `Location` al destino conservado y
   `Cache-Control: no-store` cuando hay asignación vigente; `404` con la página
-  «Este enlace no existe o venció` y `Cache-Control: no-store` en caso contrario.
+  «Este enlace no existe o venció» y `Cache-Control: no-store` en caso contrario.
 
 Casos de entrada fijados por el contrato: el destino se valida como URI
 absoluta (RFC 3986) con esquema `http` o `https`; los espacios deben ir

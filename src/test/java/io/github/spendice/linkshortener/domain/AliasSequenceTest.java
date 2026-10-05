@@ -45,7 +45,7 @@ class AliasSequenceTest {
 
     @Test
     void nuncaEmiteCodigosReservados() {
-        String reserved = sequence.codeAt(0); // "1"
+        String reserved = sequence.codeAt(0);
         AliasSequence withReserved = new AliasSequence(Set.of(reserved));
 
         assertThat(withReserved.indexOfNextCode(0)).isEqualTo(1);

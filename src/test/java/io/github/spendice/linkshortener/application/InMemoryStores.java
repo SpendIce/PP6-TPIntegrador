@@ -66,7 +66,6 @@ final class InMemoryStores {
 
         @Override
         public void assignCurrent(String code, long assignmentId) {
-            Alias current = byCode.get(code);
             byCode.put(code, new Alias(code, assignmentId));
         }
     }
