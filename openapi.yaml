@@ -32,6 +32,12 @@ paths:
               valida:
                 value:
                   destination: "https://docs.ejemplo.com/carpeta/archivo?a=1&b=2#seccion"
+              lanConCredenciales:
+                value:
+                  destination: "http://usuario:clave@192.168.1.99:9000/carpeta%20compartida/recurso"
+              dominioPunycode:
+                value:
+                  destination: "https://xn--bcher-kva.ch/secci%C3%B3n?nombre=jos%C3%A9"
       responses:
         '201':
           description: Asignación creada. El alias queda reservado para esta asignación durante su vigencia.
@@ -45,11 +51,57 @@ paths:
                 type: string
                 example: no-store
         '400':
-          description: Entrada rechazada. El destino no se trunca ni se corrige silenciosamente.
+          description: >
+            Entrada rechazada. El destino no se trunca ni se corrige
+            silenciosamente y ningún rechazo crea una asignación ni
+            consume un alias. `error` es el código estable del motivo y
+            `message` el texto legible que la web y los complementos
+            muestran al usuario.
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ApiError'
+              examples:
+                vacio:
+                  summary: Destino ausente o vacío
+                  value:
+                    error: EMPTY_DESTINATION
+                    message: "La URL de destino es obligatoria."
+                demasiadoLargo:
+                  summary: Más de 8.192 caracteres
+                  value:
+                    error: DESTINATION_TOO_LONG
+                    message: "La URL de destino supera el máximo de 8192 caracteres."
+                espaciosSinCodificar:
+                  summary: Espacios u otros caracteres sin codificar
+                  value:
+                    error: MALFORMED_DESTINATION
+                    message: "La URL de destino no tiene un formato válido."
+                caracteresInternacionalesCrudos:
+                  summary: Unicode sin codificar (usar %XX UTF-8 o punycode)
+                  value:
+                    error: MALFORMED_DESTINATION
+                    message: "Los caracteres internacionales deben ir codificados (percent-encoding o dominio punycode)."
+                escapePorcentajeInvalido:
+                  summary: "% no seguido de dos dígitos hexadecimales (p. ej. %zz, %2)"
+                  value:
+                    error: MALFORMED_DESTINATION
+                    message: "La URL de destino no tiene un formato válido."
+                esquemaNoAdmitido:
+                  summary: Esquema distinto de http/https o ausente
+                  value:
+                    error: UNSUPPORTED_SCHEME
+                    message: "La URL de destino debe usar esquema http o https."
+                origenPropio:
+                  summary: Destino del propio servicio o equivalente localhost/LAN
+                  value:
+                    error: OWN_ORIGIN
+                    message: "La URL de destino pertenece al propio acortador."
+                cuerpoInvalido:
+                  summary: Cuerpo ausente, JSON inválido o propiedades desconocidas
+                  value:
+                    error: INVALID_REQUEST
+                    message: "El cuerpo de la solicitud no es un JSON válido del contrato."
   /{alias}:
     get:
       summary: Resolver un enlace acortado
@@ -116,15 +168,41 @@ components:
           maxLength: 8192
           description: >
             URL de destino absoluta con esquema `http` o `https`
-            (RFC 3986). Debe estar codificada de forma válida: los
-            espacios requieren percent-encoding (`%20`) y los caracteres
-            internacionales deben enviarse codificados o con el dominio
-            en forma punycode. Se conservan parámetros, fragmento,
-            credenciales incrustadas y codificación exactamente como se
-            reciben. Se rechazan los destinos que pertenecen a los
-            orígenes propios del servicio (dirección pública configurada
-            y equivalentes localhost/LAN del mismo puerto). Los destinos
-            de otras máquinas de la red local son válidos.
+            (RFC 3986) y host presente. El límite es de 8.192 caracteres:
+            8.192 se acepta y 8.193 se rechaza completo, nunca truncado.
+
+            Codificación exigida (caracteres internacionales):
+
+            - Solo se aceptan caracteres ASCII imprimibles según
+              RFC 3986. Un destino con caracteres Unicode en crudo (en
+              host, ruta, consulta o fragmento) se rechaza como
+              `MALFORMED_DESTINATION`.
+            - Un dominio internacional viaja en forma punycode
+              (`xn--bcher-kva.ch`); el texto en ruta, consulta o
+              fragmento viaja con percent-encoding UTF-8 (`%C3%A9`).
+              Ambas formas válidas se aceptan y se conservan.
+            - Un `%` que no forma un par de escape válido (`%zz`, `%2`,
+              `%` suelto) se rechaza como `MALFORMED_DESTINATION`.
+            - Los espacios sin codificar se rechazan; `%20` (en
+              cualquier combinación de mayúsculas) se acepta.
+
+            Conservación verbatim: parámetros de consulta repetidos,
+            fragmento, credenciales incrustadas (`usuario:clave@`), puerto
+            explícito y la codificación recibida se aceptan y se
+            conservan exactamente, sin decodificar, normalizar ni
+            reescribir. El servidor no consulta disponibilidad,
+            autenticación ni permisos del destino: un destino inalcanzable
+            de formato válido se acepta.
+
+            Orígenes propios: se rechazan los destinos cuyo host y puerto
+            efectivo (80/443 según el esquema cuando no hay puerto
+            explícito) coinciden con los orígenes configurados del
+            servicio: la dirección pública configurada, los equivalentes
+            loopback (`localhost`, `127.0.0.1`, `::1`) del mismo puerto y
+            los orígenes extra declarados en la configuración. La
+            comparación es de origen: normaliza mayúsculas, punto final y
+            corchetes IPv6, e ignora el esquema. Otro puerto u otro host
+            de la red local no es origen propio y se acepta.
       additionalProperties: false
     LinkCreated:
       type: object
