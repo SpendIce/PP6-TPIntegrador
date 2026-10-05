@@ -12,10 +12,12 @@ import java.time.Clock;
 import java.time.Instant;
 
 /**
- * Caso de uso de creación: valida el destino, reserva un alias y persiste
- * una asignación independiente con su vencimiento. Reserva, creación y
- * actualización de la referencia actual ocurren en una única transacción
- * (mecanismo Spring permitido por ADR 0001 para el límite transaccional).
+ * Caso de uso de creación: valida el destino, reserva un alias (uno
+ * vencido reutilizable o un código nuevo, según la política de
+ * selección) y persiste una asignación independiente con su vencimiento.
+ * Reserva, creación y actualización de la referencia actual ocurren en
+ * una única transacción (mecanismo Spring permitido por ADR 0001 para
+ * el límite transaccional).
  */
 public class CreateLink {
 
@@ -41,7 +43,7 @@ public class CreateLink {
     public CreatedLink create(String destination) {
         destinationValidator.validate(destination);
         Instant createdAt = clock.instant();
-        Alias alias = aliases.claimNewCode();
+        Alias alias = aliases.claim(createdAt);
         Assignment saved = assignments.save(
                 Assignment.pending(alias.code(), destination, createdAt, expirationPolicy.expiresAt(createdAt)));
         aliases.assignCurrent(alias.code(), saved.id());
