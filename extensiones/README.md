@@ -129,8 +129,8 @@ y el mensaje:
 - **QR sin red ni canvas:** `qrcodegen.js` (Nayuki v1.5.0, MIT) vendorizado
   genera la matriz y `png.js` codifica el PNG directamente a bytes (zlib de
   bloques almacenados + CRC32 propios). La demo es LAN: no hay CDN ni
-  dependencia de la web. El mismo data URL alimenta el `<img>` del popup y
-  `downloads.download`.
+  dependencia de la web. Un único `blob:` URL alimenta el `<img>` del popup
+  y `downloads.download` (camino más probado que `data:` para descargas).
 - **Módulos UMD sin build:** `api.js`, `png.js` y `qr.js` se cargan con
   `<script>` en el popup (global `LinkApi`/`PngEncoder`/`QrImage`) y con
   `require` en los tests. `popup.js` usa `browser`/`chrome` con promesas,

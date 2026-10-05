@@ -67,9 +67,10 @@
     el.expires.textContent = expiresText(link.expiresAt);
     el["reuse-notice"].textContent = link.reuseNotice;
 
-    const dataUrl = QrImage.pngDataUrl(link.shortUrl);
-    el.qr.src = dataUrl;
-    lastQr = { dataUrl, filename: `qr-${link.alias}.png` };
+    const pngBytes = QrImage.renderQrPngBytes(link.shortUrl);
+    const qrUrl = URL.createObjectURL(new Blob([pngBytes], { type: "image/png" }));
+    el.qr.src = qrUrl;
+    lastQr = { url: qrUrl, filename: `qr-${link.alias}.png` };
   }
 
   async function configuredApiBase() {
@@ -108,7 +109,7 @@
       return;
     }
     const pending = ext.downloads.download({
-      url: lastQr.dataUrl,
+      url: lastQr.url,
       filename: lastQr.filename,
       saveAs: false
     });
