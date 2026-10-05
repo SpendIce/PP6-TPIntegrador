@@ -43,6 +43,8 @@ form.addEventListener("submit", async (event) => {
 function showError(message) {
     errorBox.textContent = message;
     errorBox.hidden = false;
+    // El campo conserva el texto ingresado y recupera el foco para corregirlo.
+    input.focus();
 }
 
 // ---------------------------------------------------------------------

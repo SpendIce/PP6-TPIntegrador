@@ -21,13 +21,31 @@ El contrato REST de creación y resolución está en [openapi.yaml](../openapi.y
   `Cache-Control: no-store` cuando hay asignación vigente; `404` con la página
   «Este enlace no existe o venció» y `Cache-Control: no-store` en caso contrario.
 
-Casos de entrada fijados por el contrato: el destino se valida como URI
-absoluta (RFC 3986) con esquema `http` o `https`; los espacios deben ir
-codificados (`%20`), los caracteres internacionales deben ir codificados o con
-dominio punycode (una URI cruda con caracteres no ASCII se rechaza como
-`MALFORMED_DESTINATION`); el límite es 8.192 caracteres sin truncamiento; se
-conservan parámetros, fragmento, credenciales y codificación verbatim. No se
-consulta la disponibilidad del destino.
+Casos de entrada fijados por el contrato (los ejemplos por código figuran en
+la respuesta `400` de `openapi.yaml`):
+
+- El destino se valida como URI absoluta (RFC 3986) con esquema `http` o
+  `https` y host presente; el límite es 8.192 caracteres sin truncamiento.
+- Caracteres internacionales: una URI cruda con caracteres no ASCII se
+  rechaza como `MALFORMED_DESTINATION`. Las formas aceptadas son dominio
+  punycode (`xn--…`) y percent-encoding UTF-8 (`%C3%A9`); ambas se conservan
+  verbatim.
+- Percent-encoding inválido (`%` sin dos dígitos hexadecimales, p. ej.
+  `%zz`, `%2` o `%` suelto) se rechaza como `MALFORMED_DESTINATION`; los
+  escapes válidos se conservan sin decodificar ni normalizar (mayúsculas y
+  minúsculas incluidas).
+- Los espacios deben ir codificados (`%20`); un espacio en crudo en
+  cualquier componente (incluido el fragmento) es `MALFORMED_DESTINATION`.
+- Se conservan parámetros, fragmento, credenciales, puerto explícito y
+  codificación verbatim. No se consulta la disponibilidad del destino.
+- Orígenes propios: la comparación usa host normalizado (minúsculas, sin
+  punto final ni corchetes IPv6) y puerto efectivo (explícito o 80/443
+  según el esquema), ignorando el esquema. Coinciden el origen de
+  `public-base-url`, los equivalentes loopback del mismo puerto y los
+  orígenes declarados en `own-origins`; otro puerto u otro host LAN no es
+  origen propio.
+- Ningún rechazo crea asignación ni consume un alias: la validación ocurre
+  antes de la reserva dentro de la transacción del caso de uso.
 
 ## Versiones fijadas
 
@@ -49,8 +67,9 @@ consulta la disponibilidad del destino.
   con base `acortador`, usuario `acortador` y puerto `5432`. Las credenciales se
   pueden sobreescribir con variables de entorno (`DB_HOST`, `DB_PORT`,
   `DB_NAME`, `DB_USER`, `DB_PASSWORD`).
-- Pruebas de integración: Testcontainers levanta `postgres:16.4-alpine` por
-  clase de test con `@ServiceConnection`; no se usa H2 (ADR 0004).
+- Pruebas de integración: Testcontainers levanta `postgres:16.4-alpine` con
+  `@ServiceConnection`; las suites HTTP extienden `HttpApiFixture` y comparten
+  un único contenedor (singleton); no se usa H2 (ADR 0004).
 
 ## Migraciones
 

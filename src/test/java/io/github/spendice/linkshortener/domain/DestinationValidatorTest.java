@@ -15,6 +15,7 @@ class DestinationValidatorTest {
     private final DestinationValidator validator = new DestinationValidator(Set.of(
             new ServiceOrigin("localhost", 8080),
             new ServiceOrigin("127.0.0.1", 8080),
+            new ServiceOrigin("::1", 8080),
             new ServiceOrigin("192.168.1.50", 8080)));
 
     @Nested
@@ -52,6 +53,24 @@ class DestinationValidatorTest {
         @Test
         void aceptaDestinoInaccesibleSinConsultarDisponibilidad() {
             assertThatCode(() -> validator.validate("http://10.255.255.1/recurso-que-no-responde"))
+                    .doesNotThrowAnyException();
+        }
+
+        @Test
+        void aceptaDominioPunycodeYUtf8ConPercentEncoding() {
+            assertThatCode(() -> validator.validate("https://xn--bcher-kva.ch/secci%C3%B3n?nombre=jos%C3%A9"))
+                    .doesNotThrowAnyException();
+        }
+
+        @Test
+        void aceptaEscapesEnMinusculasSinNormalizarlos() {
+            assertThatCode(() -> validator.validate("http://ejemplo.com/%2f%2F%41"))
+                    .doesNotThrowAnyException();
+        }
+
+        @Test
+        void aceptaEsquemaEnMayusculas() {
+            assertThatCode(() -> validator.validate("HTTPS://ejemplo.com/recurso"))
                     .doesNotThrowAnyException();
         }
     }
@@ -97,6 +116,35 @@ class DestinationValidatorTest {
             assertThatThrownBy(() -> validator.validate("https://ejemplo.com/ruta con espacios"))
                     .isInstanceOf(InvalidDestinationException.class)
                     .extracting("reason").isEqualTo(Reason.MALFORMED_DESTINATION);
+            assertThatThrownBy(() -> validator.validate("https://ejemplo.com/a#frag con espacio"))
+                    .isInstanceOf(InvalidDestinationException.class)
+                    .extracting("reason").isEqualTo(Reason.MALFORMED_DESTINATION);
+            assertThatThrownBy(() -> validator.validate(" https://ejemplo.com/con-espacio-inicial"))
+                    .isInstanceOf(InvalidDestinationException.class)
+                    .extracting("reason").isEqualTo(Reason.MALFORMED_DESTINATION);
+        }
+
+        @Test
+        void rechazaEscapesDePorcentajeInvalidos() {
+            assertThatThrownBy(() -> validator.validate("https://ejemplo.com/%zz"))
+                    .isInstanceOf(InvalidDestinationException.class)
+                    .extracting("reason").isEqualTo(Reason.MALFORMED_DESTINATION);
+            assertThatThrownBy(() -> validator.validate("https://ejemplo.com/%2"))
+                    .isInstanceOf(InvalidDestinationException.class)
+                    .extracting("reason").isEqualTo(Reason.MALFORMED_DESTINATION);
+            assertThatThrownBy(() -> validator.validate("https://ejemplo.com/colgado%"))
+                    .isInstanceOf(InvalidDestinationException.class)
+                    .extracting("reason").isEqualTo(Reason.MALFORMED_DESTINATION);
+        }
+
+        @Test
+        void rechazaHostAusenteOSinAutoridad() {
+            assertThatThrownBy(() -> validator.validate("http://user@/ruta"))
+                    .isInstanceOf(InvalidDestinationException.class)
+                    .extracting("reason").isEqualTo(Reason.MALFORMED_DESTINATION);
+            assertThatThrownBy(() -> validator.validate("//ejemplo.com/ruta"))
+                    .isInstanceOf(InvalidDestinationException.class)
+                    .extracting("reason").isEqualTo(Reason.UNSUPPORTED_SCHEME);
         }
 
         @Test
@@ -124,6 +172,25 @@ class DestinationValidatorTest {
                     .isInstanceOf(InvalidDestinationException.class)
                     .extracting("reason").isEqualTo(Reason.OWN_ORIGIN);
             assertThatThrownBy(() -> validator.validate("http://192.168.1.50:8080/abc"))
+                    .isInstanceOf(InvalidDestinationException.class)
+                    .extracting("reason").isEqualTo(Reason.OWN_ORIGIN);
+        }
+
+        @Test
+        void rechazaOrigenesPropiosConVariantesDeEscritura() {
+            assertThatThrownBy(() -> validator.validate("https://192.168.1.50:8080/abc"))
+                    .isInstanceOf(InvalidDestinationException.class)
+                    .extracting("reason").isEqualTo(Reason.OWN_ORIGIN);
+            assertThatThrownBy(() -> validator.validate("http://LOCALHOST:8080/abc"))
+                    .isInstanceOf(InvalidDestinationException.class)
+                    .extracting("reason").isEqualTo(Reason.OWN_ORIGIN);
+            assertThatThrownBy(() -> validator.validate("http://localhost.:8080/abc"))
+                    .isInstanceOf(InvalidDestinationException.class)
+                    .extracting("reason").isEqualTo(Reason.OWN_ORIGIN);
+            assertThatThrownBy(() -> validator.validate("http://[::1]:8080/abc"))
+                    .isInstanceOf(InvalidDestinationException.class)
+                    .extracting("reason").isEqualTo(Reason.OWN_ORIGIN);
+            assertThatThrownBy(() -> validator.validate("http://usuario:clave@localhost:8080/abc"))
                     .isInstanceOf(InvalidDestinationException.class)
                     .extracting("reason").isEqualTo(Reason.OWN_ORIGIN);
         }
