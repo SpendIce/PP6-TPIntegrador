@@ -16,6 +16,7 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpRequest.BodyPublishers;
 import java.net.http.HttpResponse;
 import java.net.http.HttpResponse.BodyHandlers;
+import java.time.Duration;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -34,6 +35,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 abstract class HttpApiFixture {
 
     static final String PUBLIC_BASE = "http://192.168.50.10:8080";
+
+    /**
+     * Tope por solicitud: una respuesta que tarda más que esto es un
+     * fallo de la prueba, no un hilo que cuelga la suite.
+     */
+    private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(15);
 
     /**
      * Contenedor único para todas las suites del fixture (patrón
@@ -74,6 +81,7 @@ abstract class HttpApiFixture {
     HttpResponse<String> postJson(String jsonBody) throws Exception {
         HttpRequest request = HttpRequest.newBuilder(URI.create(baseUrl() + "/api/links"))
                 .header("Content-Type", "application/json")
+                .timeout(REQUEST_TIMEOUT)
                 .POST(BodyPublishers.ofString(jsonBody))
                 .build();
         return client.send(request, BodyHandlers.ofString());
@@ -82,13 +90,15 @@ abstract class HttpApiFixture {
     /** POST sin cuerpo ni Content-Type: el contrato lo rechaza. */
     HttpResponse<String> postSinCuerpo() throws Exception {
         HttpRequest request = HttpRequest.newBuilder(URI.create(baseUrl() + "/api/links"))
+                .timeout(REQUEST_TIMEOUT)
                 .POST(BodyPublishers.noBody())
                 .build();
         return client.send(request, BodyHandlers.ofString());
     }
 
     HttpResponse<String> get(String path) throws Exception {
-        HttpRequest request = HttpRequest.newBuilder(URI.create(baseUrl() + path)).GET().build();
+        HttpRequest request = HttpRequest.newBuilder(URI.create(baseUrl() + path))
+                .GET().timeout(REQUEST_TIMEOUT).build();
         return client.send(request, BodyHandlers.ofString());
     }
 

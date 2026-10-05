@@ -1,8 +1,9 @@
 # Especificación técnica — creación y resolución de enlaces
 
 Estado: decisiones técnicas fijadas para el issue #2, extendidas con la
-evidencia de vencimiento y reinicio del issue #3 y con la reutilización de
-alias del issue #5. Cierra los puntos que
+evidencia de vencimiento y reinicio del issue #3, la reutilización de
+alias del issue #5 y las garantías de concurrencia del issue #6. Cierra
+los puntos que
 [arquitectura y validación](arquitectura-y-validacion.md) dejó pendientes de
 especificación técnica: versiones concretas, ejecución de PostgreSQL, mecanismo
 de migraciones, coordinación transaccional, reservas de rutas, desempate de
@@ -129,6 +130,55 @@ concurrentes se reparten el mismo vencido. Las políticas de selección
 (`AliasRecycling` para reutilizados, `AliasSequence` para códigos nuevos)
 siguen separadas del mecanismo de reserva: la consulta devuelve los
 candidatos y la prioridad la decide el dominio, no el SQL.
+
+El mecanismo elegido es un bloqueo pesimista sobre la fila única de
+`generador_alias` (`PESSIMISTIC_WRITE`, emitido como `SELECT ... FOR
+UPDATE`). Detalles que cierran su suficiencia:
+
+- **Cobertura**: el bloqueo se adquiere al inicio de `claim` dentro de la
+  transacción `REQUIRED` que ya abrió `CreateLink.create`, por lo que se
+  retiene hasta el commit del caso de uso. Quedan serializados entre sí
+  la consulta de vencidos, la elección de la política, el avance del
+  índice y la escritura de asignación + referencia actual: la unidad
+  completa, no solo el contador.
+- **Lectores**: `ResolveLink` corre en `@Transactional(readOnly = true)`
+  y no toma bloqueos (`FOR UPDATE` no retiene lecturas en PostgreSQL).
+  Con el nivel READ COMMITTED por defecto, cada consulta lee el último
+  estado confirmado: la resolución lee la referencia actual del alias y
+  luego la fila de esa asignación, ambas dentro de su transacción. Como
+  la reasignación confirma de forma atómica el alta de la asignación y
+  el cambio de referencia, un lector ve la asignación anterior completa
+  (vencida: `404`) o la nueva completa (`302` al nuevo destino). Nunca
+  una mezcla: la referencia solo puede apuntar a una fila ya confirmada
+  (la FK compuesta lo exige) y la lectura de esa fila es atómica. Los
+  lectores tampoco esperan detrás del bloqueo del generador ni retrasan
+  las creaciones.
+- **Fallos**: validación, reserva, asignación y referencia comparten la
+  misma transacción; cualquier excepción revierte la unidad completa, así
+  que no puede quedar confirmada una reserva sin asignación ni una
+  referencia a una asignación inexistente. Además, por el contrato
+  público no existe un fallo posterior a la reserva que sea alcanzable:
+  la validación corre antes de `claim` y la persistencia no tiene otra
+  restricción que una entrada ya aceptada pueda violar. La evidencia de
+  atomicidad es entonces la combinación de un rechazo que no consume
+  alias ni índice y una carga mixta válida/inválida que conserva las
+  invariantes.
+- **Suficiencia y evolución**: la sección serializada son unas pocas
+  consultas indexadas por transacción; para la carga de referencia (10
+  clientes simultáneos, historias cortas) la espera por el bloqueo es
+  despreciable y las resoluciones no compiten por él. Si la carga
+  creciera (fila «Mayor concurrencia» de
+  [arquitectura y validación](arquitectura-y-validacion.md)), el cambio
+  es interno del adaptador: bloqueo por fila de alias candidato con
+  `FOR UPDATE`/`SKIP LOCKED` en la consulta de vencidos, o contadores
+  particionados por longitud para la generación. Las invariantes del
+  modelo y las pruebas de concurrencia no cambiarían.
+
+La evidencia HTTP de estas garantías está en `ConcurrenciaHttpTest`
+(issue #6): competición por un único vencido, reparto completo de
+vencidos sin emitir códigos nuevos, expansión que agota los vencidos
+cortos antes de emitir más largos, atomicidad de los rechazos en carga
+mixta, resolución durante la reasignación y reintento sin idempotencia.
 
 ## Configuración de despliegue
 
@@ -266,6 +316,18 @@ crearse, con la duración de entrega restituida a 60 minutos. El
 procedimiento reproducible y el análisis de alias personalizados,
 consola y estadísticas están en
 [evidencia-evolucion.md](evidencia-evolucion.md).
+
+Las garantías de concurrencia (issue #6) se verifican en
+`ConcurrenciaHttpTest` y en las pruebas concurrentes de
+`ReciclajeAliasHttpTest` y `LinkApiHttpTest`, sobre PostgreSQL y por la
+API: el mismo vencido lo obtiene exactamente una creación, los vencidos
+disponibles se reparten antes de emitir códigos nuevos ni más largos, la
+expansión agota los vencidos cortos antes de crecer de longitud, un
+rechazo no deja reserva, asignación ni referencia parciales, la
+resolución durante una reasignación lee una única asignación completa
+(anterior o nueva, nunca mezclada) y reintentar una creación produce
+otra asignación sin idempotencia. El contrato de clientes no cambió:
+misma API, mismos códigos de estado y errores.
 
 No implementa esta especificación: alias personalizados, consola de
 gestión, estadísticas de visitas ni purga del historial (analizados en

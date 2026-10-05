@@ -19,6 +19,7 @@ import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -150,21 +151,28 @@ class LinkApiHttpTest extends HttpApiFixture {
         for (int i = 0; i < concurrent; i++) {
             futures.add(pool.submit(() -> {
                 ready.countDown();
-                go.await();
+                // Timeout en todos los puntos de espera: un hilo trabado
+                // falla la prueba en lugar de colgar la suite.
+                assertThat(go.await(30, TimeUnit.SECONDS)).isTrue();
                 return postJson("{\"destination\":\"https://ejemplo.com/concurrente\"}");
             }));
         }
-        ready.await();
+        assertThat(ready.await(30, TimeUnit.SECONDS)).isTrue();
         go.countDown();
 
         Set<String> aliases = new HashSet<>();
         for (Future<HttpResponse<String>> future : futures) {
-            HttpResponse<String> response = future.get();
+            HttpResponse<String> response = future.get(60, TimeUnit.SECONDS);
             assertThat(response.statusCode()).isEqualTo(201);
             aliases.add(json.readTree(response.body()).get("alias").asText());
         }
         pool.shutdown();
-        assertThat(aliases).hasSize(concurrent);
+        assertThat(pool.awaitTermination(30, TimeUnit.SECONDS)).isTrue();
+
+        // El avance del generador se consume serializado: exactamente los
+        // diez primeros códigos, sin duplicados ni huecos.
+        assertThat(aliases).containsExactlyInAnyOrder(
+                "1", "2", "3", "4", "5", "6", "7", "8", "9", "A");
     }
 
     @Test
