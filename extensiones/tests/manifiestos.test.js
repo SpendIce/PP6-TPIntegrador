@@ -73,7 +73,7 @@ test("los archivos referenciados por el popup existen en cada paquete", () => {
   const styles = [...html.matchAll(/href="([^"]+)"/g)]
     .map((m) => m[1])
     .filter((ref) => !ref.startsWith("#") && !ref.includes("://"));
-  assert.ok(scripts.length >= 5, "popup.html referencia los modulos compartidos");
+  assert.ok(scripts.length >= 4, "popup.html referencia los modulos compartidos");
 
   for (const browser of ["chrome", "firefox"]) {
     for (const ref of [...scripts, ...styles]) {

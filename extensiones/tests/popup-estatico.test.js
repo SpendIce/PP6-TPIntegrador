@@ -31,11 +31,12 @@ test("cada id que bindElements pide existe en popup.html", () => {
 test("los scripts se cargan antes que popup.js y en orden de dependencias", () => {
   const scripts = [...html.matchAll(/src="([^"]+)"/g)].map((m) => m[1]);
   const position = (name) => scripts.indexOf(name);
-  assert.ok(position("vendor/qrcodegen.js") >= 0, "falta el vendor QR");
+  // El stack QR es el de la web: vendor/qrcode.js define el global
+  // `qrcode` y qr-code.js define `QrPng` (que recibe la fabrica al usarla).
+  assert.ok(position("vendor/qrcode.js") >= 0, "falta el vendor QR de la web");
   assert.ok(position("api.js") < position("popup.js"), "api.js antes de popup.js");
-  assert.ok(position("png.js") < position("qr.js"), "png.js antes de qr.js");
-  assert.ok(position("qr.js") < position("popup.js"), "qr.js antes de popup.js");
-  assert.ok(position("vendor/qrcodegen.js") < position("qr.js"), "vendor antes de qr.js");
+  assert.ok(position("qr-code.js") < position("popup.js"), "qr-code.js antes de popup.js");
+  assert.ok(position("vendor/qrcode.js") < position("popup.js"), "vendor QR antes de popup.js");
 });
 
 test("los handlers del popup usan APIs disponibles en ambos navegadores", () => {

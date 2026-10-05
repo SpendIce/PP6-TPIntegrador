@@ -2,7 +2,8 @@
  * Popup del complemento: toma la URL de la pestaña activa, pide la
  * creacion a la API configurada y muestra el resultado con su QR.
  * Capa de integracion con las APIs del navegador; la logica testeable
- * vive en LinkApi (api.js) y QrImage (qr.js).
+ * vive en LinkApi (api.js) y en QrPng (qr-code.js, compartido con la
+ * web desde src/main/resources/static/).
  */
 (function () {
   "use strict";
@@ -67,18 +68,19 @@
     el.expires.textContent = expiresText(link.expiresAt);
     el["reuse-notice"].textContent = link.reuseNotice;
 
-    const pngBytes = QrImage.renderQrPngBytes(link.shortUrl);
+    const pngBytes = QrPng.encode(qrcode, link.shortUrl);
     const qrUrl = URL.createObjectURL(new Blob([pngBytes], { type: "image/png" }));
     el.qr.src = qrUrl;
     if (lastQr) {
       URL.revokeObjectURL(lastQr.url);
     }
-    lastQr = { url: qrUrl, filename: `qr-${link.alias}.png` };
+    lastQr = { url: qrUrl, filename: QrPng.suggestedFileName(link.alias) };
   }
 
   async function configuredApiBase() {
+    // storage.local.get resuelve siempre un objeto (posiblemente vacio).
     const stored = await ext.storage.local.get(STORAGE_KEY);
-    return LinkApi.resolveApiBase(stored ? stored[STORAGE_KEY] : undefined);
+    return LinkApi.resolveApiBase(stored[STORAGE_KEY]);
   }
 
   async function activeTabUrl() {

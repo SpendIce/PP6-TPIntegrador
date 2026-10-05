@@ -12,25 +12,24 @@ es configurable para la demo en red local.
 
 ```text
 extensiones/
-├── compartido/            Fuente de verdad del código y la UI.
+├── compartido/            Fuente de verdad del código propio y la UI.
 │   ├── api.js             Cliente del contrato POST /api/links (UMD, testeable).
-│   ├── png.js             Codificador PNG propio, sin canvas ni dependencias.
-│   ├── qr.js              QR → PNG usando qrcodegen + png.js (UMD, testeable).
-│   ├── popup.html/.css/.js UI del popup y pegado con las APIs del navegador.
-│   └── vendor/
-│       ├── qrcodegen.js   Librería QR de Nayuki v1.5.0 (MIT, ver LICENCIA.txt).
-│       ├── qrcodegen.cjs  Puente CommonJS para usar el vendor en los tests.
-│       └── LICENCIA.txt
+│   └── popup.html/.css/.js UI del popup y pegado con las APIs del navegador.
 ├── chrome/                Paquete listo para cargar (Manifest V3).
 ├── firefox/               Paquete listo para cargar (Manifest V2).
 ├── tests/                 Pruebas con `node --test`, sin dependencias npm.
-├── sincronizar.sh         Copia compartido/ → chrome/ y firefox/.
+├── sincronizar.sh         Genera chrome/ y firefox/ desde sus fuentes.
 └── package.json           Solo declara el script de test; no hay dependencias.
 ```
 
-`compartido/` es la fuente; `chrome/` y `firefox/` se generan con
-`./sincronizar.sh` y solo agregan su `manifest.json`. Los tests verifican
-que las copias sean idénticas a la fuente.
+Cada paquete además recibe el stack QR de la web (`src/main/resources/static/`):
+`qr-code.js` (encoder PNG propio, `QrPng.encode`), `vendor/qrcode.js`
+(qrcode-generator 1.4.4, Kazuhiko Arase, MIT) y su archivo de licencia. Hay
+un solo vendor y un solo encoder QR→PNG para todo el proyecto.
+
+`./sincronizar.sh` copia desde `compartido/` y desde `static/` hacia
+`chrome/` y `firefox/`, que solo agregan su `manifest.json`. Los tests
+verifican que las copias sean idénticas a las fuentes, byte a byte.
 
 ## Instalación manual
 
@@ -126,13 +125,15 @@ y el mensaje:
   pestaña al invocar la acción (no `tabs`), `storage` para persistir la
   configuración, `downloads` para guardar el PNG, y host `http(s)://*/*`
   porque la dirección de la API la define el usuario y no es enumerable.
-- **QR sin red ni canvas:** `qrcodegen.js` (Nayuki v1.5.0, MIT) vendorizado
-  genera la matriz y `png.js` codifica el PNG directamente a bytes (zlib de
-  bloques almacenados + CRC32 propios). La demo es LAN: no hay CDN ni
-  dependencia de la web. Un único `blob:` URL alimenta el `<img>` del popup
-  y `downloads.download` (camino más probado que `data:` para descargas).
-- **Módulos UMD sin build:** `api.js`, `png.js` y `qr.js` se cargan con
-  `<script>` en el popup (global `LinkApi`/`PngEncoder`/`QrImage`) y con
+- **QR sin red ni canvas, un solo stack con la web:** los complementos
+  reutilizan `static/vendor/qrcode.js` (qrcode-generator 1.4.4, MIT; la
+  licencia viaja dentro de cada paquete) y `static/qr-code.js`
+  (`QrPng.encode`, PNG propio en escala de grises con zlib de bloques
+  almacenados). La demo es LAN: no hay CDN ni dependencia de la web. Un
+  `blob:` URL alimenta el `<img>` del popup y `downloads.download` (camino
+  más probado que `data:` para descargas).
+- **Módulos UMD sin build:** `api.js` y los archivos QR se cargan con
+  `<script>` en el popup (globales `LinkApi`, `qrcode`, `QrPng`) y con
   `require` en los tests. `popup.js` usa `browser`/`chrome` con promesas,
   API común a ambos navegadores.
 - **Sin íconos propios:** los paquetes usan el ícono genérico del navegador;
@@ -145,21 +146,26 @@ cd extensiones
 node --test          # también: npm test
 ```
 
-47 pruebas, cero dependencias (Node >= 20, verificado con Node 26):
+38 pruebas, cero dependencias (Node >= 20, verificado con Node 26):
 
 - `tests/api.test.js`: normalización de la dirección de API, construcción
   del POST del contrato, parseo de 201/400/estados inesperados, errores de
   red y timeout con `fetch` inyectado, formato de vencimiento.
 - `tests/contrato.test.js`: integración con un servidor `node:http` que
   responde como la API y `fetch` real: valida método, ruta, headers y body.
-- `tests/png.test.js`: firma PNG, estructura de chunks, CRC32/Adler-32
-  contra `node:zlib`, inflate de IDAT y píxeles esperados.
-- `tests/qr.test.js`: matriz QR, dimensiones y zona de silencio del PNG,
-  y determinismo de los bytes generados. El PNG fue decodificado con
-  `zbarimg` durante el desarrollo y reproduce el `shortUrl` exacto.
+- `tests/qr.test.mjs`: carga las copias de `vendor/qrcode.js` y
+  `qr-code.js` tal como quedan dentro de cada paquete y decodifica el PNG
+  generado con las bibliotecas independientes vendorizadas para pruebas
+  (`src/test/js/vendor/`: UPNG + jsQR), verificando que codifica el
+  `shortUrl` exacto. Además, `zbarimg` decodificó el PNG durante el
+  desarrollo. La corrección detallada del encoder queda en
+  `src/test/js/qr-code.test.mjs` (issue #7).
 - `tests/manifiestos.test.js` y `tests/sincronizacion.test.js`: permisos y
-  archivos referenciados de cada paquete, e igualdad byte a byte entre
-  `compartido/` y los directorios de cada navegador.
+  archivos referenciados de cada paquete (incluida la licencia del vendor
+  QR), e igualdad byte a byte entre los paquetes y sus fuentes
+  (`compartido/` para el código propio, `static/` para el stack QR).
+- `tests/popup-estatico.test.js`: cableado estático popup.html ↔ popup.js
+  (ids, orden de scripts, APIs del navegador usadas).
 
 `popup.js` (pegado con `tabs`/`storage`/`downloads`) no es testeable en
 node: su verificación es el procedimiento manual siguiente.
@@ -191,3 +197,8 @@ node: su verificación es el procedimiento manual siguiente.
 - Los permisos de host son amplios (`http(s)://*/*`) a propósito, porque la
   API es configurable; no hay acceso a contenido de páginas más allá de la
   lectura de la URL de la pestaña invocada.
+- El timeout de 10 segundos de las solicitudes usa `AbortSignal.timeout`,
+  disponible desde Chrome 103 y Firefox 100. En navegadores anteriores la
+  solicitud simplemente no tiene timeout: degrada sin romperse (la
+  `REQUEST_TIMEOUT` no se produciría y una API colgada dejaría el popup
+  esperando).
