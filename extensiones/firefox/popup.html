@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <title>Acortador de enlaces</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <h1>Acortador de enlaces</h1>
+
+  <p id="status" role="status">Preparando…</p>
+
+  <section id="result" hidden>
+    <p class="destination" id="destination" title=""></p>
+    <p><a id="short-url" href="#" target="_blank" rel="noopener noreferrer"></a></p>
+    <p id="expires" class="detail"></p>
+    <p id="reuse-notice" class="detail notice"></p>
+    <img id="qr" alt="Código QR del enlace acortado" width="200" height="200">
+    <div class="actions">
+      <button id="download-png" type="button">Descargar QR como PNG</button>
+      <button id="again" type="button" title="Crea una nueva asignación para la pestaña activa">Acortar de nuevo</button>
+    </div>
+  </section>
+
+  <section id="error" hidden role="alert">
+    <p id="error-code" class="error-code"></p>
+    <p id="error-message"></p>
+    <button id="retry" type="button">Reintentar</button>
+    <p class="hint">Reintentar solicita una creación nueva: puede generar otra asignación para el mismo destino.</p>
+  </section>
+
+  <details id="settings">
+    <summary>Dirección de la API</summary>
+    <label for="api-base">Origen del servicio</label>
+    <input id="api-base" type="url" spellcheck="false" placeholder="http://localhost:8080">
+    <div class="actions">
+      <button id="save-config" type="button">Guardar</button>
+    </div>
+    <p id="config-status" role="status"></p>
+    <p class="hint">Ejemplo LAN: http://192.168.1.50:8080. Si queda vacío, se usa el valor por defecto.</p>
+  </details>
+
+  <script src="vendor/qrcodegen.js"></script>
+  <script src="api.js"></script>
+  <script src="png.js"></script>
+  <script src="qr.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>
