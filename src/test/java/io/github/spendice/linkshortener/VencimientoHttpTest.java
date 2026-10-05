@@ -2,6 +2,7 @@ package io.github.spendice.linkshortener;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -64,6 +65,14 @@ class VencimientoHttpTest {
     JdbcTemplate db;
     @Autowired
     MutableClock clock;
+
+    @BeforeEach
+    void espacioDeCodigosVacio() {
+        // Un alias vencido es candidato a reciclaje en cualquier
+        // creación: el espacio vacío mantiene los escenarios aislados.
+        db.execute("TRUNCATE TABLE alias, asignacion RESTART IDENTITY");
+        db.update("UPDATE generador_alias SET proximo_indice = 0");
+    }
 
     @Test
     void antesDelVencimientoRedirigeYAlAlcanzarloDejaDeResolver() throws Exception {

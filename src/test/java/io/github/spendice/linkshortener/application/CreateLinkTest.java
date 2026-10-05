@@ -20,8 +20,8 @@ class CreateLinkTest {
     private static final Instant T0 = Instant.parse("2026-10-05T12:00:00Z");
 
     private final MutableClock clock = new MutableClock(T0);
-    private final FakeAliasStore aliases = new FakeAliasStore();
     private final FakeAssignmentStore assignments = new FakeAssignmentStore();
+    private final FakeAliasStore aliases = new FakeAliasStore(assignments);
     private final CreateLink createLink = new CreateLink(
             new DestinationValidator(Set.of()),
             new ExpirationPolicy(Duration.ofMinutes(60)),
@@ -64,5 +64,41 @@ class CreateLinkTest {
 
         assertThat(assignments.count()).isZero();
         assertThat(createLink.create("https://ejemplo.com/doc").aliasCode()).isEqualTo("1");
+    }
+
+    @Test
+    void reutilizaElAliasDeUnaAsignacionVencida() {
+        CreatedLink first = createLink.create("https://ejemplo.com/viejo");
+
+        clock.set(T0.plus(Duration.ofMinutes(61)));
+        CreatedLink second = createLink.create("https://ejemplo.com/nuevo");
+
+        assertThat(second.aliasCode()).isEqualTo(first.aliasCode());
+        assertThat(second.createdAt()).isEqualTo(clock.instant());
+        // Ambas asignaciones conviven en el historial con identidad propia.
+        assertThat(assignments.count()).isEqualTo(2);
+    }
+
+    @Test
+    void noReutilizaElAliasDeUnaAsignacionVigente() {
+        createLink.create("https://ejemplo.com/viejo");
+
+        clock.set(T0.plus(Duration.ofMinutes(30)));
+        CreatedLink second = createLink.create("https://ejemplo.com/nuevo");
+
+        assertThat(second.aliasCode()).isEqualTo("2");
+    }
+
+    @Test
+    void prefiereElVencidoDeMenorLongitudAunqueHayaEmitidoCodigosMasLargos() {
+        // Un código de dos caracteres vencido no compite con uno de un
+        // carácter vencido: gana el más corto.
+        for (int i = 0; i < 59; i++) {
+            createLink.create("https://ejemplo.com/lote/" + i);
+        }
+
+        clock.set(T0.plus(Duration.ofMinutes(61)));
+        assertThat(createLink.create("https://ejemplo.com/reusa").aliasCode()).isEqualTo("1");
+        assertThat(createLink.create("https://ejemplo.com/reusa-2").aliasCode()).isEqualTo("2");
     }
 }

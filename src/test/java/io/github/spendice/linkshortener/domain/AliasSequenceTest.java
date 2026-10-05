@@ -58,4 +58,12 @@ class AliasSequenceTest {
         assertThat(withReserved.indexOfNextCode(0)).isEqualTo(3);
         assertThat(withReserved.codeAt(3)).isEqualTo("4");
     }
+
+    @Test
+    void saltaReservasTambienAlCruzarDeLongitud() {
+        AliasSequence withReserved = new AliasSequence(List.of("11", "12"));
+
+        assertThat(withReserved.indexOfNextCode(58)).isEqualTo(60);
+        assertThat(withReserved.codeAt(60)).isEqualTo("13");
+    }
 }

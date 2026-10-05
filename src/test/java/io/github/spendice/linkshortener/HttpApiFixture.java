@@ -2,6 +2,7 @@ package io.github.spendice.linkshortener;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.junit.jupiter.api.BeforeEach;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
@@ -60,6 +61,15 @@ abstract class HttpApiFixture {
     ObjectMapper json;
     @Autowired
     JdbcTemplate db;
+
+    @BeforeEach
+    void espacioDeCodigosVacio() {
+        // Un alias vencido es candidato a reciclaje en cualquier
+        // creación: el espacio vacío mantiene aislados los escenarios de
+        // todas las suites que comparten el contenedor.
+        db.execute("TRUNCATE TABLE alias, asignacion RESTART IDENTITY");
+        db.update("UPDATE generador_alias SET proximo_indice = 0");
+    }
 
     HttpResponse<String> postJson(String jsonBody) throws Exception {
         HttpRequest request = HttpRequest.newBuilder(URI.create(baseUrl() + "/api/links"))

@@ -2,6 +2,7 @@ package io.github.spendice.linkshortener.application.port;
 
 import io.github.spendice.linkshortener.domain.Alias;
 
+import java.time.Instant;
 import java.util.Optional;
 
 /**
@@ -13,11 +14,15 @@ import java.util.Optional;
 public interface AliasStore {
 
     /**
-     * Reserva atómicamente el próximo código nuevo según la política de
-     * selección vigente y devuelve el alias persistido sin asignación
-     * actual. Nunca devuelve un código ya emitido ni uno reservado.
+     * Reserva atómicamente un alias para una asignación creada en
+     * {@code instant}, según la política de selección vigente: prefiere
+     * un alias cuya asignación actual está vencida en ese instante y,
+     * solo si no hay ninguno reutilizable, emite el próximo código nunca
+     * usado ni reservado. Para un alias reciclado la referencia actual
+     * sigue apuntando a la asignación vencida hasta que el caso de uso
+     * la actualice dentro de la misma transacción.
      */
-    Alias claimNewCode();
+    Alias claim(Instant instant);
 
     Optional<Alias> findByCode(String code);
 

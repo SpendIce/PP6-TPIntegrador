@@ -85,7 +85,7 @@ class LinkApiHttpTest extends HttpApiFixture {
     @Test
     void aliasVencidoDevuelveElMismo404() throws Exception {
         Instant now = Instant.now();
-        Alias alias = aliasStore.claimNewCode();
+        Alias alias = aliasStore.claim(now);
         Assignment vencida = assignmentStore.save(Assignment.pending(
                 alias.code(), "https://ejemplo.com/viejo",
                 now.minus(Duration.ofHours(2)), now.minus(Duration.ofHours(1))));
