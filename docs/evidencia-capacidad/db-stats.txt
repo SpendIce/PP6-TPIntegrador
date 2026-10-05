@@ -1,0 +1,11 @@
+      ?column?      |  count  
+--------------------+---------
+ assignments_total  | 2201
+ aliases_total      | 2201
+ active_assignments | 2201
+ proximo_indice     | 2201
+ asignacion_size    | 592 kB
+ alias_size         | 240 kB
+ database_size      | 8612 kB
+(7 rows)
+
