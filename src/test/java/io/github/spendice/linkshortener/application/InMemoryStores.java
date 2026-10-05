@@ -6,9 +6,6 @@ import io.github.spendice.linkshortener.domain.Alias;
 import io.github.spendice.linkshortener.domain.AliasSequence;
 import io.github.spendice.linkshortener.domain.Assignment;
 
-import java.time.Clock;
-import java.time.Instant;
-import java.time.ZoneId;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
@@ -17,33 +14,6 @@ import java.util.concurrent.atomic.AtomicLong;
 
 /** Fakes en memoria para probar los casos de uso sin HTTP ni base de datos. */
 final class InMemoryStores {
-
-    static final class MutableClock extends Clock {
-        private Instant instant;
-
-        MutableClock(Instant instant) {
-            this.instant = instant;
-        }
-
-        void set(Instant instant) {
-            this.instant = instant;
-        }
-
-        @Override
-        public Instant instant() {
-            return instant;
-        }
-
-        @Override
-        public ZoneId getZone() {
-            return ZoneId.of("UTC");
-        }
-
-        @Override
-        public Clock withZone(ZoneId zone) {
-            return this;
-        }
-    }
 
     static final class FakeAliasStore implements AliasStore {
         private final AliasSequence sequence = new AliasSequence(Set.of());

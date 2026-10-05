@@ -2,7 +2,7 @@ package io.github.spendice.linkshortener.application;
 
 import io.github.spendice.linkshortener.application.InMemoryStores.FakeAliasStore;
 import io.github.spendice.linkshortener.application.InMemoryStores.FakeAssignmentStore;
-import io.github.spendice.linkshortener.application.InMemoryStores.MutableClock;
+import io.github.spendice.linkshortener.MutableClock;
 import io.github.spendice.linkshortener.domain.Assignment;
 import io.github.spendice.linkshortener.domain.DestinationValidator;
 import io.github.spendice.linkshortener.domain.ExpirationPolicy;
