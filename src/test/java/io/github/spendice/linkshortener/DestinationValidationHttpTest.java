@@ -1,24 +1,11 @@
 package io.github.spendice.linkshortener;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import io.github.spendice.linkshortener.domain.AliasSequence;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.web.server.LocalServerPort;
-import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
-import org.springframework.jdbc.core.JdbcTemplate;
-import org.testcontainers.containers.PostgreSQLContainer;
-import org.testcontainers.junit.jupiter.Container;
-import org.testcontainers.junit.jupiter.Testcontainers;
 
-import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpRequest.BodyPublishers;
 import java.net.http.HttpResponse;
-import java.net.http.HttpResponse.BodyHandlers;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -27,30 +14,10 @@ import static org.assertj.core.api.Assertions.assertThat;
  * real (Testcontainers, ADR 0004): conservación verbatim, límites de
  * entrada, casos internacionales, orígenes propios equivalentes y la
  * garantía de que un rechazo no crea asignación ni consume un alias.
+ * La infraestructura compartida está en {@link HttpApiFixture}.
  */
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = {
-        "shortener.public-base-url=http://192.168.50.10:8080",
-        "shortener.reserved-routes=api, error"
-})
-@Testcontainers
-class DestinationValidationHttpTest {
+class DestinationValidationHttpTest extends HttpApiFixture {
 
-    private static final String PUBLIC_BASE = "http://192.168.50.10:8080";
-
-    @Container
-    @ServiceConnection
-    static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>("postgres:16.4-alpine");
-
-    private final HttpClient client = HttpClient.newBuilder()
-            .followRedirects(HttpClient.Redirect.NEVER)
-            .build();
-
-    @LocalServerPort
-    int port;
-    @Autowired
-    ObjectMapper json;
-    @Autowired
-    JdbcTemplate db;
     @Autowired
     AliasSequence sequence;
 
@@ -200,29 +167,5 @@ class DestinationValidationHttpTest {
 
     private long countRows(String table) {
         return db.queryForObject("SELECT COUNT(*) FROM " + table, Long.class);
-    }
-
-    private HttpResponse<String> postJson(String jsonBody) throws Exception {
-        HttpRequest request = HttpRequest.newBuilder(URI.create(baseUrl() + "/api/links"))
-                .header("Content-Type", "application/json")
-                .POST(BodyPublishers.ofString(jsonBody))
-                .build();
-        return client.send(request, BodyHandlers.ofString());
-    }
-
-    private HttpResponse<String> get(String path) throws Exception {
-        HttpRequest request = HttpRequest.newBuilder(URI.create(baseUrl() + path)).GET().build();
-        return client.send(request, BodyHandlers.ofString());
-    }
-
-    private String baseUrl() {
-        return "http://localhost:" + port;
-    }
-
-    private void assertError(HttpResponse<String> response, String expectedCode) throws Exception {
-        assertThat(response.statusCode()).isEqualTo(400);
-        JsonNode body = json.readTree(response.body());
-        assertThat(body.get("error").asText()).isEqualTo(expectedCode);
-        assertThat(body.get("message").asText()).isNotBlank();
     }
 }
