@@ -9,11 +9,12 @@
 <body>
 <main>
     <h1>Acortador de enlaces</h1>
-    <form id="shorten-form">
+    <form id="shorten-form" novalidate>
         <label for="destination">Dirección a acortar</label>
         <div class="field-row">
-            <input id="destination" name="destination" type="url" required
-                   placeholder="https://ejemplo.com/documento-muy-largo" maxlength="8192">
+            <input id="destination" name="destination" type="text" inputmode="url"
+                   autocomplete="off" spellcheck="false"
+                   placeholder="https://ejemplo.com/documento-muy-largo">
             <button type="submit">Acortar</button>
         </div>
     </form>
