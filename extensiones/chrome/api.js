@@ -64,7 +64,7 @@
     let url;
     try {
       url = new URL(value);
-    } catch (e) {
+    } catch {
       throw new ApiError("CONFIG_INVALID", `«${input}» no es una dirección válida. Ejemplo: http://192.168.1.50:8080`);
     }
     if (url.protocol !== "http:" && url.protocol !== "https:") {

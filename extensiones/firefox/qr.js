@@ -20,14 +20,13 @@
 
   const DEFAULTS = { scale: 8, border: 4 };
   const QR_ECC = "MEDIUM";
-  const B64_CHUNK = 0x8000;
 
   /* encodeQrMatrix(texto) -> { size, isDark(x, y) } con la matriz del QR. */
   function encodeQrMatrix(text) {
     if (typeof text !== "string" || text.length === 0) {
       throw new TypeError("el contenido del QR no puede estar vacio");
     }
-    const ecc = qrcodegen.QrCode.Ecc[QR_ECC] || qrcodegen.QrCode.Ecc.MEDIUM;
+    const ecc = qrcodegen.QrCode.Ecc[QR_ECC];
     const qr = qrcodegen.QrCode.encodeText(text, ecc);
     return {
       size: qr.size,
@@ -81,28 +80,11 @@
     return PngEncoder.encodePng(width, height, rgba);
   }
 
-  function bytesToBase64(bytes) {
-    if (typeof Buffer === "function" && Buffer.from) {
-      return Buffer.from(bytes).toString("base64");
-    }
-    let binary = "";
-    for (let i = 0; i < bytes.length; i += B64_CHUNK) {
-      binary += String.fromCharCode.apply(null, bytes.subarray(i, i + B64_CHUNK));
-    }
-    return btoa(binary);
-  }
-
-  /* pngDataUrl(texto, opciones) -> "data:image/png;base64,..." listo para <img> o descarga. */
-  function pngDataUrl(text, options) {
-    return `data:image/png;base64,${bytesToBase64(renderQrPngBytes(text, options))}`;
-  }
-
   return {
     DEFAULTS,
     QR_ECC,
     encodeQrMatrix,
     renderQrRgba,
-    renderQrPngBytes,
-    pngDataUrl
+    renderQrPngBytes
   };
 });

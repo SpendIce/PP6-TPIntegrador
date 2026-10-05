@@ -86,13 +86,6 @@ test("el PNG es deterministico para el mismo texto y difiere entre textos", () =
   assert.notDeepEqual([...a], [...c], "textos distintos, PNG distinto");
 });
 
-test("pngDataUrl devuelve un data URL cuyo contenido es el PNG del QR", () => {
-  const dataUrl = QrImage.pngDataUrl(SHORT_URL);
-  assert.ok(dataUrl.startsWith("data:image/png;base64,"));
-  const decoded = Buffer.from(dataUrl.slice("data:image/png;base64,".length), "base64");
-  assert.deepEqual([...decoded], [...QrImage.renderQrPngBytes(SHORT_URL)]);
-});
-
 test("acepta URLs largas dentro de la capacidad del QR", () => {
   const longUrl = `https://ejemplo.com/${"a".repeat(400)}`;
   const png = QrImage.renderQrPngBytes(longUrl);

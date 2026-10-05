@@ -145,7 +145,7 @@ cd extensiones
 node --test          # también: npm test
 ```
 
-45 pruebas, cero dependencias (Node >= 20, verificado con Node 26):
+47 pruebas, cero dependencias (Node >= 20, verificado con Node 26):
 
 - `tests/api.test.js`: normalización de la dirección de API, construcción
   del POST del contrato, parseo de 201/400/estados inesperados, errores de
@@ -155,8 +155,8 @@ node --test          # también: npm test
 - `tests/png.test.js`: firma PNG, estructura de chunks, CRC32/Adler-32
   contra `node:zlib`, inflate de IDAT y píxeles esperados.
 - `tests/qr.test.js`: matriz QR, dimensiones y zona de silencio del PNG,
-  determinismo y data URL. El PNG generado fue decodificado con `zbarimg`
-  durante el desarrollo y reproduce el `shortUrl` exacto.
+  y determinismo de los bytes generados. El PNG fue decodificado con
+  `zbarimg` durante el desarrollo y reproduce el `shortUrl` exacto.
 - `tests/manifiestos.test.js` y `tests/sincronizacion.test.js`: permisos y
   archivos referenciados de cada paquete, e igualdad byte a byte entre
   `compartido/` y los directorios de cada navegador.

@@ -70,6 +70,9 @@
     const pngBytes = QrImage.renderQrPngBytes(link.shortUrl);
     const qrUrl = URL.createObjectURL(new Blob([pngBytes], { type: "image/png" }));
     el.qr.src = qrUrl;
+    if (lastQr) {
+      URL.revokeObjectURL(lastQr.url);
+    }
     lastQr = { url: qrUrl, filename: `qr-${link.alias}.png` };
   }
 
