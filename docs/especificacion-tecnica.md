@@ -1,12 +1,13 @@
 # Especificación técnica — creación y resolución de enlaces
 
 Estado: decisiones técnicas fijadas para el issue #2, extendidas con la
-evidencia de vencimiento y reinicio del issue #3. Cierra los puntos que
+evidencia de vencimiento y reinicio del issue #3 y con la reutilización de
+alias del issue #5. Cierra los puntos que
 [arquitectura y validación](arquitectura-y-validacion.md) dejó pendientes de
 especificación técnica: versiones concretas, ejecución de PostgreSQL, mecanismo
-de migraciones, coordinación transaccional, reservas de rutas y configuración de
-orígenes propios. No modifica los acuerdos de producto de
-[requisitos de etapa 1](requisitos-etapa-1.md).
+de migraciones, coordinación transaccional, reservas de rutas, desempate de
+alias y configuración de orígenes propios. No modifica los acuerdos de
+producto de [requisitos de etapa 1](requisitos-etapa-1.md).
 
 ## Contrato
 
@@ -73,23 +74,41 @@ migración inicial `V1__esquema_inicial.sql` crea:
 `spring.jpa.hibernate.ddl-auto=validate`: el esquema solo evoluciona por
 migraciones versionadas, preservando las asignaciones existentes.
 
+La migración `V2__indice_vencimiento_asignacion.sql` agrega
+`ix_asignacion_vence_en` sobre `asignacion (vence_en)`: la búsqueda de
+candidatos a reciclaje filtra por el vencimiento de la asignación actual
+de cada alias. Solo crea el índice, sin tocar los datos existentes.
+
 ## Coordinación transaccional
 
 La creación ejecuta una única transacción (`@Transactional` del caso de uso,
 mecanismo Spring permitido por ADR 0001 para el límite transaccional):
 
 1. `SELECT ... FOR UPDATE` sobre la fila única de `generador_alias` serializa
-   las reservas concurrentes: dos creaciones simultáneas nunca toman el mismo
-   índice ni el mismo código.
-2. La política de selección (`AliasSequence`, dominio puro) calcula el código
-   del índice y salta códigos reservados; el mecanismo no conoce la política.
-3. Se inserta `alias`, se inserta `asignacion` y se actualiza
-   `asignacion_actual_id` en la misma transacción.
+   toda la selección: dos creaciones simultáneas no pueden tomar el mismo
+   índice ni reciclar el mismo alias vencido.
+2. Ya serializada, se consultan los candidatos a reciclaje: los alias cuya
+   asignación actual tiene `vence_en <= instante de creación`
+   (`AliasJpaRepository.findRecyclableCodes`, que enlaza cada alias con su
+   asignación vigente-hasta mediante la referencia actual).
+3. La política `AliasRecycling` (dominio puro) elige entre los candidatos
+   el de menor longitud; a igualdad de longitud desempata por el orden
+   natural del código — determinista y distingue mayúsculas, por ejemplo
+   `'A'` precede a `'a'`. Si hay candidato, se reutiliza su alias sin
+   consumir índice del generador.
+4. Sin candidatos reutilizables, la política `AliasSequence` calcula el
+   código del próximo índice (agotando una longitud antes de la siguiente
+   y saltando códigos reservados) y se inserta el alias nuevo.
+5. Se inserta `asignacion` y se actualiza `asignacion_actual_id` en la
+   misma transacción; las asignaciones anteriores del alias reciclado
+   quedan intactas en el historial (ADR 0003).
 
-El reciclaje de alias vencidos (preferir reutilizables de menor longitud) se
-suma en el ticket de reutilización consultando candidatos antes del generador,
-dentro de la misma frontera transaccional; la política ya está aislada del
-mecanismo.
+La serialización cubre toda la selección: una creación nunca salta a un
+alias más largo habiendo un vencido más corto disponible, ni dos creaciones
+concurrentes se reparten el mismo vencido. Las políticas de selección
+(`AliasRecycling` para reutilizados, `AliasSequence` para códigos nuevos)
+siguen separadas del mecanismo de reserva: la consulta devuelve los
+candidatos y la prioridad la decide el dominio, no el SQL.
 
 ## Configuración de despliegue
 
@@ -115,8 +134,9 @@ Prefijo `shortener` (`ShortenerProperties`):
 `io.github.spendice.linkshortener`:
 
 - `domain`: `Alias`, `Assignment`, `AliasAlphabet`, `AliasSequence`,
-  `ExpirationPolicy`, `DestinationValidator`, `InvalidDestinationException`,
-  `ServiceOrigin`. Sin imports de Spring, JPA ni HTTP.
+  `AliasRecycling`, `ExpirationPolicy`, `DestinationValidator`,
+  `InvalidDestinationException`, `ServiceOrigin`. Sin imports de Spring, JPA
+  ni HTTP.
 - `application`: casos de uso `CreateLink`, `ResolveLink`, resultado
   `CreatedLink` y puertos `port.AliasStore`, `port.AssignmentStore`. Los casos
   de uso solo importan `spring-tx` para el límite transaccional.
@@ -202,8 +222,20 @@ acordada, asignaciones vencidas conservadas en el historial y
 conservación de destino, identidad, creación y vencimiento tras
 reiniciar contra el mismo PostgreSQL.
 
-No implementa: reciclaje de alias vencidos (ticket «Reutilizar los alias más
-cortos conservando el historial») ni complementos (ticket posterior). El
-QR de la web se resuelve en el cliente (ver «QR del enlace»). El contrato
-OpenAPI ya contempla el aviso de reutilización (`reuseNotice`) para que la
-web lo muestre desde el inicio.
+La reutilización de alias (issue #5) se verifica en
+`ReciclajeAliasHttpTest` y `ReinicioServicioHttpTest` sobre PostgreSQL, y
+en las pruebas de dominio y caso de uso (`AliasRecyclingTest`,
+`AliasSequenceTest`, `CreateLinkTest`): reciclaje del alias vencido antes
+de emitir un código nuevo, prioridad de menor longitud con desempate
+determinista por orden natural, expansión agotando los 58 códigos de un
+carácter antes del primero de dos, alias vigente nunca candidato,
+reasignación con identidad propia y referencia actual actualizada
+conservando todo el historial, resolución al destino vigente (un enlace o
+QR viejo conduce al nuevo destino), distinción de mayúsculas, exclusividad
+del vencido ante creaciones concurrentes y continuidad del reciclaje y del
+avance del generador tras reiniciar.
+
+No implementa: complementos (ticket posterior). El QR de la web se
+resuelve en el cliente (ver «QR del enlace»). El contrato OpenAPI ya
+contempla el aviso de reutilización (`reuseNotice`) para que la web lo
+muestre desde el inicio.

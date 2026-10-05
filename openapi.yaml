@@ -3,11 +3,14 @@ info:
   title: Acortador de enlaces — API pública
   version: "0.1.0"
   description: >
-    Contrato de la primera entrega del acortador de enlaces (issues #2 y #3).
-    La API permite crear una asignación a partir de una URL de destino y
-    resolver el enlace acortado hacia ese destino mientras la asignación
-    esté vigente. Cada asignación dura exactamente 60 minutos desde su
-    creación, tiene identidad propia y no se deduplica por destino.
+    Contrato de la primera entrega del acortador de enlaces (issues #2, #3
+    y #5). La API permite crear una asignación a partir de una URL de
+    destino y resolver el enlace acortado hacia ese destino mientras la
+    asignación esté vigente. Cada asignación dura exactamente 60 minutos
+    desde su creación, tiene identidad propia y no se deduplica por
+    destino. El alias emitido puede ser un código reciclado de una
+    asignación vencida: el mismo enlace o QR puede conducir a un destino
+    nuevo después del vencimiento.
 servers:
   - url: /
     description: Mismo origen que sirve la web; la dirección pública del servicio es configurable por despliegue.
@@ -20,7 +23,10 @@ paths:
         Repetir la solicitud con el mismo destino produce otra asignación
         con identidad y vencimiento propios: no hay deduplicación ni
         idempotencia. El servidor no consulta la disponibilidad, permisos
-        ni autenticación del destino para aceptarlo.
+        ni autenticación del destino para aceptarlo. El alias reservado es
+        preferentemente uno cuya asignación anterior venció (los más
+        cortos primero) o, sin vencidos reutilizables, el siguiente código
+        nunca usado de la menor longitud disponible.
       operationId: crearEnlace
       requestBody:
         required: true
@@ -63,6 +69,8 @@ paths:
         conserva su validez aunque llegue al cliente después, y las
         visitas no renuevan el vencimiento. Las asignaciones vencidas se
         conservan en el historial; no hay borrado ni tarea de limpieza.
+        Un alias reasignado conduce al destino de su asignación vigente:
+        el mismo enlace o un QR antiguo puede resolver a un destino nuevo.
         Ambas respuestas usan `Cache-Control: no-store` para que
         caches conformes no reutilicen una redirección vencida. Las rutas
         de la aplicación (por ejemplo `/api`, `/error` y los archivos
