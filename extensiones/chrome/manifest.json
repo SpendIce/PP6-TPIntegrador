@@ -1,0 +1,19 @@
+{
+  "manifest_version": 3,
+  "name": "Acortador de enlaces (demo LAN)",
+  "version": "1.0.0",
+  "description": "Acorta la URL de la pestaña activa con el servicio del equipo y muestra el enlace, su vencimiento y el QR descargable.",
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Acortar esta pestaña"
+  },
+  "permissions": [
+    "activeTab",
+    "storage",
+    "downloads"
+  ],
+  "host_permissions": [
+    "http://*/*",
+    "https://*/*"
+  ]
+}

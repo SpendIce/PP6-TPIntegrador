@@ -22,13 +22,31 @@ El contrato REST de creación y resolución está en [openapi.yaml](../openapi.y
   `Cache-Control: no-store` cuando hay asignación vigente; `404` con la página
   «Este enlace no existe o venció» y `Cache-Control: no-store` en caso contrario.
 
-Casos de entrada fijados por el contrato: el destino se valida como URI
-absoluta (RFC 3986) con esquema `http` o `https`; los espacios deben ir
-codificados (`%20`), los caracteres internacionales deben ir codificados o con
-dominio punycode (una URI cruda con caracteres no ASCII se rechaza como
-`MALFORMED_DESTINATION`); el límite es 8.192 caracteres sin truncamiento; se
-conservan parámetros, fragmento, credenciales y codificación verbatim. No se
-consulta la disponibilidad del destino.
+Casos de entrada fijados por el contrato (los ejemplos por código figuran en
+la respuesta `400` de `openapi.yaml`):
+
+- El destino se valida como URI absoluta (RFC 3986) con esquema `http` o
+  `https` y host presente; el límite es 8.192 caracteres sin truncamiento.
+- Caracteres internacionales: una URI cruda con caracteres no ASCII se
+  rechaza como `MALFORMED_DESTINATION`. Las formas aceptadas son dominio
+  punycode (`xn--…`) y percent-encoding UTF-8 (`%C3%A9`); ambas se conservan
+  verbatim.
+- Percent-encoding inválido (`%` sin dos dígitos hexadecimales, p. ej.
+  `%zz`, `%2` o `%` suelto) se rechaza como `MALFORMED_DESTINATION`; los
+  escapes válidos se conservan sin decodificar ni normalizar (mayúsculas y
+  minúsculas incluidas).
+- Los espacios deben ir codificados (`%20`); un espacio en crudo en
+  cualquier componente (incluido el fragmento) es `MALFORMED_DESTINATION`.
+- Se conservan parámetros, fragmento, credenciales, puerto explícito y
+  codificación verbatim. No se consulta la disponibilidad del destino.
+- Orígenes propios: la comparación usa host normalizado (minúsculas, sin
+  punto final ni corchetes IPv6) y puerto efectivo (explícito o 80/443
+  según el esquema), ignorando el esquema. Coinciden el origen de
+  `public-base-url`, los equivalentes loopback del mismo puerto y los
+  orígenes declarados en `own-origins`; otro puerto u otro host LAN no es
+  origen propio.
+- Ningún rechazo crea asignación ni consume un alias: la validación ocurre
+  antes de la reserva dentro de la transacción del caso de uso.
 
 ## Versiones fijadas
 
@@ -50,8 +68,9 @@ consulta la disponibilidad del destino.
   con base `acortador`, usuario `acortador` y puerto `5432`. Las credenciales se
   pueden sobreescribir con variables de entorno (`DB_HOST`, `DB_PORT`,
   `DB_NAME`, `DB_USER`, `DB_PASSWORD`).
-- Pruebas de integración: Testcontainers levanta `postgres:16.4-alpine` por
-  clase de test con `@ServiceConnection`; no se usa H2 (ADR 0004).
+- Pruebas de integración: Testcontainers levanta `postgres:16.4-alpine` con
+  `@ServiceConnection`; las suites HTTP extienden `HttpApiFixture` y comparten
+  un único contenedor (singleton); no se usa H2 (ADR 0004).
 
 ## Migraciones
 
@@ -90,7 +109,8 @@ mecanismo Spring permitido por ADR 0001 para el límite transaccional):
 2. Ya serializada, se consultan los candidatos a reciclaje: los alias cuya
    asignación actual tiene `vence_en <= instante de creación`
    (`AliasJpaRepository.findRecyclableCodes`, que enlaza cada alias con su
-   asignación vigente-hasta mediante la referencia actual).
+   asignación actual mediante la referencia garantizada por la FK
+   compuesta).
 3. La política `AliasRecycling` (dominio puro) elige entre los candidatos
    el de menor longitud; a igualdad de longitud desempata por el orden
    natural del código — determinista y distingue mayúsculas, por ejemplo
@@ -128,6 +148,8 @@ Prefijo `shortener` (`ShortenerProperties`):
 - `link-duration` (`Duration`, `LINK_DURATION`): duración de las nuevas
   asignaciones; `PT60M` por defecto. El experimento de adaptación la cambia
   sin tocar las asignaciones existentes, cuyo `vence_en` ya está persistido.
+  Evidencia ejecutada y análisis de los demás cambios representativos en
+  [evidencia-evolucion.md](evidencia-evolucion.md) (issue #10).
 
 ## Estructura de paquetes
 
@@ -223,19 +245,32 @@ conservación de destino, identidad, creación y vencimiento tras
 reiniciar contra el mismo PostgreSQL.
 
 La reutilización de alias (issue #5) se verifica en
-`ReciclajeAliasHttpTest` y `ReinicioServicioHttpTest` sobre PostgreSQL, y
-en las pruebas de dominio y caso de uso (`AliasRecyclingTest`,
-`AliasSequenceTest`, `CreateLinkTest`): reciclaje del alias vencido antes
-de emitir un código nuevo, prioridad de menor longitud con desempate
-determinista por orden natural, expansión agotando los 58 códigos de un
-carácter antes del primero de dos, alias vigente nunca candidato,
-reasignación con identidad propia y referencia actual actualizada
-conservando todo el historial, resolución al destino vigente (un enlace o
-QR viejo conduce al nuevo destino), distinción de mayúsculas, exclusividad
-del vencido ante creaciones concurrentes y continuidad del reciclaje y del
-avance del generador tras reiniciar.
+`ReciclajeAliasHttpTest`, `RutasReservadasHttpTest` y
+`ReinicioServicioHttpTest` sobre PostgreSQL, y en las pruebas de dominio y
+caso de uso (`AliasRecyclingTest`, `AliasSequenceTest`, `CreateLinkTest`):
+reciclaje del alias vencido antes de emitir un código nuevo, prioridad de
+menor longitud con desempate determinista por orden natural, expansión
+agotando los 58 códigos de un carácter antes del primero de dos, salto de
+los códigos reservados dentro del espacio emitido, alias vigente nunca
+candidato, reasignación con identidad propia y referencia actual
+actualizada conservando todo el historial, resolución al destino vigente
+(un enlace o QR viejo conduce al nuevo destino), distinción de
+mayúsculas, exclusividad del vencido ante creaciones concurrentes y
+continuidad del reciclaje y del avance del generador tras reiniciar.
 
-No implementa: complementos (ticket posterior). El QR de la web se
-resuelve en el cliente (ver «QR del enlace»). El contrato OpenAPI ya
-contempla el aviso de reutilización (`reuseNotice`) para que la web lo
+El experimento de adaptación (issue #10) se verificó en
+`EvolucionDuracionHttpTest`: dos contextos sucesivos sobre el mismo
+PostgreSQL — `PT60M` y luego `PT5M` solo para nuevas creaciones —
+demuestran que cada asignación conserva el `vence_en` que persistió al
+crearse, con la duración de entrega restituida a 60 minutos. El
+procedimiento reproducible y el análisis de alias personalizados,
+consola y estadísticas están en
+[evidencia-evolucion.md](evidencia-evolucion.md).
+
+No implementa esta especificación: alias personalizados, consola de
+gestión, estadísticas de visitas ni purga del historial (analizados en
+[evidencia-evolucion.md](evidencia-evolucion.md)). Los complementos
+Chrome y Firefox se entregan en `extensiones/` (issue #8) y el QR de la
+web se resuelve en el cliente (ver «QR del enlace»). El contrato OpenAPI
+ya contempla el aviso de reutilización (`reuseNotice`) para que la web lo
 muestre desde el inicio.

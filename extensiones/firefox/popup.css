@@ -1,0 +1,112 @@
+body {
+  font-family: system-ui, sans-serif;
+  font-size: 14px;
+  width: 360px;
+  margin: 0;
+  padding: 12px;
+  color: #1a1a1a;
+}
+
+h1 {
+  font-size: 16px;
+  margin: 0 0 8px;
+}
+
+#status {
+  color: #444;
+  margin: 8px 0;
+}
+
+.destination {
+  color: #555;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+  margin: 0 0 8px;
+}
+
+#short-url {
+  font-size: 16px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.detail {
+  margin: 4px 0;
+}
+
+.notice {
+  color: #7a4d00;
+  background: #fff4d6;
+  border-radius: 4px;
+  padding: 6px 8px;
+  font-size: 12px;
+}
+
+#qr {
+  display: block;
+  margin: 8px auto;
+  image-rendering: pixelated;
+  border: 1px solid #ddd;
+}
+
+.actions {
+  display: flex;
+  gap: 8px;
+  margin: 8px 0;
+}
+
+button {
+  cursor: pointer;
+  padding: 6px 10px;
+}
+
+#error {
+  border: 1px solid #c00;
+  border-radius: 4px;
+  background: #fdecec;
+  padding: 8px;
+  margin: 8px 0;
+}
+
+.error-code {
+  font-family: ui-monospace, monospace;
+  font-size: 12px;
+  color: #900;
+  margin: 0 0 4px;
+}
+
+#error-message {
+  margin: 0 0 8px;
+}
+
+.hint {
+  font-size: 11px;
+  color: #666;
+  margin: 8px 0 0;
+}
+
+#settings {
+  margin-top: 12px;
+  border-top: 1px solid #ddd;
+  padding-top: 8px;
+}
+
+#settings summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+#api-base {
+  box-sizing: border-box;
+  width: 100%;
+  margin: 6px 0;
+  padding: 6px;
+  font-family: ui-monospace, monospace;
+  font-size: 12px;
+}
+
+#config-status {
+  font-size: 12px;
+  margin: 4px 0;
+  min-height: 1em;
+}

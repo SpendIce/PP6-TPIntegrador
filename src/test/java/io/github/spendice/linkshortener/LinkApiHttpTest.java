@@ -1,28 +1,14 @@
 package io.github.spendice.linkshortener;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import io.github.spendice.linkshortener.application.port.AliasStore;
 import io.github.spendice.linkshortener.application.port.AssignmentStore;
 import io.github.spendice.linkshortener.domain.Alias;
 import io.github.spendice.linkshortener.domain.Assignment;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.web.server.LocalServerPort;
-import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
-import org.springframework.jdbc.core.JdbcTemplate;
-import org.testcontainers.containers.PostgreSQLContainer;
-import org.testcontainers.junit.jupiter.Container;
-import org.testcontainers.junit.jupiter.Testcontainers;
 
-import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpRequest.BodyPublishers;
 import java.net.http.HttpResponse;
-import java.net.http.HttpResponse.BodyHandlers;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -39,45 +25,15 @@ import static org.assertj.core.api.Assertions.assertThat;
 /**
  * Recorrido principal sobre la API HTTP con PostgreSQL real
  * (Testcontainers, ADR 0004): creación, respuesta del contrato,
- * persistencia y redirección. El cliente HTTP nunca sigue redirecciones,
- * como exige la medición acordada: el tiempo de carga del destino externo
- * queda fuera de la verificación.
+ * persistencia y redirección. La infraestructura compartida está en
+ * {@link HttpApiFixture}.
  */
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = {
-        "shortener.public-base-url=http://192.168.50.10:8080",
-        "shortener.reserved-routes=api, error"
-})
-@Testcontainers
-class LinkApiHttpTest {
+class LinkApiHttpTest extends HttpApiFixture {
 
-    private static final String PUBLIC_BASE = "http://192.168.50.10:8080";
-
-    @Container
-    @ServiceConnection
-    static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>("postgres:16.4-alpine");
-
-    private final HttpClient client = HttpClient.newBuilder()
-            .followRedirects(HttpClient.Redirect.NEVER)
-            .build();
-
-    @LocalServerPort
-    int port;
-    @Autowired
-    ObjectMapper json;
-    @Autowired
-    JdbcTemplate db;
     @Autowired
     AliasStore aliasStore;
     @Autowired
     AssignmentStore assignmentStore;
-
-    @BeforeEach
-    void espacioDeCodigosVacio() {
-        // Un alias vencido es candidato a reciclaje en cualquier
-        // creación: el espacio vacío mantiene los escenarios aislados.
-        db.execute("TRUNCATE TABLE alias, asignacion RESTART IDENTITY");
-        db.update("UPDATE generador_alias SET proximo_indice = 0");
-    }
 
     @Test
     void creaAsignacionYDevuelveEnlacePublicoConVencimiento() throws Exception {
@@ -242,28 +198,5 @@ class LinkApiHttpTest {
     private String createAliasFor(String destination) throws Exception {
         JsonNode body = json.readTree(postJson("{\"destination\":\"" + destination + "\"}").body());
         return body.get("alias").asText();
-    }
-
-    private HttpResponse<String> postJson(String jsonBody) throws Exception {
-        HttpRequest request = HttpRequest.newBuilder(URI.create(baseUrl() + "/api/links"))
-                .header("Content-Type", "application/json")
-                .POST(BodyPublishers.ofString(jsonBody))
-                .build();
-        return client.send(request, BodyHandlers.ofString());
-    }
-
-    private HttpResponse<String> get(String path) throws Exception {
-        HttpRequest request = HttpRequest.newBuilder(URI.create(baseUrl() + path)).GET().build();
-        return client.send(request, BodyHandlers.ofString());
-    }
-
-    private String baseUrl() {
-        return "http://localhost:" + port;
-    }
-
-    private void assertError(HttpResponse<String> response, String expectedCode) throws Exception {
-        assertThat(response.statusCode()).isEqualTo(400);
-        JsonNode body = json.readTree(response.body());
-        assertThat(body.get("error").asText()).isEqualTo(expectedCode);
     }
 }

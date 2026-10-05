@@ -1,0 +1,23 @@
+{
+  "manifest_version": 2,
+  "name": "Acortador de enlaces (demo LAN)",
+  "version": "1.0.0",
+  "description": "Acorta la URL de la pestaña activa con el servicio del equipo y muestra el enlace, su vencimiento y el QR descargable.",
+  "browser_action": {
+    "default_popup": "popup.html",
+    "default_title": "Acortar esta pestaña"
+  },
+  "permissions": [
+    "activeTab",
+    "storage",
+    "downloads",
+    "http://*/*",
+    "https://*/*"
+  ],
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "acortador-enlaces@spendice.github.io",
+      "strict_min_version": "102.0"
+    }
+  }
+}
