@@ -4,7 +4,7 @@
 // bibliotecas vendorizadas independientes del encoder bajo prueba:
 // UPNG.js (PNG -> píxeles) y jsQR (píxeles -> texto del código).
 //
-// Ejecutar: node --test src/test/js/
+// Ejecutar: cd src/test/js && node --test
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
