@@ -191,11 +191,18 @@ para publicar en otro puerto y el servicio toma el mismo `DB_PORT` para
 conectarse. El script automatizado ya evita esto con su contenedor
 propio en 55434.
 
-### C. Checklist manual de demo (pendiente-humano)
+### C. Checklist manual de demo (ejecutado 2026-10-05/06, issue #12)
 
 Cada ítem que requiere persona física, con qué registrar como evidencia.
 Prerequisito: servicio levantado con `PUBLIC_BASE_URL` LAN (A o B) y un
 celular en la misma red.
+
+**Los 16 pasos fueron ejecutados por el humano sobre el servicio LAN**
+(`PUBLIC_BASE_URL=http://192.168.1.7:8080`, PostgreSQL descartable):
+resultado por paso y capturas en
+[`docs/evidencia-demo/manual/`](evidencia-demo/manual/) (instalación y
+recorrido de ambos complementos, escaneo del QR desde celular en la LAN,
+errores visibles web y de popup).
 
 | # | Paso | Esperado | Evidencia a registrar |
 | --- | --- | --- | --- |
@@ -221,14 +228,20 @@ Registro sugerido: capturas en `docs/evidencia-demo/manual/` con nombre
 (OK / observación). Los pasos 5, 13–16 también pueden ejecutarse con la
 fase A del script automatizado como referencia de lo esperado.
 
-## Qué NO quedó demostrado (honestidad de la evidencia)
+## Qué NO quedó demostrado en la ejecución automatizada
+
+Estas tres brechas quedaron como checklist manual (C) y fueron cerradas
+por el humano el 2026-10-05/06 — evidencia en
+[`docs/evidencia-demo/manual/`](evidencia-demo/manual/), issue #12:
 
 - Ningún humano hizo clic en un navegador real en esta ejecución: la
-  evidencia visual de web y complementos es código servido + contrato +
-  procedimiento, no pantallas observadas. Checklist C pendiente.
-- Ningún celular real escaneó un QR: la decodificación cubre el
-  contenido del código; el salto WiFi celular→servicio solo se verificó
-  como alcanzabilidad HTTP de la dirección LAN desde el mismo host.
-- La instalación de complementos no se ejecutó en navegadores reales:
-  los paquetes se verificaron byte a byte y por contrato, pero el
-  recorrido `chrome://extensions`/`about:debugging` es del checklist.
+  evidencia visual de web y complementos fue código servido + contrato +
+  procedimiento. El checklist manual cubrió el recorrido real en Chrome
+  y Firefox.
+- Ningún celular real escaneó un QR: la decodificación cubrió el
+  contenido del código. El checklist manual cubrió el escaneo físico y
+  el salto WiFi celular→servicio.
+- La instalación de complementos no se ejecutó en navegadores reales en
+  la corrida automatizada: los paquetes se verificaron byte a byte y por
+  contrato. El checklist manual cubrió `chrome://extensions` y
+  `about:debugging`.
