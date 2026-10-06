@@ -23,3 +23,7 @@ Fecha: 2026-10-05. Servicio: `http://192.168.1.7:8080`
 | 14 | Servicio apagado → popup muestra `NETWORK_ERROR` | ok | captura `paso-14-network-error.png` |
 | 15 | Popup en `chrome://`/`about:` → `TAB_NOT_SHORTENABLE` | ok | |
 | 16 | «Acortar de nuevo» → asignación independiente | ok | |
+
+Verificación adicional del AC (issue #12): el alias `/1` ya vencido
+muestra la página «Este enlace no existe o venció» — captura
+`paso-13b-404-pagina.png`.
