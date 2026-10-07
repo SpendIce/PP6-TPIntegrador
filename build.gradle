@@ -61,7 +61,8 @@ tasks.register('hsqldbServer', JavaExec) {
     description = 'Levanta el servidor HSQLDB del perfil hsqldb en localhost:9001'
     classpath = configurations.runtimeClasspath
     mainClass = 'org.hsqldb.server.Server'
-    args '--database.0', 'file:hsqldb-data/xdb', '--dbname.0', 'xdb', '--port', '9001'
+    args '--database.0', 'file:hsqldb-data/xdb', '--dbname.0', 'xdb', '--port', '9001',
+         '--address', '127.0.0.1'
     doFirst {
         mkdir 'hsqldb-data'
     }
