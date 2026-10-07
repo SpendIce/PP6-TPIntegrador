@@ -6,7 +6,7 @@
 #   1. Levanta un PostgreSQL 16.4 propio y descartable (--rm) en
 #      127.0.0.1:$CAP_DB_PORT — no toca el `acortador-postgres` de
 #      desarrollo ni ningún servicio que ya ocupe 5432.
-#   2. Arranca el servicio con `mvn spring-boot:run` (procedimiento de
+#   2. Arranca el servicio con `./gradlew bootRun` (procedimiento de
 #      ejecución documentado) con PUBLIC_BASE_URL=http://<IP-LAN>:$APP_PORT.
 #   3. Comprueba la alcanzabilidad por la dirección LAN (si la interfaz o
 #      el firewall no la permiten, mide contra loopback y lo registra).
@@ -37,7 +37,7 @@ DB_PASSWORD=acortador
 
 # --- Prerrequisitos ----------------------------------------------------------
 
-for cmd in docker node mvn curl setsid; do
+for cmd in docker node curl setsid; do
   command -v "$cmd" >/dev/null || { echo "Falta $cmd" >&2; exit 64; }
 done
 
@@ -79,10 +79,10 @@ for _ in $(seq 1 60); do
 done
 docker exec "$PG_CONTAINER" pg_isready -U "$DB_USER" -d "$DB_NAME" >/dev/null
 
-echo "== Servicio (mvn spring-boot:run, PUBLIC_BASE_URL=$PUBLIC_BASE_URL) =="
+echo "== Servicio (./gradlew bootRun, PUBLIC_BASE_URL=$PUBLIC_BASE_URL) =="
 DB_HOST=127.0.0.1 DB_PORT="$CAP_DB_PORT" DB_NAME="$DB_NAME" DB_USER="$DB_USER" DB_PASSWORD="$DB_PASSWORD" \
 SERVER_PORT="$APP_PORT" PUBLIC_BASE_URL="$PUBLIC_BASE_URL" \
-  setsid mvn spring-boot:run >"$APP_LOG" 2>&1 &
+  setsid ./gradlew --no-daemon bootRun --console=plain >"$APP_LOG" 2>&1 &
 APP_PID=$!
 
 READY=""
@@ -119,7 +119,7 @@ DB_CONTAINER="$PG_CONTAINER" PUBLIC_BASE_URL="$PUBLIC_BASE_URL" \
   echo "cores: $(nproc)"
   echo "memory: $(free -h | awk '/^Mem:/ {print $2 " total, " $7 " available"}')"
   echo "java: $(java -version 2>&1 | head -1)"
-  echo "maven: $(mvn -version 2>/dev/null | head -1)"
+  echo "gradle: $(./gradlew -q --version 2>/dev/null | awk '/^Gradle /{print $2; exit}')"
   echo "node: $(node --version)"
   echo "docker: $(docker version --format '{{.Server.Version}}' 2>/dev/null)"
   echo "postgres_image: $(docker image inspect postgres:16.4-alpine --format '{{.Id}}' 2>/dev/null)"

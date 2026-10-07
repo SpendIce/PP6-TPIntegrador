@@ -17,7 +17,7 @@ scripts/capacidad/ejecutar-medicion.sh
 Desde la raíz del repo, el script hace todo el ciclo: PostgreSQL efímero
 (`--rm`, contenedor `pp6-capacidad-pg`, host `127.0.0.1:55433` para no
 pisar el `acortador-postgres` de desarrollo ni otros servicios en 5432),
-servicio con `mvn spring-boot:run` y `PUBLIC_BASE_URL` apuntando a la IP
+servicio con `./gradlew bootRun` y `PUBLIC_BASE_URL` apuntando a la IP
 LAN detectada, chequeo de alcanzabilidad LAN, medición, captura de
 entorno y estadísticas de la base, y apagado ordenado.
 

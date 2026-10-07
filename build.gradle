@@ -1,0 +1,81 @@
+plugins {
+    id 'java'
+    id 'org.springframework.boot' version '3.5.16'
+    id 'io.spring.dependency-management' version '1.1.7'
+}
+
+group = 'io.github.spendice'
+version = '0.1.0-SNAPSHOT'
+description = 'Acortador de enlaces — PP6 TP Integrador'
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(17)
+    }
+}
+
+repositories {
+    mavenCentral()
+}
+
+configurations {
+    hsqldbCli
+}
+
+dependencies {
+    implementation 'org.springframework.boot:spring-boot-starter-web'
+    implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+    implementation 'org.flywaydb:flyway-core'
+    implementation 'org.flywaydb:flyway-database-postgresql'
+    runtimeOnly 'org.postgresql:postgresql'
+    runtimeOnly 'org.hsqldb:hsqldb'
+
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testImplementation 'org.springframework.boot:spring-boot-testcontainers'
+    testImplementation 'org.testcontainers:junit-jupiter'
+    testImplementation 'org.testcontainers:postgresql'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+
+    // Cliente de consultas para la tarea hsqldbSql, en la misma versión
+    // administrada que el driver hsqldb.
+    hsqldbCli 'org.hsqldb:hsqldb'
+    hsqldbCli "org.hsqldb:sqltool:${dependencyManagement.managedVersions['org.hsqldb:hsqldb']}"
+}
+
+tasks.named('test') {
+    useJUnitPlatform()
+}
+
+// `./gradlew bootRun -Phsqldb` levanta el servicio contra el servidor
+// HSQLDB local (ver tarea hsqldbServer); sin el flag usa PostgreSQL.
+tasks.named('bootRun') {
+    if (project.hasProperty('hsqldb')) {
+        environment 'SPRING_PROFILES_ACTIVE', 'hsqldb'
+    }
+}
+
+// Servidor HSQLDB para desarrollo sin Docker, en localhost:9001 con la
+// base persistida en hsqldb-data/ (ignorada por git).
+tasks.register('hsqldbServer', JavaExec) {
+    group = 'application'
+    description = 'Levanta el servidor HSQLDB del perfil hsqldb en localhost:9001'
+    classpath = configurations.runtimeClasspath
+    mainClass = 'org.hsqldb.server.Server'
+    args '--database.0', 'file:hsqldb-data/xdb', '--dbname.0', 'xdb', '--port', '9001',
+         '--address', '127.0.0.1'
+    doFirst {
+        mkdir 'hsqldb-data'
+    }
+}
+
+// Consultas sueltas contra ese mismo servidor: -Psql="select ...".
+tasks.register('hsqldbSql', JavaExec) {
+    group = 'application'
+    description = 'Ejecuta una consulta SQL contra el servidor HSQLDB (-Psql="select ...")'
+    classpath = configurations.hsqldbCli
+    mainClass = 'org.hsqldb.cmdline.SqlTool'
+    args '--inlineRc=url=jdbc:hsqldb:hsql://localhost:9001/xdb,user=sa,password='
+    if (project.hasProperty('sql')) {
+        args '--sql', project.property('sql').toString().replaceAll(';\\s*$', '') + ';'
+    }
+}

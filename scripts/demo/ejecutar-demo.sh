@@ -5,7 +5,7 @@
 #   1. Levanta un PostgreSQL 16.4 propio y descartable (--rm, contenedor
 #      pp6-demo-pg) publicado en 127.0.0.1:$DEMO_DB_PORT — no toca el
 #      acortador-postgres de desarrollo ni servicios ajenos en 5432.
-#   2. Arranca el servicio con `mvn spring-boot:run` (procedimiento
+#   2. Arranca el servicio con `./gradlew bootRun` (procedimiento
 #      documentado) con PUBLIC_BASE_URL=http://<IP-LAN>:$APP_PORT y
 #      OWN_ORIGINS con los orígenes equivalentes del equipo (hostname y
 #      demás IPs locales), y corre scripts/demo/recorrido-demo.mjs.
@@ -47,9 +47,10 @@ case "$DEMO_SHORT_DURATION" in
   *) echo "DEMO_SHORT_DURATION debe ser ISO-8601 PTnM o PTnS" >&2; exit 64 ;;
 esac
 
-for cmd in docker node mvn curl setsid; do
+for cmd in docker node curl setsid; do
   command -v "$cmd" >/dev/null || { echo "Falta $cmd" >&2; exit 64; }
 done
+[ -x ./gradlew ] || { echo "Falta ./gradlew (o no es ejecutable)" >&2; exit 64; }
 command -v zbarimg >/dev/null \
   || echo "Aviso: zbarimg no está instalado; la decodificación del QR usa solo UPNG+jsQR."
 
@@ -95,7 +96,7 @@ start_service() {
   DB_HOST=127.0.0.1 DB_PORT="$DEMO_DB_PORT" DB_NAME="$DB_NAME" DB_USER="$DB_USER" DB_PASSWORD="$DB_PASSWORD" \
   SERVER_PORT="$APP_PORT" PUBLIC_BASE_URL="$PUBLIC_BASE_URL" OWN_ORIGINS="$OWN_ORIGINS" \
   LINK_DURATION="$duration" \
-    setsid mvn spring-boot:run >"$log" 2>&1 &
+    setsid ./gradlew --no-daemon bootRun --console=plain >"$log" 2>&1 &
   APP_PID=$!
   for _ in $(seq 1 240); do
     curl -sf -o /dev/null --max-time 3 "http://127.0.0.1:$APP_PORT/" && return 0
@@ -158,7 +159,7 @@ run_phase c 60
   echo "kernel: $(uname -srmo)"
   echo "os: $(. /etc/os-release && echo "$PRETTY_NAME")"
   echo "java: $(java -version 2>&1 | head -1)"
-  echo "maven: $(mvn -version 2>/dev/null | head -1)"
+  echo "gradle: $(./gradlew -q --version 2>/dev/null | awk '/^Gradle /{print $2; exit}')"
   echo "node: $(node --version)"
   echo "zbarimg: $(zbarimg --version 2>/dev/null || echo 'no instalado')"
   echo "docker: $(docker version --format '{{.Server.Version}}' 2>/dev/null)"

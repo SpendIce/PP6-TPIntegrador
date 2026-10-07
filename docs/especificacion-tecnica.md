@@ -53,9 +53,9 @@ la respuesta `400` de `openapi.yaml`):
 
 | Componente | Versión | Uso |
 | --- | --- | --- |
-| Java | 17 (OpenJDK) | Compilación y ejecución (`maven.compiler`/`java.version`). |
-| Maven | 3.9.x | Build y gestión de dependencias. |
-| Spring Boot | 3.5.16 | Parent del `pom.xml`; fija las versiones administradas de Spring, Hibernate, Jackson, Flyway y Testcontainers. |
+| Java | 17 (OpenJDK) | Compilación y ejecución (toolchain en `build.gradle`). |
+| Gradle | 8.14.5 (wrapper) | Build y gestión de dependencias; el wrapper versionado evita instalar Gradle. |
+| Spring Boot | 3.5.16 | Plugin Gradle `org.springframework.boot`; fija las versiones administradas de Spring, Hibernate, Jackson, Flyway y Testcontainers. |
 | Spring Web / Spring Data JPA (Hibernate 6) | administradas por Boot 3.5.16 | Adaptadores HTTP y JPA. |
 | PostgreSQL JDBC | administrada por Boot | Driver. |
 | Flyway (`flyway-core` + `flyway-database-postgresql`) | administrada por Boot | Migraciones versionadas desde el inicio. |
@@ -63,12 +63,17 @@ la respuesta `400` de `openapi.yaml`):
 | PostgreSQL (Docker) | `postgres:16.4-alpine` | Servicio de desarrollo (docker-compose) e imagen de Testcontainers. |
 | JUnit 5 / AssertJ | administradas por Boot | Pruebas. |
 
-## Ejecución de PostgreSQL
+## Ejecución de la base de datos
 
 - Desarrollo: `docker-compose.yml` en la raíz levanta `postgres:16.4-alpine`
   con base `acortador`, usuario `acortador` y puerto `5432`. Las credenciales se
   pueden sobreescribir con variables de entorno (`DB_HOST`, `DB_PORT`,
   `DB_NAME`, `DB_USER`, `DB_PASSWORD`).
+- Alternativa sin Docker: el perfil `hsqldb` (`application-hsqldb.yml`) conecta
+  con un servidor HSQLDB local (`jdbc:hsqldb:hsql://localhost:9001/xdb`, `sa`,
+  sin contraseña) levantado con `./gradlew hsqldbServer`. Flyway 11 no soporta
+  HSQLDB: el esquema equivalente vive en `db/hsqldb/schema.sql` y lo aplica
+  `spring.sql.init`, con `flyway` deshabilitado y `ddl-auto=none` en el perfil.
 - Pruebas de integración: Testcontainers levanta `postgres:16.4-alpine` con
   `@ServiceConnection`; las suites HTTP extienden `HttpApiFixture` y comparten
   un único contenedor (singleton); no se usa H2 (ADR 0004).
@@ -259,7 +264,7 @@ MIT) y `jsQR` (píxeles → texto, Apache-2.0), comprobando que el
 contenido es exactamente el `shortUrl`. También valida estructura
 (firma, dimensiones, zona de silencio, reproducción de la matriz). Se
 ejecuta con Node (`node --test` dentro de `src/test/js/`); no forma
-parte de `mvn test`. El wiring HTTP (la página referencia y sirve los
+parte de `./gradlew test`. El wiring HTTP (la página referencia y sirve los
 recursos del QR) se cubre en `LinkApiHttpTest`. Procedimiento completo,
 incluida la verificación visual manual, en
 [verificacion-qr.md](verificacion-qr.md).
