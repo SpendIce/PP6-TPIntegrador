@@ -75,6 +75,10 @@ docker run --rm -it --network host \
   maven:3.9-eclipse-temurin-17 mvn spring-boot:run
 ```
 
+En macOS/Windows `--network host` no comparte la red del host con
+Docker Desktop: usar `-p 8080:8080 -e DB_HOST=host.docker.internal`
+para publicar el puerto y alcanzar el PostgreSQL del host.
+
 Comprobar que está arriba:
 
 ```bash
@@ -89,8 +93,9 @@ dirección pública debe ser la IP del host en la LAN, no `localhost`:
 ```bash
 ip -4 -o addr show scope global    # primera interfaz que no sea loopback/docker/túnel
 
-PUBLIC_BASE_URL=http://<ip-lan>:8080 \
-OWN_ORIGINS="http://<hostname>:8080" \
+IP_LAN=192.168.1.50   # <- reemplazar por la IP del paso anterior
+PUBLIC_BASE_URL="http://$IP_LAN:8080" \
+OWN_ORIGINS="http://$(hostname):8080" \
   mvn spring-boot:run
 ```
 
@@ -162,10 +167,10 @@ asignación ni consume alias. Un ejemplo de cada código:
 curl -s -X POST http://localhost:8080/api/links \
   -H 'Content-Type: application/json' -d '{"destination":""}'
 
-# DESTINATION_TOO_LONG (8.193 caracteres; 8.192 se acepta)
+# DESTINATION_TOO_LONG (8193 caracteres = 14 de prefijo + 8179; con 8192 se acepta)
 curl -s -X POST http://localhost:8080/api/links \
   -H 'Content-Type: application/json' \
-  -d "{\"destination\":\"https://e.com/$(printf 'a%.0s' {1..8200})\"}"
+  -d "{\"destination\":\"https://e.com/$(printf 'a%.0s' {1..8179})\"}"
 
 # MALFORMED_DESTINATION (espacio sin codificar; también % inválido o Unicode en crudo)
 curl -s -X POST http://localhost:8080/api/links \
@@ -210,18 +215,21 @@ LINK_DURATION=PT1M mvn spring-boot:run
 ```
 
 ```bash
-# 1. Crear y resolver (302)
+# 1. Crear, anotar el "alias" de la respuesta y resolverlo (302)
 curl -s -X POST http://localhost:8080/api/links \
   -H 'Content-Type: application/json' -d '{"destination":"https://destino-viejo.com/"}'
+ALIAS=1   # <- el "alias" devuelto arriba
+curl -i "http://localhost:8080/$ALIAS"        # 302 al destino
 
 # 2. Esperar ~60 s: el mismo alias responde 404
-curl -i http://localhost:8080/<alias>
+sleep 65
+curl -i "http://localhost:8080/$ALIAS"        # 404 con la página acordada
 
 # 3. Crear otro enlace: el alias vencido se recicla y el enlace
 #    anterior (o su QR) ahora conduce al destino nuevo
 curl -s -X POST http://localhost:8080/api/links \
   -H 'Content-Type: application/json' -d '{"destination":"https://destino-nuevo.com/"}'
-curl -i http://localhost:8080/<mismo-alias>   # 302 a destino-nuevo
+curl -i "http://localhost:8080/$ALIAS"        # 302 a destino-nuevo
 ```
 
 El reciclaje prefiere los alias vencidos más cortos; sin vencidos
@@ -253,7 +261,7 @@ Tanto la web como los complementos generan el QR en el cliente sobre el
 celular:
 
 ```bash
-zbarimg ~/Descargas/qr-<alias>.png    # decodifica al shortUrl exacto
+zbarimg ~/Descargas/qr-1.png   # el PNG descargado; decodifica al shortUrl exacto
 ```
 
 El QR de un alias reciclado sigue conteniendo el mismo `shortUrl`, que
@@ -303,8 +311,8 @@ Las pruebas del QR del cliente (`src/test/js/`) y de los complementos
 corren aparte con Node y no intervienen en el build de Maven:
 
 ```bash
-cd src/test/js && node --test      # QR web: PNG decodificado con UPNG+jsQR
-cd extensiones && node --test      # 38 pruebas: contrato, paquetes, QR
+(cd src/test/js && node --test)    # QR web: PNG decodificado con UPNG+jsQR
+(cd extensiones && node --test)    # 38 pruebas: contrato, paquetes, QR
 ```
 
 El procedimiento completo del QR está en
@@ -330,7 +338,9 @@ reciclaje con historial y QR viejo a asignación nueva) corre con
   `healthy` (`docker compose ps`) y las variables `DB_*` deben coincidir
   con lo publicado.
 - **El enlace/QR no abre desde otro equipo**: se generó con
-  `PUBLIC_BASE_URL=http://localhost:8080`. Reiniciar con la IP LAN.
+  `PUBLIC_BASE_URL=http://localhost:8080`. Reiniciar con la IP LAN y
+  generar un enlace nuevo: el QR descargado antes sigue codificando un
+  `shortUrl` con `localhost`, que el celular resuelve contra sí mismo.
 - **`OWN_ORIGIN` al acortar el propio servicio**: es el comportamiento
   del contrato; los orígenes propios (público configurado, loopback
   equivalentes y `OWN_ORIGINS`) se rechazan como destino.
