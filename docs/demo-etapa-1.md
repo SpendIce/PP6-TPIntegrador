@@ -177,7 +177,7 @@ Artefactos: `docs/evidencia-demo/` (`salida-demo.txt`, `qr-*.png`,
 docker compose up -d                                # PostgreSQL 16 (5432)
 PUBLIC_BASE_URL=http://<ip-lan>:8080 \
 OWN_ORIGINS="http://<hostname>:8080" \
-  mvn spring-boot:run                               # API + web
+  ./gradlew bootRun                                 # API + web
 ```
 
 Obtener `<ip-lan>` con `ip -4 -o addr show scope global` (primera

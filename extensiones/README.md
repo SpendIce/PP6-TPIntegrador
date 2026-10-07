@@ -172,7 +172,8 @@ node: su verificación es el procedimiento manual siguiente.
 
 ## Verificación manual (procedimiento, ambos navegadores)
 
-1. Levantar el servicio: `docker compose up -d` y `mvn spring-boot:run`.
+1. Levantar el servicio: `docker compose up -d` y `./gradlew bootRun`
+   (sin Docker: `./gradlew hsqldbServer` y `./gradlew bootRun -Phsqldb`).
 2. Instalar el complemento según las instrucciones de arriba.
 3. Configurar la dirección de la API si el servicio no está en el default.
 4. En una pestaña `https://` abierta, clic en el ícono: deben verse el
