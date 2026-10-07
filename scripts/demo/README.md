@@ -15,7 +15,7 @@ scripts/demo/ejecutar-demo.sh
 
 Desde la raíz del repo: PostgreSQL efímero (`--rm`, contenedor
 `pp6-demo-pg`, host `127.0.0.1:55434` para no pisar otros servicios),
-servicio con `mvn spring-boot:run` y `PUBLIC_BASE_URL` en la IP LAN
+servicio con `./gradlew bootRun` y `PUBLIC_BASE_URL` en la IP LAN
 detectada, `OWN_ORIGINS` con los orígenes equivalentes del equipo, dos
 reinicios reales sobre la misma base (fase B con `DEMO_SHORT_DURATION`,
 por defecto `PT1M`, solo para observar el vencimiento; la entrega queda

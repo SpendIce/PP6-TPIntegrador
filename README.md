@@ -20,17 +20,40 @@ alias, historial, complementos de navegador y las suites automatizadas.
 
 | Herramienta | Versión | Para qué |
 | --- | --- | --- |
-| Java | 17 | Compilar y correr el servicio. |
-| Maven | 3.9.x | Build y `spring-boot:run`. Alternativa sin instalar: correr Maven en contenedor (ver más abajo). |
-| Docker + Compose | reciente | PostgreSQL de desarrollo y Testcontainers de las pruebas. |
+| Java | 17 | Compilar y correr el servicio. Gradle no hace falta instalarlo: el repo incluye el wrapper (`gradlew`), que descarga la versión fijada solo. |
+| Docker + Compose | reciente | PostgreSQL de desarrollo y Testcontainers de las pruebas. Sin Docker se puede correr igual con el perfil HSQLDB (ver abajo). |
 | Node.js | ≥ 20 | Solo para las pruebas del QR del cliente (`src/test/js`) y de los complementos (`extensiones/`). No interviene en el build. |
 | `zbarimg` | opcional | Decodificar los PNG del QR sin un celular. |
 
-Los comandos asumen un shell tipo bash en Linux/macOS.
+Los comandos asumen un shell tipo bash en Linux/macOS. En Windows usar
+`gradlew.bat` en lugar de `./gradlew` y asignar las variables de entorno
+según el shell (PowerShell: `$env:DB_PORT="55432"`; CMD: `set DB_PORT=55432`).
 
 ## Levantar el servidor
 
-### 1. PostgreSQL
+El servicio corre contra PostgreSQL (defecto, con Docker) o contra
+HSQLDB (sin Docker, perfil `hsqldb`). Elegir una opción.
+
+### Opción A: sin Docker (HSQLDB)
+
+Dos terminales: una con el servidor HSQLDB y otra con el servicio.
+
+```bash
+./gradlew hsqldbServer        # terminal 1: base en localhost:9001 (queda corriendo)
+./gradlew bootRun -Phsqldb    # terminal 2: el servicio en http://localhost:8080
+```
+
+En Windows: `gradlew.bat hsqldbServer` y `gradlew.bat bootRun -Phsqldb`.
+
+La tarea `hsqldbServer` persiste la base en `hsqldb-data/` (ignorada por
+git; borrarla para empezar de cero) y la apaga con `Ctrl+C`. El perfil
+`hsqldb` fija el datasource `jdbc:hsqldb:hsql://localhost:9001/xdb`,
+usuario `sa`, contraseña vacía (`application-hsqldb.yml`) y crea el
+esquema desde `db/hsqldb/schema.sql` con `spring.sql.init` — Flyway 11
+ya no soporta HSQLDB, así que en este perfil no corre Flyway ni
+`ddl-auto=validate`.
+
+### Opción B: PostgreSQL con Docker
 
 ```bash
 docker compose up -d
@@ -51,33 +74,21 @@ misma variable:
 
 ```bash
 DB_PORT=55432 docker compose up -d
-DB_PORT=55432 mvn spring-boot:run
+DB_PORT=55432 ./gradlew bootRun
 ```
 
 Para apagar: `docker compose down` (los datos persisten). Para borrar
 la base completa: `docker compose down -v`.
 
-### 2. El servicio
+Con la base arriba, el servicio:
 
 ```bash
-mvn spring-boot:run
+./gradlew bootRun
 ```
 
 Al arrancar, Flyway aplica las migraciones (`V1__esquema_inicial.sql`,
 `V2__indice_vencimiento_asignacion.sql`) y Tomcat queda escuchando en
 `http://localhost:8080`. Se apaga con `Ctrl+C` (apagado ordenado).
-
-Sin Maven instalado, la misma corrida sale de un contenedor:
-
-```bash
-docker run --rm -it --network host \
-  -v "$PWD":/app -v "$HOME/.m2":/root/.m2 -w /app \
-  maven:3.9-eclipse-temurin-17 mvn spring-boot:run
-```
-
-En macOS/Windows `--network host` no comparte la red del host con
-Docker Desktop: usar `-p 8080:8080 -e DB_HOST=host.docker.internal`
-para publicar el puerto y alcanzar el PostgreSQL del host.
 
 Comprobar que está arriba:
 
@@ -96,7 +107,7 @@ ip -4 -o addr show scope global    # primera interfaz que no sea loopback/docker
 IP_LAN=192.168.1.50   # <- reemplazar por la IP del paso anterior
 PUBLIC_BASE_URL="http://$IP_LAN:8080" \
 OWN_ORIGINS="http://$(hostname):8080" \
-  mvn spring-boot:run
+  ./gradlew bootRun
 ```
 
 La web queda en `http://<ip-lan>:8080` para cualquier equipo de la red.
@@ -211,7 +222,7 @@ minuto, reiniciar el servicio con una duración corta (afecta solo a lo
 creado desde ese arranque):
 
 ```bash
-LINK_DURATION=PT1M mvn spring-boot:run
+LINK_DURATION=PT1M ./gradlew bootRun
 ```
 
 ```bash
@@ -250,7 +261,15 @@ select codigo, asignacion_actual_id from alias;   -- referencia vigente
 select proximo_indice from generador_alias;       -- avance del generador
 ```
 
-Tras un `Ctrl+C` y un nuevo `mvn spring-boot:run` sobre la misma base,
+Con el perfil `hsqldb` la consulta equivalente sale del wrapper contra el
+servidor de la terminal 1:
+
+```bash
+./gradlew hsqldbSql -Psql="select id, alias_codigo, destino from asignacion order by id"
+./gradlew hsqldbSql -Psql="select proximo_indice from generador_alias"
+```
+
+Tras un `Ctrl+C` y un nuevo `./gradlew bootRun` sobre la misma base,
 los enlaces vigentes siguen resolviendo y el generador continúa sin
 repetir alias (su avance está persistido en `generador_alias`).
 
@@ -297,18 +316,18 @@ directamente. El celular llega al destino a través del acortador.
 ## Verificación automatizada
 
 ```bash
-mvn test
+./gradlew test
 ```
 
 Compila y corre las pruebas: unitarias de dominio y casos de uso, más el
 recorrido HTTP completo sobre PostgreSQL real con Testcontainers
 (creación, contrato de respuesta, persistencia, redirección 302/404,
 rechazos del contrato y recursos estáticos de la web, incluido el QR).
-No ejecutar `mvn package` ni `mvn verify` como verificación de cambios:
-`mvn test` es la evidencia acordada.
+No ejecutar `./gradlew build` ni `./gradlew check` como verificación de
+cambios: `./gradlew test` es la evidencia acordada.
 
 Las pruebas del QR del cliente (`src/test/js/`) y de los complementos
-corren aparte con Node y no intervienen en el build de Maven:
+corren aparte con Node y no intervienen en el build de Gradle:
 
 ```bash
 (cd src/test/js && node --test)    # QR web: PNG decodificado con UPNG+jsQR
@@ -334,9 +353,12 @@ reciclaje con historial y QR viejo a asignación nueva) corre con
 
 - **`docker compose up` falla por puerto ocupado**: otro PostgreSQL usa
   5432. Usar `DB_PORT=<libre>` en el compose y en el servicio.
-- **El servicio no conecta a la base**: el contenedor debe estar
-  `healthy` (`docker compose ps`) y las variables `DB_*` deben coincidir
-  con lo publicado.
+- **No hay Docker disponible**: usar el perfil `hsqldb` (Opción A
+  arriba); solo requiere Java 17.
+- **El servicio no conecta a la base**: con PostgreSQL, el contenedor
+  debe estar `healthy` (`docker compose ps`) y las variables `DB_*`
+  deben coincidir con lo publicado; con HSQLDB, la terminal 1
+  (`hsqldbServer`) debe estar corriendo en el puerto 9001.
 - **El enlace/QR no abre desde otro equipo**: se generó con
   `PUBLIC_BASE_URL=http://localhost:8080`. Reiniciar con la IP LAN y
   generar un enlace nuevo: el QR descargado antes sigue codificando un
@@ -345,30 +367,39 @@ reciclaje con historial y QR viejo a asignación nueva) corre con
   del contrato; los orígenes propios (público configurado, loopback
   equivalentes y `OWN_ORIGINS`) se rechazan como destino.
 - **El historial desapareció**: `docker compose down -v` borra el
-  volumen; `down` solo conserva los datos.
+  volumen (PostgreSQL) o se borró `hsqldb-data/` (HSQLDB); `down` sin
+  `-v` conserva los datos.
 - **Alias `api` o `error` nunca aparecen**: son rutas reservadas
   (`shortener.reserved-routes`).
 
 ## Esquema y migraciones
 
-Flyway versiona el esquema desde `src/main/resources/db/migration/`.
-`V1__esquema_inicial.sql` crea `alias`, `asignacion` (historial) y
-`generador_alias` (avance persistente de la generación secuencial), con
-la FK compuesta que garantiza que la referencia actual de cada alias
-pertenece a ese mismo alias. `V2__indice_vencimiento_asignacion.sql`
-agrega el índice de vencimiento. `ddl-auto=validate`: el esquema solo
-evoluciona por migraciones.
+Flyway versiona el esquema PostgreSQL desde
+`src/main/resources/db/migration/`. `V1__esquema_inicial.sql` crea
+`alias`, `asignacion` (historial) y `generador_alias` (avance
+persistente de la generación secuencial), con la FK compuesta que
+garantiza que la referencia actual de cada alias pertenece a ese mismo
+alias. `V2__indice_vencimiento_asignacion.sql` agrega el índice de
+vencimiento. `ddl-auto=validate`: el esquema solo evoluciona por
+migraciones.
+
+El perfil `hsqldb` crea el mismo esquema traducido desde
+`src/main/resources/db/hsqldb/schema.sql` vía `spring.sql.init`
+(Flyway 11 no soporta HSQLDB): `VARCHAR(8192)` en lugar de `TEXT` y
+`TIMESTAMP` en lugar de `TIMESTAMPTZ`.
 
 ## Estructura del repositorio
 
 ```text
 src/main/java/...   dominio, casos de uso, HTTP y persistencia (monolito modular)
-src/main/resources/ application.yml, migraciones Flyway, web estática y stack QR
+src/main/resources/ application.yml, perfil hsqldb, migraciones Flyway y web estática
 src/test/java/      pruebas de dominio, casos de uso y HTTP (Testcontainers)
 src/test/js/        pruebas del QR del cliente (node --test)
 extensiones/        complementos Chrome/Firefox + sus pruebas (node --test)
 scripts/            demo integrada y medición de capacidad
 docs/               ADR, especificación técnica, evidencia y guías de agentes
+build.gradle        build Gradle: dependencias, perfil hsqldb y tareas HSQLDB
+gradlew, gradlew.bat, gradle/  wrapper de Gradle versionado (8.14.5); no hace falta Gradle instalado
 openapi.yaml        contrato de la API
 docker-compose.yml  PostgreSQL 16 de desarrollo
 ```

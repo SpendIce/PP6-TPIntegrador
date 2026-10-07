@@ -37,14 +37,14 @@ Para observar el vencimiento en tiempo real se usa una duración corta
 ```bash
 # Grupo A: duración de entrega (60 minutos, el default)
 docker compose up -d
-mvn spring-boot:run
+./gradlew bootRun
 curl -s -X POST localhost:8080/api/links \
   -H 'Content-Type: application/json' \
   -d '{"destination":"https://ejemplo.com/grupo-a"}'
 # -> expiresAt = ahora + 60 min
 
 # Cambio acotado: solo configuración de arranque, con reinicio
-LINK_DURATION=PT5M mvn spring-boot:run
+LINK_DURATION=PT5M ./gradlew bootRun
 curl -s -X POST localhost:8080/api/links \
   -H 'Content-Type: application/json' \
   -d '{"destination":"https://ejemplo.com/grupo-b"}'
@@ -57,7 +57,7 @@ psql ... -c "SELECT alias_codigo, creada_en, vence_en FROM asignacion;"
 # -> las filas del grupo A conservan vence_en = creada_en + 60 min
 
 # Restitución para la entrega
-mvn spring-boot:run                    # sin LINK_DURATION: vuelve PT60M
+./gradlew bootRun                      # sin LINK_DURATION: vuelve PT60M
 ```
 
 El cambio equivalente como diff de configuración (alternativa a la

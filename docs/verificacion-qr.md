@@ -31,10 +31,10 @@ La decodificación usa bibliotecas independientes del encoder bajo
 prueba, por lo que un error en la generación del PNG haría fallar el
 test: es la misma operación que hace el lector QR de un celular.
 
-### Wiring HTTP (Maven)
+### Wiring HTTP (Gradle)
 
 ```bash
-mvn test
+./gradlew test
 ```
 
 `LinkApiHttpTest#laWebReferenciaYSirveLosRecursosDelQr` levanta el
@@ -49,7 +49,7 @@ La parte visual no se automatiza; es evidencia requerida de la demo:
 1. Levantar PostgreSQL y el servicio con la dirección pública LAN:
    ```bash
    docker compose up -d
-   PUBLIC_BASE_URL=http://<ip-lan>:8080 mvn spring-boot:run
+   PUBLIC_BASE_URL=http://<ip-lan>:8080 ./gradlew bootRun
    ```
 2. Abrir `http://localhost:8080` (o la IP LAN desde otro equipo) e
    ingresar una URL de destino válida.

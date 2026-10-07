@@ -1,0 +1,21 @@
+# Perfil para correr sin Docker contra un servidor HSQLDB local
+# (./gradlew hsqldbServer en una terminal + ./gradlew bootRun -Phsqldb en otra).
+# Flyway 11 no soporta HSQLDB: el esquema lo crea spring.sql.init con
+# db/hsqldb/schema.sql, por eso flyway queda deshabilitado y ddl-auto en none.
+spring:
+  datasource:
+    url: jdbc:hsqldb:hsql://localhost:9001/xdb
+    driver-class-name: org.hsqldb.jdbc.JDBCDriver
+    username: sa
+    password:
+  flyway:
+    enabled: false
+  sql:
+    init:
+      mode: always
+      schema-locations: classpath:db/hsqldb/schema.sql
+      # En reinicios el ALTER de la FK ya declarada falla y se tolera.
+      continue-on-error: true
+  jpa:
+    hibernate:
+      ddl-auto: none
