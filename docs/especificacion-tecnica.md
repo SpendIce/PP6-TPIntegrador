@@ -63,12 +63,17 @@ la respuesta `400` de `openapi.yaml`):
 | PostgreSQL (Docker) | `postgres:16.4-alpine` | Servicio de desarrollo (docker-compose) e imagen de Testcontainers. |
 | JUnit 5 / AssertJ | administradas por Boot | Pruebas. |
 
-## Ejecución de PostgreSQL
+## Ejecución de la base de datos
 
 - Desarrollo: `docker-compose.yml` en la raíz levanta `postgres:16.4-alpine`
   con base `acortador`, usuario `acortador` y puerto `5432`. Las credenciales se
   pueden sobreescribir con variables de entorno (`DB_HOST`, `DB_PORT`,
   `DB_NAME`, `DB_USER`, `DB_PASSWORD`).
+- Alternativa sin Docker: el perfil `hsqldb` (`application-hsqldb.yml`) conecta
+  con un servidor HSQLDB local (`jdbc:hsqldb:hsql://localhost:9001/xdb`, `sa`,
+  sin contraseña) levantado con `./gradlew hsqldbServer`. Flyway 11 no soporta
+  HSQLDB: el esquema equivalente vive en `db/hsqldb/schema.sql` y lo aplica
+  `spring.sql.init`, con `flyway` deshabilitado y `ddl-auto=none` en el perfil.
 - Pruebas de integración: Testcontainers levanta `postgres:16.4-alpine` con
   `@ServiceConnection`; las suites HTTP extienden `HttpApiFixture` y comparten
   un único contenedor (singleton); no se usa H2 (ADR 0004).
