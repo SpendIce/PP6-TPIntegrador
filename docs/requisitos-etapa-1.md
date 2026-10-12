@@ -1,39 +1,39 @@
 # Acuerdos y pendientes de la etapa 1
 
-Fuente: [consigna original](../TP_PP6_v1.0.md). Este documento complementa la consigna con respuestas del usuario; no implica validación adicional del docente ni reemplaza el contrato OpenAPI o los criterios de aceptación completos.
+Fuente: [consigna original](../TP_PP6_v1.0.md). Este documento complementa la consigna con las respuestas de la elucidación; no reemplaza el contrato OpenAPI ni los criterios de aceptación completos. La columna «Definido por» indica si el acuerdo lo confirmó el docente, si es una decisión del equipo o si todavía falta confirmar quién lo definió.
 
 Estado: entrevista cerrada con confirmación explícita del usuario de que los documentos reflejan el alcance y las reglas acordadas. La documentación fue revisada y sus enlaces locales verificados. El siguiente paso es completar OpenAPI y la especificación técnica antes de implementar; los resultados de pruebas y del experimento de adaptación todavía no existen.
 
 ## Acuerdos de las rondas 1 a 4
 
-| Tema | Acuerdo | Origen |
-| --- | --- | --- |
-| Vigencia | Exactamente 60 minutos desde la creación; al alcanzar el vencimiento deja de resolver. El tiempo apagado cuenta y los reinicios no renuevan la duración. | Consigna, Q1 y Q10 |
-| Reutilización | Preferir alias vencidos a códigos nuevos y priorizar los vencidos de menor longitud. Se acepta que un enlace o QR viejo pueda llevar a un destino nuevo. | Q1 y Q19 |
-| Generación | Si no hay vencidos reutilizables, generar códigos nunca usados, agotando un carácter antes de pasar a dos y así sucesivamente. Alfabeto de 58 símbolos sin `0`, `O`, `I`, `l`, con distinción de mayúsculas y exclusión de rutas del sistema. | Q20 |
-| Solicitudes repetidas | Cada solicitud crea una asignación y una duración independientes, aunque repita la URL de destino. | Q2 |
-| Validación | Comprobar formato HTTP/HTTPS sin consultar disponibilidad. Permitir destinos de red local y credenciales incrustadas. Rechazar enlaces del propio acortador y conservar parámetros y fragmentos. | Q3 y Q12 |
-| Entrada de destino | Hasta 8.192 caracteres; rechazar formato inválido y espacios sin codificar, sin truncar ni corregir silenciosamente el destino. Los espacios deben representarse mediante codificación válida, por ejemplo `%20`. | Q25 |
-| Alcance funcional | Crear y resolver enlaces; sin cuentas ni consola de gestión en esta etapa. Una consola puede considerarse después. | Q4 |
-| Extensiones | Chrome y Firefox; acortar la URL de la pestaña activa, mostrar resultado y QR, instalación manual. | Consigna y Q5 |
-| Descarga de QR | Disponible en ambos clientes, web y extensión, como PNG. | Q5 y Q17 |
-| Presentación del resultado | Mostrar enlace, QR, hora de vencimiento y aviso de posible reutilización posterior del alias en web y extensión. | Q17 |
-| Demo | Servicio accesible por red local para usarlo desde un celular; también accesible desde el equipo anfitrión. | Q6 |
-| Equipo y plazo | Dos integrantes con poca experiencia, aunque no nula, en Java/Spring. Primera etapa en siete días, el lunes siguiente; duración total de un mes y medio. | Respuesta sobre equipo y plazo |
-| Arquitectura | Monolito modular con reglas, casos de uso y adaptadores separados. | Q8 y ADR 0001 |
-| Historial | Conservar identificador de asignación, alias, destino completo, creación y vencimiento, aunque se reutilice el alias. Sin purga automática durante el trabajo ni registro de visitas en esta etapa. | Q9, Q18 y ADR 0003 |
-| Alias sin asignación vigente | Página con el mensaje «Este enlace no existe o venció» y respuesta HTTP 404, tanto para vencidos como para desconocidos. | Q11 |
-| Capacidad de referencia | Verificar 10 clientes simultáneos y 1.000 asignaciones vigentes como objetivo inicial, sin compromiso de servicio público. No es un límite comercial para rechazar la creación número 1.001. | Q13 y Q19 |
-| Tiempo de respuesta | Al menos el 95 % de las solicitudes de creación y resolución deben responder en un segundo o menos, con el servicio iniciado en red local. Se excluye la carga del destino externo. | Q26 |
-| Base de datos | PostgreSQL para la aplicación y las pruebas de integración. | Q14 y ADR 0004 |
-| Herramientas | Java 17 y Maven; Spring Boot estable compatible, versión concreta pendiente de especificación técnica. | Q15 |
-| Cliente web | HTML/CSS/JavaScript servido por el backend, consumiendo la API REST. | Q15 |
-| Transporte para demo | El usuario no distingue HTTP de HTTPS si el acceso funciona y resulta transparente. Se elige HTTP para la demo LAN; no se añade TLS como requisito específico de esta entrega. | Q16 y elección técnica derivada |
-| Reintentos de creación | Si se pierde una respuesta y se repite la solicitud, se acepta una segunda asignación. No se deduplica por destino ni se exige idempotencia de la operación. | Q21 |
-| Instante de resolución | Evaluar vigencia al resolver en el servidor; una respuesta emitida a partir de una asignación todavía vigente puede llegar después del vencimiento. | Q22 |
-| Enlaces propios | Rechazar destinos pertenecientes a los orígenes configurados del acortador, incluyendo sus direcciones equivalentes localhost y LAN. | Q23 |
-| Evidencia de QA | Pruebas de creación, vencimiento, reinicio, reutilización con historial, concurrencia, errores y contratos; demo manual de web, ambos complementos y QR desde celular. | Q24 |
-| Evidencia de adaptación | Experimento de cambio de duración solo para nuevas asignaciones, más análisis de alias personalizados y consola de gestión. | Q24 |
+| Tema | Acuerdo | Origen | Definido por |
+| --- | --- | --- | --- |
+| Vigencia | Exactamente 60 minutos desde la creación; al alcanzar el vencimiento deja de resolver. El tiempo apagado cuenta y los reinicios no renuevan la duración. | Consigna, Q1 y Q10 | Docente |
+| Reutilización | Preferir alias vencidos a códigos nuevos y priorizar los vencidos de menor longitud. Se acepta que un enlace o QR viejo pueda llevar a un destino nuevo. | Q1 y Q19 | Docente |
+| Generación | Si no hay vencidos reutilizables, generar códigos nunca usados, agotando un carácter antes de pasar a dos y así sucesivamente. Alfabeto de 58 símbolos sin `0`, `O`, `I`, `l`, con distinción de mayúsculas y exclusión de rutas del sistema. | Q20 | Docente |
+| Solicitudes repetidas | Cada solicitud crea una asignación y una duración independientes, aunque repita la URL de destino. | Q2 | Docente |
+| Validación | Comprobar formato HTTP/HTTPS sin consultar disponibilidad. Permitir destinos de red local y credenciales incrustadas. Rechazar enlaces del propio acortador y conservar parámetros y fragmentos. | Q3 y Q12 | Docente; el rechazo de enlaces propios, equipo (Q23) |
+| Entrada de destino | Hasta 8.192 caracteres; rechazar formato inválido y espacios sin codificar, sin truncar ni corregir silenciosamente el destino. Los espacios deben representarse mediante codificación válida, por ejemplo `%20`. | Q25 | Equipo |
+| Alcance funcional | Crear y resolver enlaces; sin cuentas ni consola de gestión en esta etapa. Una consola puede considerarse después. | Q4 | Docente |
+| Extensiones | Chrome y Firefox; acortar la URL de la pestaña activa, mostrar resultado y QR, instalación manual. | Consigna y Q5 | Docente |
+| Descarga de QR | Disponible en ambos clientes, web y extensión, como PNG. | Q5 y Q17 | Docente |
+| Presentación del resultado | Mostrar enlace, QR, hora de vencimiento y aviso de posible reutilización posterior del alias en web y extensión. | Q17 | Sin confirmar |
+| Demo | Servicio accesible por red local para usarlo desde un celular; también accesible desde el equipo anfitrión. | Q6 | Equipo |
+| Equipo y plazo | Dos integrantes con poca experiencia, aunque no nula, en Java/Spring. Primera etapa en siete días, el lunes siguiente; duración total de un mes y medio. | Respuesta sobre equipo y plazo | Equipo |
+| Arquitectura | Monolito modular con reglas, casos de uso y adaptadores separados. | Q8 y ADR 0001 | Equipo |
+| Historial | Conservar identificador de asignación, alias, destino completo, creación y vencimiento, aunque se reutilice el alias. Sin purga automática durante el trabajo ni registro de visitas en esta etapa. | Q9, Q18 y ADR 0003 | Equipo |
+| Alias sin asignación vigente | Página con el mensaje «Este enlace no existe o venció» y respuesta HTTP 404, tanto para vencidos como para desconocidos. | Q11 | Equipo |
+| Capacidad de referencia | Verificar 10 clientes simultáneos y 1.000 asignaciones vigentes como objetivo inicial, sin compromiso de servicio público. No es un límite comercial para rechazar la creación número 1.001. | Q13 y Q19 | Equipo |
+| Tiempo de respuesta | Al menos el 95 % de las solicitudes de creación y resolución deben responder en un segundo o menos, con el servicio iniciado en red local. Se excluye la carga del destino externo. | Q26 | Equipo |
+| Base de datos | PostgreSQL para la aplicación y las pruebas de integración. | Q14 y ADR 0004 | Equipo |
+| Herramientas | Java 17 y Maven; Spring Boot estable compatible, versión concreta pendiente de especificación técnica. | Q15 | Docente |
+| Cliente web | HTML/CSS/JavaScript servido por el backend, consumiendo la API REST. | Q15 | Docente |
+| Transporte para demo | El usuario no distingue HTTP de HTTPS si el acceso funciona y resulta transparente. Se elige HTTP para la demo LAN; no se añade TLS como requisito específico de esta entrega. | Q16 y elección técnica derivada | Docente |
+| Reintentos de creación | Si se pierde una respuesta y se repite la solicitud, se acepta una segunda asignación. No se deduplica por destino ni se exige idempotencia de la operación. | Q21 | Docente |
+| Instante de resolución | Evaluar vigencia al resolver en el servidor; una respuesta emitida a partir de una asignación todavía vigente puede llegar después del vencimiento. | Q22 | Sin confirmar |
+| Enlaces propios | Rechazar destinos pertenecientes a los orígenes configurados del acortador, incluyendo sus direcciones equivalentes localhost y LAN. | Q23 | Equipo |
+| Evidencia de QA | Pruebas de creación, vencimiento, reinicio, reutilización con historial, concurrencia, errores y contratos; demo manual de web, ambos complementos y QR desde celular. | Q24 | Equipo |
+| Evidencia de adaptación | Experimento de cambio de duración solo para nuevas asignaciones, más análisis de alias personalizados y consola de gestión. | Q24 | Equipo |
 
 La consigna obliga a Java, Spring Boot, JPA/Hibernate, base relacional, API REST y cliente web; además exige descubrimiento, modelos de dominio, arquitectura de capas, OpenAPI/Swagger y especificaciones previos al código, e incluye pruebas unitarias y de integración.
 
