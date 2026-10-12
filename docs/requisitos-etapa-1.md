@@ -25,8 +25,8 @@ Estado: entrevista cerrada con confirmación explícita del usuario de que los d
 | Alias sin asignación vigente | Página con el mensaje «Este enlace no existe o venció» y respuesta HTTP 404, tanto para vencidos como para desconocidos. | Q11 | Equipo |
 | Capacidad de referencia | Verificar 10 clientes simultáneos y 1.000 asignaciones vigentes como objetivo inicial, sin compromiso de servicio público. No es un límite comercial para rechazar la creación número 1.001. | Q13 y Q19 | Equipo |
 | Tiempo de respuesta | Al menos el 95 % de las solicitudes de creación y resolución deben responder en un segundo o menos, con el servicio iniciado en red local. Se excluye la carga del destino externo. | Q26 | Equipo |
-| Base de datos | PostgreSQL para la aplicación y las pruebas de integración. | Q14 y ADR 0004 | Equipo |
-| Herramientas | Java 17 y Maven; Spring Boot estable compatible, versión concreta pendiente de especificación técnica. | Q15 | Docente |
+| Base de datos | PostgreSQL para la aplicación y las pruebas de integración. Perfil `hsqldb` opcional para ejecutar sin Docker, sin pruebas automáticas. | Q14, ADR 0004 y ADR 0005 | Equipo; el perfil HSQLDB, docente |
+| Herramientas | Java 17 y Gradle con wrapper versionado; Spring Boot estable compatible, versión concreta pendiente de especificación técnica. Hasta el 2026-10-07 se usó Maven, reemplazado a pedido del docente. | Q15 y ADR 0005 | Docente |
 | Cliente web | HTML/CSS/JavaScript servido por el backend, consumiendo la API REST. | Q15 | Docente |
 | Transporte para demo | El usuario no distingue HTTP de HTTPS si el acceso funciona y resulta transparente. Se elige HTTP para la demo LAN; no se añade TLS como requisito específico de esta entrega. | Q16 y elección técnica derivada | Docente |
 | Reintentos de creación | Si se pierde una respuesta y se repite la solicitud, se acepta una segunda asignación. No se deduplica por destino ni se exige idempotencia de la operación. | Q21 | Docente |
@@ -81,4 +81,5 @@ El documento de [arquitectura y validación](arquitectura-y-validacion.md) concr
 - [ADR 0002: alias reutilizable](adr/0002-alias-reutilizable.md).
 - [ADR 0003: conservar historial](adr/0003-conservar-historial-asignaciones.md).
 - [ADR 0004: PostgreSQL en integración](adr/0004-postgresql-en-integracion.md).
+- [ADR 0005: Gradle y perfil HSQLDB](adr/0005-gradle-y-perfil-hsqldb.md).
 - [Arquitectura y validación](arquitectura-y-validacion.md).

@@ -11,3 +11,5 @@ Se prefirió esta estructura frente a capas que mezclen reglas con controladores
 Los contratos de la API se describirán mediante DTO propios, evitando que las entidades de persistencia determinen el contrato de la web y las extensiones. En la segunda ronda se acordaron Java 17, Maven, PostgreSQL y una web con HTML/CSS/JavaScript servida por el backend que consume la API. La estructura concreta de paquetes, la versión estable compatible de Spring Boot y las bibliotecas siguen pendientes de especificación técnica.
 
 Acuerdos: respuestas Q8, Q14 y Q15 de la entrevista iniciada el 2026-10-05.
+
+El 2026-10-07 Maven se reemplazó por Gradle a pedido del docente: ver el [ADR 0005](0005-gradle-y-perfil-hsqldb.md).

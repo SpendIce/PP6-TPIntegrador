@@ -9,3 +9,5 @@ Se acuerda PostgreSQL como motor relacional desde la primera etapa, accedido med
 La forma de ejecución y el mecanismo de preparación de la base para las pruebas todavía deben especificarse. Este acuerdo no modifica la separación entre reglas del dominio y persistencia ni exige un servicio de base de datos accesible públicamente.
 
 Acuerdo: respuesta Q14 de la entrevista iniciada el 2026-10-05.
+
+El 2026-10-07 se agregó, a pedido del docente, un perfil HSQLDB opcional para ejecutar sin Docker; PostgreSQL sigue siendo la base por defecto y la de las pruebas de integración. Ver el [ADR 0005](0005-gradle-y-perfil-hsqldb.md).
