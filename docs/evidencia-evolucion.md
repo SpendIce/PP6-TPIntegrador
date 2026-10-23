@@ -15,14 +15,12 @@ La duración no está fija en código: es configuración de despliegue.
 
 - `application.yml`: `shortener.link-duration: ${LINK_DURATION:PT60M}`.
 - `ShortenerProperties.linkDuration` (defecto `Duration.ofMinutes(60)`).
-- `DomainConfig.expirationPolicy` construye `ExpirationPolicy` con ese
-  valor: un único punto de cableado.
-- `CreateLink` aplica la política **una vez al crear** y persiste el
-  resultado: `vence_en = creada_en + duración`, en la fila de cada
-  asignación.
-- `ResolveLink` nunca consulta la política ni la configuración: la
-  vigencia se evalúa comparando `clock.instant()` con el `vence_en`
-  persistido (`Assignment.isActiveAt`).
+- `AcortadorService.acortar` aplica la duración **una vez al crear**
+  (helper `venceEn`) y persiste el resultado:
+  `vence_en = creada_en + duración`, en la fila de cada asignación.
+- `AcortadorService.resolver` nunca consulta la duración configurada:
+  la vigencia se evalúa comparando `clock.instant()` con el `vence_en`
+  persistido.
 
 Cambiar `link-duration` solo altera lo que se cree desde el cambio. Las
 asignaciones anteriores conservan su `vence_en` porque es un dato
@@ -133,11 +131,11 @@ Escenario «Alias personalizados» de la tabla «Cambios representativos»:
   alfabeto, demasiado largo, ruta reservada) y «alias no disponible»
   (vigente en uso); ambos entran en el enum `ApiError` del contrato.
 - **Módulos**: adaptador HTTP (`CreateLinkRequest` con el campo nuevo y
-  `ApiExceptionHandler` mapeando los errores nuevos), `CreateLink` (si
-  viene alias pedido, reservar ese código en lugar de `claimNewCode`),
-  una regla de validación del alias en `domain` y una operación nueva
-  del puerto `AliasStore` para reservar un código específico dentro de
-  la misma transacción.
+  `ApiExceptionHandler` mapeando los errores nuevos), `AcortadorService`
+  (si viene alias pedido, `acortar` reserva ese código en lugar de
+  pedir el siguiente de la secuencia) y un helper privado nuevo de
+  validación del alias en el mismo service, todo dentro de la misma
+  transacción.
 - **Datos**: no requiere migración: `alias.codigo` ya es PK y
   `VARCHAR(16)`, que es además el límite que el contrato debe respetar
   (el patrón actual admite hasta 32 en la ruta; un alias pedido más
@@ -148,11 +146,13 @@ Escenario «Alias personalizados» de la tabla «Cambios representativos»:
   0002; uno inexistente se crea. Dos pedidos simultáneos del mismo
   código quedan serializados por la PK de `alias` dentro de la
   transacción: uno gana y el otro recibe el error de no disponible.
-  Hallazgo concreto del código actual: `JpaAliasStore.claimNewCode`
-  emite el siguiente código de la secuencia persistida sin consultar la
-  tabla — válido hoy porque la secuencia es la única fuente de altas,
-  pero si un alias personalizado ocupa un código que la secuencia aún
-  no emitió, el generador lo alcanzaría después y chocaría con la PK.
+  Hallazgo concreto del código actual: `AcortadorService.reservarAlias`
+  emite el siguiente código de la secuencia persistida
+  (`generador_alias.proximo_indice`, saltando `reserved-routes`) sin
+  consultar la tabla `alias` — válido hoy porque la secuencia es la
+  única fuente de altas, pero si un alias personalizado ocupa un
+  código que la secuencia aún no emitió, el generador lo alcanzaría
+  después y chocaría con la PK.
   La reserva de alias pedidos debe entonces registrar el código como
   usado para el generador (p. ej., verificar existencia al emitir o
   marcar el salto), además de respetar `reserved-routes`.
@@ -170,9 +170,8 @@ Escenario «Alias personalizados» de la tabla «Cambios representativos»:
 Escenario «Consola de gestión»: «nuevos casos de uso de consulta y un
 cliente de gestión».
 
-- **Módulos**: nuevos casos de uso de consulta en `application` (listar
-  historial, obtener una asignación por id) con un puerto de consulta
-  nuevo si la lectura difiere de `AssignmentStore`/`AliasStore`; nuevo
+- **Módulos**: nuevos métodos de consulta en `AcortadorService`
+  (listar historial, obtener una asignación por id); nuevo
   adaptador HTTP con DTOs propios (la regla «no exponer entidades JPA»
   se mantiene); la consola es un cliente nuevo sobre la misma API, no
   un acoplamiento a la persistencia.
@@ -215,8 +214,8 @@ de solo lectura y resolver no deja rastro persistido.
   alias: el mismo alias sirve destinos distintos en usos sucesivos, y
   contar por alias mezclaría asignaciones diferentes. Reasignar no
   puede heredar las visitas de la asignación anterior.
-- Módulos afectados si llegara el caso: un puerto nuevo de registro de
-  visitas, una tabla `visita` con FK a `asignacion` (migración
+- Módulos afectados si llegara el caso: un método nuevo de registro de
+  visitas en el service, una tabla `visita` con FK a `asignacion` (migración
   versionada), una escritura en el camino de resolución — hoy
   `readOnly` — que hay que evaluar contra el objetivo temporal
   (95 % ≤ 1 s) y las invariantes de concurrencia, y consultas agregadas
@@ -229,14 +228,15 @@ Justificación pedida por el AC, medida en costo real:
 - El cambio de comportamiento temporal costó **cero líneas de
   producción**: una propiedad de configuración y un reinicio. La
   facilidad no es casualidad sino consecuencia de dónde vive cada
-  decisión: la regla está en `ExpirationPolicy` (dominio, sin imports
-  de Spring), el cableado en un único bean (`DomainConfig`), y el
+  decisión: la regla es un helper del `AcortadorService` (`venceEn`),
+  el valor llega por `ShortenerProperties`, y el
   resultado se persiste por asignación en `vence_en`.
 - La resolución ignora la política por completo: compara el instante
   del servidor con el dato persistido. Por eso dos duraciones conviven
   en la misma base sin ramas condicionales, sin versionar esquema y sin
   recalcular nada.
-- El reloj como puerto (`Clock` inyectado, `MutableClock` solo en test)
+- El reloj como bean inyectado (`Clock` en `config`, `MutableClock`
+  solo en test)
   permitió verificar los límites exactos de ambos grupos sin esperar
   una hora real y sin exponer un endpoint público de control temporal.
 - Identidad de asignación separada del alias (ADR 0002) e historial

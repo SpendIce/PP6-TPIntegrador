@@ -43,8 +43,9 @@ esta integración:
 
 ## Decisiones vigentes
 
-- [ADR 0001](adr/0001-monolito-modular.md): monolito modular, dominio
-  sin imports de Spring/JPA/HTTP.
+- [ADR 0001](adr/0001-monolito-modular.md): monolito; su separación
+  hexagonal original (dominio sin imports de Spring/JPA/HTTP) quedó
+  revisada por el ADR 0006.
 - [ADR 0002](adr/0002-alias-reutilizable.md): identidad de asignación
   separada del alias; reciclaje de vencidos, más cortos primero;
   alfabeto de 58 símbolos; agotar una longitud antes de la siguiente.
@@ -52,6 +53,11 @@ esta integración:
   conservado al reasignar; sin purga ni visitas.
 - [ADR 0004](adr/0004-postgresql-en-integracion.md): PostgreSQL en la
   aplicación y en las pruebas (Testcontainers, sin H2).
+- [ADR 0006](adr/0006-service-unico-hql-mappings.md): esquema de clase
+  a pedido del docente (issue #15): `AcortadorService` único con
+  `EntityManager` y HQL sobre las entities públicas de `mappings`;
+  las pruebas unitarias de dominio y casos de uso se retiraron y su
+  cobertura migró a las suites `*HttpTest`.
 - Especificación técnica ([especificacion-tecnica.md](especificacion-tecnica.md)):
   coordinación transaccional con `SELECT … FOR UPDATE` sobre la fila del
   generador (serializa selección + asignación + referencia), lectores sin
@@ -70,12 +76,12 @@ los ADR; las issues #2–#10 documentan cada incremento.
 
 | Comportamiento / AC | Evidencia automatizada | Evidencia de la demo |
 | --- | --- | --- |
-| Creación con resultado completo (enlace, vencimiento, aviso) | `LinkApiHttpTest`, `CreateLinkTest` | Demo fase A (`salida-demo.txt`): 201 con `shortUrl` LAN, `expiresAt` +60 min, `reuseNotice` |
-| Validación de destinos (LAN, credenciales, params, fragmento, 8.192, rechazos, orígenes propios equivalentes) | `DestinationValidationHttpTest`, `DestinationValidatorTest` | Demo fase A: aceptados con resolución verbatim y rechazos 400 por código, incluido `own-origins` configurado |
+| Creación con resultado completo (enlace, vencimiento, aviso) | `LinkApiHttpTest` | Demo fase A (`salida-demo.txt`): 201 con `shortUrl` LAN, `expiresAt` +60 min, `reuseNotice` |
+| Validación de destinos (LAN, credenciales, params, fragmento, 8.192, rechazos, orígenes propios equivalentes) | `DestinationValidationHttpTest` | Demo fase A: aceptados con resolución verbatim y rechazos 400 por código, incluido `own-origins` configurado |
 | Redirección 302 + `no-store`; 404 + página acordada | `LinkApiHttpTest`, `VencimientoHttpTest` | Demo fases A/B: 302 y 404 verificados por HTTP |
 | Vencimiento exacto sin renovación | `VencimientoHttpTest` (reloj controlable, límites exactos) | Demo fase B: vencimiento real con `LINK_DURATION=PT1M`, `vence_en` estable tras visitas, 404 al vencer |
 | Continuidad tras reinicio | `ReinicioServicioHttpTest` | Demo fases B y C: dos reinicios reales sobre la misma base; el enlace de 60 min sigue 302 |
-| Reciclaje de alias (más cortos primero) con historial | `ReciclajeAliasHttpTest`, `AliasRecyclingTest`, `AliasSequenceTest`, `RutasReservadasHttpTest` | Demo fase B: alias `7` reciclado con ambas asignaciones en el historial (`db-stats.txt`); con vencidos de 1 y 2 caracteres se reutilizó uno de 1 |
+| Reciclaje de alias (más cortos primero) con historial | `ReciclajeAliasHttpTest`, `RutasReservadasHttpTest` | Demo fase B: alias `7` reciclado con ambas asignaciones en el historial (`db-stats.txt`); con vencidos de 1 y 2 caracteres se reutilizó uno de 1 |
 | QR antiguo -> asignación nueva | `ReciclajeAliasHttpTest` (resolución al destino vigente) | Demo fase B: el PNG `qr-7.png` sigue decodificando el mismo `shortUrl`, que ahora redirige al nuevo destino |
 | QR PNG codifica el `shortUrl` | `src/test/js/qr-code.test.mjs` (UPNG+jsQR), `extensiones/tests/qr.test.mjs`, wiring en `LinkApiHttpTest` | Demo fases A/B: PNGs decodificados con UPNG+jsQR **y zbarimg**; escaneo con celular: checklist manual |
 | Concurrencia sin carreras | `ConcurrenciaHttpTest`, pruebas concurrentes de `ReciclajeAliasHttpTest` y `LinkApiHttpTest` | Medición de capacidad (10 clientes): unicidad y coherencia bajo carga |
@@ -83,6 +89,12 @@ los ADR; las issues #2–#10 documentan cada incremento.
 | Evolución sin tocar lo existente | `EvolucionDuracionHttpTest` + [evidencia-evolucion.md](evidencia-evolucion.md) | Los reinicios de la demo con `LINK_DURATION` distinto ejercitan el mismo punto de variación |
 | Complementos Chrome/Firefox (código, permisos, QR, errores) | `extensiones/tests/` (38 pruebas: contrato, paquetes byte a byte, QR) | Instalación manual y recorrido visual: checklist manual abajo |
 | Celular en la LAN escanea el QR | — (físico) | Checklist manual: escaneo del QR en pantalla y del PNG descargado |
+
+Cuando se ejecutó la demo, la columna de evidencia automatizada también
+citaba las suites unitarias `CreateLinkTest`, `DestinationValidatorTest`,
+`AliasRecyclingTest` y `AliasSequenceTest`. Esas suites se retiraron con
+el refactor al esquema de clase (ADR 0006, issue #15) y su cobertura
+migró a las suites `*HttpTest` que la tabla lista hoy.
 
 ## Verificación ejecutada en esta integración
 

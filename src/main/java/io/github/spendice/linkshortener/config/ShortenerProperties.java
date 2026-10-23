@@ -24,7 +24,8 @@ import java.util.List;
  *   <li>{@code alias-alphabet}: alfabeto de los códigos de alias; alimenta
  *   tanto la generación como la validación del código recibido.</li>
  *   <li>{@code max-destination-length}: largo máximo de la URL de
- *   destino (8192 por defecto).</li>
+ *   destino (8192 por defecto en {@code application.yml}); un valor no
+ *   positivo es un error de configuración.</li>
  *   <li>{@code alias-route-pattern}: patrón de la ruta {@code GET /{alias}};
  *   tiene que ser consistente con {@code alias-alphabet}.</li>
  * </ul>
@@ -46,8 +47,6 @@ public record ShortenerProperties(
     /** Patrón por defecto del alias, consistente con el alfabeto por defecto. */
     public static final String PATRON_RUTA_POR_DEFECTO = "[1-9A-HJ-NP-Za-km-z]{1,32}";
 
-    public static final int LARGO_MAXIMO_DESTINO_POR_DEFECTO = 8192;
-
     public ShortenerProperties {
         if (publicBaseUrl == null || publicBaseUrl.getHost() == null
                 || publicBaseUrl.getScheme() == null) {
@@ -67,7 +66,8 @@ public record ShortenerProperties(
             aliasAlphabet = ALFABETO_POR_DEFECTO;
         }
         if (maxDestinationLength <= 0) {
-            maxDestinationLength = LARGO_MAXIMO_DESTINO_POR_DEFECTO;
+            throw new IllegalArgumentException(
+                    "El largo máximo de la URL de destino debe ser positivo");
         }
         if (aliasRoutePattern == null || aliasRoutePattern.isBlank()) {
             aliasRoutePattern = PATRON_RUTA_POR_DEFECTO;

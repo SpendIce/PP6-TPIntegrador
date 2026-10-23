@@ -29,7 +29,7 @@ scripts/capacidad/ejecutar-medicion.sh
    (`docker run --rm`, contenedor `pp6-capacidad-pg`) publicado en
    `127.0.0.1:55433`. No reutiliza el `acortador-postgres` del
    docker-compose de desarrollo ni ningún servicio que ya ocupe 5432.
-2. Arranca el servicio con `mvn spring-boot:run` (procedimiento de
+2. Arranca el servicio con `./gradlew bootRun` (procedimiento de
    ejecución documentado) con `DB_PORT=55433`, `SERVER_PORT=8080` y
    `PUBLIC_BASE_URL=http://<IP-LAN>:8080`, donde la IP LAN se detecta de
    la primera interfaz global que no sea loopback, puente docker ni
@@ -56,9 +56,10 @@ Decisiones del procedimiento:
 
 - **Semillas por la API pública**, no por INSERT: producen el mismo
   estado que el uso real (misma transacción, mismo avance persistido de
-  `generador_alias`). Un INSERT directo tendría que replicar
-  `AliasSequence` (conteo base-58, longitudes, reservas) y fijar
-  `proximo_indice` a mano: estado distinto al real y frágil.
+  `generador_alias`). Un INSERT directo tendría que replicar la
+  enumeración de códigos del service (conteo base-58, longitudes,
+  reservas) y fijar `proximo_indice` a mano: estado distinto al real y
+  frágil.
 - **Latencia** medida con `performance.now()` entre el envío de la
   solicitud y la recepción completa de la respuesta (cabeceras y cuerpo).
   Percentiles por rango más cercano.

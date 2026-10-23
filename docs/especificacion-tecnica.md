@@ -78,8 +78,13 @@ la respuesta `400` de `openapi.yaml`):
   HSQLDB: el esquema equivalente vive en `db/hsqldb/schema.sql` y lo aplica
   `spring.sql.init`, con `flyway` deshabilitado y `ddl-auto=none` en el perfil.
 - Pruebas de integración: Testcontainers levanta `postgres:16.4-alpine` con
-  `@ServiceConnection`; las suites HTTP extienden `HttpApiFixture` y comparten
-  un único contenedor (singleton); no se usa H2 (ADR 0004).
+  `@ServiceConnection`. Las suites que comparten la configuración del
+  fixture extienden `HttpApiFixture` y comparten un único contenedor
+  (singleton); las que necesitan el reloj mutable
+  (`VencimientoHttpTest`, `ReciclajeAliasHttpTest`) o dos contextos
+  sucesivos (`EvolucionDuracionHttpTest`, `ReinicioServicioHttpTest`)
+  declaran su propia configuración y su propio contenedor. No se usa
+  H2 (ADR 0004).
 
 ## Migraciones
 

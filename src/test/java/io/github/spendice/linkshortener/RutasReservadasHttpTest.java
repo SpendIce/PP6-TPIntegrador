@@ -14,14 +14,15 @@ import static org.assertj.core.api.Assertions.assertThat;
 /**
  * Rutas reservadas sobre la API HTTP con el PostgreSQL compartido del
  * fixture: el contexto se configura con códigos reservados dentro del
- * espacio ejercitado ({@code 2} de un carácter y {@code 11} de dos) para
- * demostrar que el generador nunca los emite, ni siquiera al cruzar de
- * longitud, y que al no existir como alias responden el 404 acordado.
+ * espacio ejercitado ({@code 2} y {@code 3} consecutivos de un
+ * carácter, y {@code 11} de dos) para demostrar que el generador
+ * nunca los emite, ni siquiera al cruzar de longitud, y que al no
+ * existir como alias responden el 404 acordado.
  * La infraestructura compartida está en {@link HttpApiFixture}.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = {
         "shortener.public-base-url=http://192.168.50.10:8080",
-        "shortener.reserved-routes=api, error, 2, 11"
+        "shortener.reserved-routes=api, error, 2, 3, 11"
 })
 class RutasReservadasHttpTest extends HttpApiFixture {
 
@@ -32,27 +33,30 @@ class RutasReservadasHttpTest extends HttpApiFixture {
             emitidos.add(createAlias("https://ejemplo.com/reserva/" + i));
         }
 
-        // Con "2" reservado, el segundo código emitido es "3": se emite
-        // un código menos de un carácter (57), nunca "2" ni "11", y el
-        // primero de dos caracteres es "12" porque "11" también saltó.
+        // Con "2" y "3" reservados consecutivos, el segundo código
+        // emitido es "4": se emiten dos códigos menos de un carácter
+        // (56), nunca "2", "3" ni "11", y los dos primeros de dos
+        // caracteres son "12" y "13" porque "11" también saltó.
         List<String> orden = List.copyOf(emitidos);
-        assertThat(emitidos).hasSize(58).doesNotContain("2", "11");
+        assertThat(emitidos).hasSize(58).doesNotContain("2", "3", "11");
         assertThat(orden.get(0)).isEqualTo("1");
-        assertThat(orden.get(1)).isEqualTo("3");
-        assertThat(orden.subList(0, 57)).allMatch(code -> code.length() == 1);
-        assertThat(orden.get(57)).isEqualTo("12");
+        assertThat(orden.get(1)).isEqualTo("4");
+        assertThat(orden.subList(0, 56)).allMatch(code -> code.length() == 1);
+        assertThat(orden.get(56)).isEqualTo("12");
+        assertThat(orden.get(57)).isEqualTo("13");
 
         // Los códigos reservados no existen como alias: el mismo 404 de
         // alias desconocido, aunque sean símbolos válidos del alfabeto.
         assertThat(get("/2").statusCode()).isEqualTo(404);
         assertThat(get("/2").body()).contains("Este enlace no existe o venció");
+        assertThat(get("/3").statusCode()).isEqualTo(404);
         assertThat(get("/11").statusCode()).isEqualTo(404);
 
         // El primer código de dos caracteres sí quedó emitido y resuelve.
         HttpResponse<String> redirect = get("/12");
         assertThat(redirect.statusCode()).isEqualTo(302);
         assertThat(redirect.headers().firstValue("Location"))
-                .contains("https://ejemplo.com/reserva/57");
+                .contains("https://ejemplo.com/reserva/56");
     }
 
     private String createAlias(String destination) throws Exception {
