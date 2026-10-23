@@ -1,4 +1,4 @@
-package io.github.spendice.linkshortener.infrastructure.persistence;
+package io.github.spendice.linkshortener.mappings;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -12,9 +12,9 @@ import jakarta.persistence.Table;
  */
 @Entity
 @Table(name = "generador_alias")
-class CodeGeneratorEntity {
+public class GeneradorAlias {
 
-    static final short SINGLETON_ID = 1;
+    public static final short SINGLETON_ID = 1;
 
     @Id
     private Short id;
@@ -22,14 +22,14 @@ class CodeGeneratorEntity {
     @Column(name = "proximo_indice", nullable = false)
     private long proximoIndice;
 
-    protected CodeGeneratorEntity() {
+    protected GeneradorAlias() {
     }
 
-    long getProximoIndice() {
+    public long getProximoIndice() {
         return proximoIndice;
     }
 
-    void setProximoIndice(long proximoIndice) {
+    public void setProximoIndice(long proximoIndice) {
         this.proximoIndice = proximoIndice;
     }
 }

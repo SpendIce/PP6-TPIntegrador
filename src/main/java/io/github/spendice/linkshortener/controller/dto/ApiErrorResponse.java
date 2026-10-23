@@ -1,4 +1,4 @@
-package io.github.spendice.linkshortener.infrastructure.http.dto;
+package io.github.spendice.linkshortener.controller.dto;
 
 /**
  * DTO de error de la API: {@code error} es el código estable del

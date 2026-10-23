@@ -1,7 +1,7 @@
-package io.github.spendice.linkshortener.infrastructure.http;
+package io.github.spendice.linkshortener.controller;
 
-import io.github.spendice.linkshortener.domain.InvalidDestinationException;
-import io.github.spendice.linkshortener.infrastructure.http.dto.ApiErrorResponse;
+import io.github.spendice.linkshortener.controller.dto.ApiErrorResponse;
+import io.github.spendice.linkshortener.service.InvalidDestinationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;

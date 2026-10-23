@@ -1,6 +1,7 @@
-package io.github.spendice.linkshortener.infrastructure.http;
+package io.github.spendice.linkshortener.controller;
 
-import io.github.spendice.linkshortener.application.ResolveLink;
+import io.github.spendice.linkshortener.service.AcortadorService;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.CacheControl;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -13,14 +14,13 @@ import org.springframework.web.bind.annotation.RestController;
 /**
  * Resolución pública: {@code GET /{alias}} redirige (302) al destino de
  * la asignación vigente o responde 404 con la página acordada. El patrón
- * solo admite símbolos del alfabeto, por lo que las rutas propias
- * (archivos estáticos con extensión, {@code /api/...}) nunca entran aquí
- * como alias.
+ * solo admite símbolos del alfabeto configurado (placeholder
+ * {@code shortener.alias-route-pattern}, con el patrón por defecto en
+ * línea como respaldo): las rutas propias (archivos estáticos con
+ * extensión, {@code /api/...}) nunca entran aquí como alias.
  */
 @RestController
 class RedirectController {
-
-    private static final String ALIAS_PATTERN = "[1-9A-HJ-NP-Za-km-z]{1,32}";
 
     private static final String NOT_FOUND_PAGE = """
             <!DOCTYPE html>
@@ -39,17 +39,14 @@ class RedirectController {
             </html>
             """;
 
-    private final ResolveLink resolveLink;
+    @Autowired
+    AcortadorService service;
 
-    RedirectController(ResolveLink resolveLink) {
-        this.resolveLink = resolveLink;
-    }
-
-    @GetMapping("/{alias:" + ALIAS_PATTERN + "}")
-    ResponseEntity<String> resolve(@PathVariable("alias") String alias) {
-        return resolveLink.resolve(alias)
-                .map(assignment -> ResponseEntity.status(HttpStatus.FOUND)
-                        .header(HttpHeaders.LOCATION, assignment.destination())
+    @GetMapping("/{alias:${shortener.alias-route-pattern:[1-9A-HJ-NP-Za-km-z]{1,32}}}")
+    ResponseEntity<String> resolver(@PathVariable("alias") String alias) {
+        return service.resolver(alias)
+                .map(asignacion -> ResponseEntity.status(HttpStatus.FOUND)
+                        .header(HttpHeaders.LOCATION, asignacion.getDestino())
                         .cacheControl(CacheControl.noStore())
                         .<String>build())
                 .orElseGet(() -> ResponseEntity.status(HttpStatus.NOT_FOUND)
