@@ -1,16 +1,13 @@
 package io.github.spendice.linkshortener;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import io.github.spendice.linkshortener.application.port.AliasStore;
-import io.github.spendice.linkshortener.application.port.AssignmentStore;
-import io.github.spendice.linkshortener.domain.Alias;
-import io.github.spendice.linkshortener.domain.Assignment;
 import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
 
 import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -30,11 +27,6 @@ import static org.assertj.core.api.Assertions.assertThat;
  * {@link HttpApiFixture}.
  */
 class LinkApiHttpTest extends HttpApiFixture {
-
-    @Autowired
-    AliasStore aliasStore;
-    @Autowired
-    AssignmentStore assignmentStore;
 
     @Test
     void creaAsignacionYDevuelveEnlacePublicoConVencimiento() throws Exception {
@@ -85,17 +77,27 @@ class LinkApiHttpTest extends HttpApiFixture {
 
     @Test
     void aliasVencidoDevuelveElMismo404() throws Exception {
-        Instant now = Instant.now();
-        Alias alias = aliasStore.claim(now);
-        Assignment vencida = assignmentStore.save(Assignment.pending(
-                alias.code(), "https://ejemplo.com/viejo",
-                now.minus(Duration.ofHours(2)), now.minus(Duration.ofHours(1))));
-        aliasStore.assignCurrent(alias.code(), vencida.id());
+        // La asignación se crea por API y se vence por SQL, como si su
+        // hora ya hubiera pasado: no hay operación pública que la venza.
+        String alias = createAliasFor("https://ejemplo.com/viejo");
+        Instant ahora = Instant.now();
+        db.update("UPDATE asignacion SET creada_en = ?, vence_en = ? WHERE alias_codigo = ?",
+                OffsetDateTime.ofInstant(ahora.minus(Duration.ofHours(2)), ZoneOffset.UTC),
+                OffsetDateTime.ofInstant(ahora.minus(Duration.ofHours(1)), ZoneOffset.UTC),
+                alias);
 
-        HttpResponse<String> response = get("/" + alias.code());
+        HttpResponse<String> response = get("/" + alias);
 
         assertThat(response.statusCode()).isEqualTo(404);
         assertThat(response.body()).contains("Este enlace no existe o venció");
+    }
+
+    @Test
+    void codigosFueraDelAlfabetoDevuelven404() throws Exception {
+        // El patrón de la ruta solo admite símbolos del alfabeto: un
+        // pedido con caracteres ajenos ni siquiera llega a resolverse.
+        assertThat(get("/0").statusCode()).isEqualTo(404);
+        assertThat(get("/no-es-alias").statusCode()).isEqualTo(404);
     }
 
     @Test

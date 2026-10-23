@@ -1,11 +1,10 @@
 package io.github.spendice.linkshortener;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import io.github.spendice.linkshortener.domain.AliasSequence;
 import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
 
 import java.net.http.HttpResponse;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -17,9 +16,6 @@ import static org.assertj.core.api.Assertions.assertThat;
  * La infraestructura compartida está en {@link HttpApiFixture}.
  */
 class DestinationValidationHttpTest extends HttpApiFixture {
-
-    @Autowired
-    AliasSequence sequence;
 
     @Test
     void conservaElDestinoVerbatimEnPersistenciaYRedireccion() throws Exception {
@@ -72,6 +68,12 @@ class DestinationValidationHttpTest extends HttpApiFixture {
     }
 
     @Test
+    void aceptaEsquemaEnMayusculas() throws Exception {
+        assertThat(postJson("{\"destination\":\"HTTPS://ejemplo.com/recurso\"}")
+                .statusCode()).isEqualTo(201);
+    }
+
+    @Test
     void aceptaOtroPuertoDelMismoHostQueNoEsOrigenPropio() throws Exception {
         assertThat(postJson("{\"destination\":\"http://192.168.50.10:8081/otro-servicio\"}")
                 .statusCode()).isEqualTo(201);
@@ -89,6 +91,20 @@ class DestinationValidationHttpTest extends HttpApiFixture {
         assertError(postJson("{\"destination\":\"http://[::1]:8080/propio\"}"), "OWN_ORIGIN");
         assertError(postJson("{\"destination\":\"http://usuario:clave@localhost:8080/propio\"}"),
                 "OWN_ORIGIN");
+    }
+
+    @Test
+    void rechazaDestinosSinHostOSinAutoridad() throws Exception {
+        // URI con autoridad vacía o sin autoridad: esquema válido pero
+        // sin host que resuelva el enlace.
+        assertError(postJson("{\"destination\":\"https:///sin-host\"}"),
+                "MALFORMED_DESTINATION");
+        assertError(postJson("{\"destination\":\"http:ejemplo.com\"}"),
+                "MALFORMED_DESTINATION");
+        assertError(postJson("{\"destination\":\"http://user@/ruta\"}"),
+                "MALFORMED_DESTINATION");
+        assertError(postJson("{\"destination\":\"//ejemplo.com/ruta\"}"),
+                "UNSUPPORTED_SCHEME");
     }
 
     @Test
@@ -119,7 +135,10 @@ class DestinationValidationHttpTest extends HttpApiFixture {
         long indiceAntes = proximoIndice();
         long aliasAntes = countRows("alias");
         long asignacionesAntes = countRows("asignacion");
-        String aliasEsperado = sequence.codeAt(sequence.indexOfNextCode(indiceAntes));
+        // El contexto del fixture reserva api y error: el siguiente
+        // código emitible se calcula saltándolos igual que el generador.
+        String aliasEsperado = CodigosDeAlias.codigoEn(
+                CodigosDeAlias.indiceDelSiguienteCodigo(indiceAntes, List.of("api", "error")));
 
         assertError(postJson("{\"destination\":\"https://ejemplo.com/con espacios\"}"),
                 "MALFORMED_DESTINATION");

@@ -134,6 +134,18 @@ class ReciclajeAliasHttpTest {
     }
 
     @Test
+    void agotaLos3364CodigosDeDosCaracteresAntesDeEmitirElPrimeroDeTres() throws Exception {
+        // Emitir los 3422 códigos por API sería lento: el avance del
+        // generador persiste, así que se siembra el índice que sigue al
+        // último código de dos caracteres ("zz", índice 3421) y la
+        // próxima creación debe emitir el primero de tres.
+        db.update("UPDATE generador_alias SET proximo_indice = ?", 3422L);
+
+        assertThat(createAlias("https://ejemplo.com/espacio-largo")).isEqualTo("111");
+        assertThat(proximoIndice()).isEqualTo(3423);
+    }
+
+    @Test
     void prefiereLosVencidosDeMenorLongitudYDesempataPorCodigo() throws Exception {
         // Espacio emitido: los 58 de un carácter más "11".
         for (int i = 0; i < 58; i++) {
