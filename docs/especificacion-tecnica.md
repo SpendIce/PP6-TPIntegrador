@@ -1,8 +1,11 @@
-# Especificación técnica — creación y resolución de enlaces
+# Especificación técnica: creación y resolución de enlaces
 
 Estado: decisiones técnicas fijadas para el issue #2, extendidas con la
 evidencia de vencimiento y reinicio del issue #3, la reutilización de
-alias del issue #5 y las garantías de concurrencia del issue #6. Cierra
+alias del issue #5 y las garantías de concurrencia del issue #6. La
+estructura descrita refleja el refactor al esquema de clase del issue
+#15 (service único con `EntityManager` y HQL sobre las entities de
+`mappings`, [ADR 0006](adr/0006-service-unico-hql-mappings.md)). Cierra
 los puntos que
 [arquitectura y validación](arquitectura-y-validacion.md) dejó pendientes de
 especificación técnica: versiones concretas, ejecución de PostgreSQL, mecanismo
@@ -47,7 +50,7 @@ la respuesta `400` de `openapi.yaml`):
   orígenes declarados en `own-origins`; otro puerto u otro host LAN no es
   origen propio.
 - Ningún rechazo crea asignación ni consume un alias: la validación ocurre
-  antes de la reserva dentro de la transacción del caso de uso.
+  antes de la reserva dentro de la transacción de `acortar`.
 
 ## Versiones fijadas
 
@@ -56,7 +59,7 @@ la respuesta `400` de `openapi.yaml`):
 | Java | 17 (OpenJDK) | Compilación y ejecución (toolchain en `build.gradle`). |
 | Gradle | 8.14.5 (wrapper) | Build y gestión de dependencias; el wrapper versionado evita instalar Gradle. |
 | Spring Boot | 3.5.16 | Plugin Gradle `org.springframework.boot`; fija las versiones administradas de Spring, Hibernate, Jackson, Flyway y Testcontainers. |
-| Spring Web / Spring Data JPA (Hibernate 6) | administradas por Boot 3.5.16 | Adaptadores HTTP y JPA. |
+| Spring Web / Spring Data JPA (Hibernate 6) | administradas por Boot 3.5.16 | Controllers web y acceso JPA por `EntityManager` + HQL; no se usan repositorios Spring Data (ADR 0006). |
 | PostgreSQL JDBC | administrada por Boot | Driver. |
 | Flyway (`flyway-core` + `flyway-database-postgresql`) | administrada por Boot | Migraciones versionadas desde el inicio. |
 | Testcontainers (`postgresql`, `junit-jupiter`) + `spring-boot-testcontainers` | administradas por Boot | PostgreSQL real en pruebas de integración (ADR 0004). |
@@ -74,9 +77,20 @@ la respuesta `400` de `openapi.yaml`):
   sin contraseña) levantado con `./gradlew hsqldbServer`. Flyway 11 no soporta
   HSQLDB: el esquema equivalente vive en `db/hsqldb/schema.sql` y lo aplica
   `spring.sql.init`, con `flyway` deshabilitado y `ddl-auto=none` en el perfil.
-- Pruebas de integración: Testcontainers levanta `postgres:16.4-alpine` con
-  `@ServiceConnection`; las suites HTTP extienden `HttpApiFixture` y comparten
-  un único contenedor (singleton); no se usa H2 (ADR 0004).
+- Pruebas de integración: Testcontainers levanta `postgres:16.4-alpine`
+  en tres grupos de contextos. `LinkApiHttpTest`,
+  `ConcurrenciaHttpTest`, `DestinationValidationHttpTest` y
+  `RutasReservadasHttpTest` extienden `HttpApiFixture` y comparten un
+  único contenedor (patrón singleton con `@ServiceConnection`);
+  `RutasReservadasHttpTest` declara sus propias `properties` de
+  `@SpringBootTest`, así que corre en un contexto Spring cacheado
+  distinto pero contra el mismo contenedor. `VencimientoHttpTest` y
+  `ReciclajeAliasHttpTest` agregan `ClockTestConfiguration` (reloj
+  mutable) y declaran su propio `@Container` con `@ServiceConnection`.
+  `EvolucionDuracionHttpTest` y `ReinicioServicioHttpTest` levantan los
+  contextos programáticamente con `SpringApplicationBuilder` contra su
+  propio `@Container`, con el datasource pasado por argumentos de
+  arranque (sin `@ServiceConnection`). No se usa H2 (ADR 0004).
 
 ## Migraciones
 
@@ -106,47 +120,55 @@ de cada alias. Solo crea el índice, sin tocar los datos existentes.
 
 ## Coordinación transaccional
 
-La creación ejecuta una única transacción (`@Transactional` del caso de uso,
-mecanismo Spring permitido por ADR 0001 para el límite transaccional):
+La creación ejecuta una única transacción (`@Transactional` de
+`AcortadorService.acortar`):
 
-1. `SELECT ... FOR UPDATE` sobre la fila única de `generador_alias` serializa
-   toda la selección: dos creaciones simultáneas no pueden tomar el mismo
+1. `em.find(GeneradorAlias.class, GeneradorAlias.SINGLETON_ID,
+   LockModeType.PESSIMISTIC_WRITE)` bloquea la fila única de
+   `generador_alias` (`SELECT ... FOR UPDATE`) y serializa toda la
+   selección: dos creaciones simultáneas no pueden tomar el mismo
    índice ni reciclar el mismo alias vencido.
-2. Ya serializada, se consultan los candidatos a reciclaje: los alias cuya
-   asignación actual tiene `vence_en <= instante de creación`
-   (`AliasJpaRepository.findRecyclableCodes`, que enlaza cada alias con su
-   asignación actual mediante la referencia garantizada por la FK
-   compuesta).
-3. La política `AliasRecycling` (dominio puro) elige entre los candidatos
-   el de menor longitud; a igualdad de longitud desempata por el orden
-   natural del código — determinista y distingue mayúsculas, por ejemplo
+2. Ya serializada, una consulta HQL sobre las entities de `mappings`
+   (`em.createQuery` con `Alias` y `Asignacion`) devuelve los
+   candidatos a reciclaje: los alias cuya asignación actual tiene
+   `venceEn <= instante de creación`. El vínculo usa la referencia
+   actual del alias, garantizada por la FK compuesta.
+3. Un helper privado del service elige entre los candidatos el de
+   menor longitud; a igualdad de longitud desempata por el orden
+   natural del código: determinista y distingue mayúsculas, por ejemplo
    `'A'` precede a `'a'`. Si hay candidato, se reutiliza su alias sin
    consumir índice del generador.
-4. Sin candidatos reutilizables, la política `AliasSequence` calcula el
-   código del próximo índice (agotando una longitud antes de la siguiente
-   y saltando códigos reservados) y se inserta el alias nuevo.
-5. Se inserta `asignacion` y se actualiza `asignacion_actual_id` en la
-   misma transacción; las asignaciones anteriores del alias reciclado
-   quedan intactas en el historial (ADR 0003).
+4. Sin candidatos reutilizables, los helpers privados de enumeración
+   calculan el índice del próximo código saltando los reservados
+   (`reserved-routes`) y el código de ese índice sobre `alias-alphabet`,
+   agotando una longitud antes de la siguiente; se actualiza
+   `proximoIndice` del generador y se persiste el alias nuevo con
+   `em.persist` y `em.flush`, porque la asignación IDENTITY que se
+   inserta a continuación referencia `alias.codigo` por FK y la fila
+   tiene que existir antes.
+5. Se persiste la asignación (`em.persist`, con `creadaEn` del `Clock`
+   inyectado y `venceEn = creadaEn + linkDuration`) y se actualiza
+   `asignacion_actual_id` del alias en la misma transacción; las
+   asignaciones anteriores del alias reciclado quedan intactas en el
+   historial (ADR 0003).
 
 La serialización cubre toda la selección: una creación nunca salta a un
 alias más largo habiendo un vencido más corto disponible, ni dos creaciones
-concurrentes se reparten el mismo vencido. Las políticas de selección
-(`AliasRecycling` para reutilizados, `AliasSequence` para códigos nuevos)
-siguen separadas del mecanismo de reserva: la consulta devuelve los
-candidatos y la prioridad la decide el dominio, no el SQL.
+concurrentes se reparten el mismo vencido. La consulta devuelve los
+candidatos y la prioridad la deciden los helpers del service en Java, no
+el SQL.
 
 El mecanismo elegido es un bloqueo pesimista sobre la fila única de
-`generador_alias` (`PESSIMISTIC_WRITE`, emitido como `SELECT ... FOR
-UPDATE`). Detalles que cierran su suficiencia:
+`generador_alias` (`PESSIMISTIC_WRITE` vía `em.find`, emitido como
+`SELECT ... FOR UPDATE`). Detalles que cierran su suficiencia:
 
-- **Cobertura**: el bloqueo se adquiere al inicio de `claim` dentro de la
-  transacción `REQUIRED` que ya abrió `CreateLink.create`, por lo que se
-  retiene hasta el commit del caso de uso. Quedan serializados entre sí
-  la consulta de vencidos, la elección de la política, el avance del
+- **Cobertura**: el bloqueo se adquiere al inicio de la reserva dentro
+  de la transacción `REQUIRED` que abrió `acortar`, por lo que se
+  retiene hasta el commit del método. Quedan serializados entre sí
+  la consulta de vencidos, la elección del candidato, el avance del
   índice y la escritura de asignación + referencia actual: la unidad
   completa, no solo el contador.
-- **Lectores**: `ResolveLink` corre en `@Transactional(readOnly = true)`
+- **Lectores**: `resolver` corre en `@Transactional(readOnly = true)`
   y no toma bloqueos (`FOR UPDATE` no retiene lecturas en PostgreSQL).
   Con el nivel READ COMMITTED por defecto, cada consulta lee el último
   estado confirmado: la resolución lee la referencia actual del alias y
@@ -163,18 +185,18 @@ UPDATE`). Detalles que cierran su suficiencia:
   que no puede quedar confirmada una reserva sin asignación ni una
   referencia a una asignación inexistente. Además, por el contrato
   público no existe un fallo posterior a la reserva que sea alcanzable:
-  la validación corre antes de `claim` y la persistencia no tiene otra
-  restricción que una entrada ya aceptada pueda violar. La evidencia de
-  atomicidad es entonces la combinación de un rechazo que no consume
-  alias ni índice y una carga mixta válida/inválida que conserva las
-  invariantes.
+  la validación corre antes del bloqueo del generador y la persistencia
+  no tiene otra restricción que una entrada ya aceptada pueda violar. La
+  evidencia de atomicidad es entonces la combinación de un rechazo que
+  no consume alias ni índice y una carga mixta válida/inválida que
+  conserva las invariantes.
 - **Suficiencia y evolución**: la sección serializada son unas pocas
   consultas indexadas por transacción; para la carga de referencia (10
   clientes simultáneos, historias cortas) la espera por el bloqueo es
   despreciable y las resoluciones no compiten por él. Si la carga
   creciera (fila «Mayor concurrencia» de
   [arquitectura y validación](arquitectura-y-validacion.md)), el cambio
-  es interno del adaptador: bloqueo por fila de alias candidato con
+  es interno del service: bloqueo por fila de alias candidato con
   `FOR UPDATE`/`SKIP LOCKED` en la consulta de vencidos, o contadores
   particionados por longitud para la generación. Las invariantes del
   modelo y las pruebas de concurrencia no cambiarían.
@@ -187,43 +209,71 @@ mixta, resolución durante la reasignación y reintento sin idempotencia.
 
 ## Configuración de despliegue
 
-Prefijo `shortener` (`ShortenerProperties`):
+Prefijo `shortener` (`ShortenerProperties`). Cada clave se declara en
+`application.yml` como `${ENV:default}`, para que ningún valor variable
+quede hardcodeado (issue #15):
 
-- `public-base-url` (obligatoria, `PUBLIC_BASE_URL`): dirección pública del
-  servicio usada para componer `shortUrl`. No se deriva de la solicitud ni se
-  fija a localhost. Para la demo LAN se configura la dirección LAN, p. ej.
-  `http://192.168.1.50:8080`.
+- `public-base-url` (`PUBLIC_BASE_URL`, default `http://localhost:8080`):
+  dirección pública del servicio usada para componer `shortUrl`. No se
+  deriva de la solicitud ni se fija a localhost. Para la demo LAN se
+  configura la dirección LAN, p. ej. `http://192.168.1.50:8080`.
+- `link-duration` (`Duration`, `LINK_DURATION`, default `PT60M`):
+  duración de las nuevas asignaciones. El experimento de adaptación la
+  cambia sin tocar las asignaciones existentes, cuyo `vence_en` ya está
+  persistido. Evidencia ejecutada y análisis de los demás cambios
+  representativos en [evidencia-evolucion.md](evidencia-evolucion.md)
+  (issue #10).
 - `own-origins` (lista, `OWN_ORIGINS`): orígenes propios adicionales
-  (`esquema://host[:puerto]`). A ellos se suman automáticamente el origen de
-  `public-base-url` y los equivalentes loopback (`localhost`, `127.0.0.1`,
-  `::1`) con el mismo puerto. La comparación de enlace propio usa host y
-  puerto efectivo (80/443 por defecto según esquema), ignorando el esquema.
-- `reserved-routes` (lista): códigos que el generador salta siempre. Por
-  defecto `api` y `error`, los segmentos de rutas del propio servicio.
-- `link-duration` (`Duration`, `LINK_DURATION`): duración de las nuevas
-  asignaciones; `PT60M` por defecto. El experimento de adaptación la cambia
-  sin tocar las asignaciones existentes, cuyo `vence_en` ya está persistido.
-  Evidencia ejecutada y análisis de los demás cambios representativos en
-  [evidencia-evolucion.md](evidencia-evolucion.md) (issue #10).
+  (`esquema://host[:puerto]`). A ellos se suman automáticamente el origen
+  de `public-base-url` y los equivalentes loopback (`localhost`,
+  `127.0.0.1`, `::1`) con el mismo puerto. La comparación de enlace
+  propio usa host y puerto efectivo (80/443 por defecto según esquema),
+  ignorando el esquema.
+- `reserved-routes` (lista, `RESERVED_ROUTES`): códigos que el generador
+  salta siempre. Por defecto `api` y `error`, los segmentos de rutas del
+  propio servicio.
+- `alias-alphabet` (`ALIAS_ALPHABET`): símbolos del espacio de códigos;
+  por defecto el alfabeto de 58 acordado
+  (`123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz`, sin `0`,
+  `O`, `I` ni `l`). El service lo usa tanto para enumerar códigos nuevos
+  como para decidir si un segmento es un código al resolver.
+- `max-destination-length` (`MAX_DESTINATION_LENGTH`): largo máximo
+  aceptado de la URL de destino; `8192` por defecto.
+- `alias-route-pattern` (`ALIAS_ROUTE_PATTERN`): la expresión regular del
+  template `{alias:regex}` del mapping de resolución, inyectada como
+  placeholder `${shortener.alias-route-pattern}` con default inline por
+  si el placeholder no resuelve en la anotación. Acota qué segmentos de
+  ruta llegan al service como alias (por defecto
+  `[1-9A-HJ-NP-Za-km-z]{1,32}`). Adyacencia: al cambiar `ALIAS_ALPHABET`
+  hay que revisar `ALIAS_ROUTE_PATTERN`, para que el patrón siga
+  aceptando exactamente los códigos que el alfabeto puede emitir.
 
 ## Estructura de paquetes
 
-`io.github.spendice.linkshortener`:
+`io.github.spendice.linkshortener`, reorganizado al esquema de clase del
+issue #15 (ADR 0006):
 
-- `domain`: `Alias`, `Assignment`, `AliasAlphabet`, `AliasSequence`,
-  `AliasRecycling`, `ExpirationPolicy`, `DestinationValidator`,
-  `InvalidDestinationException`, `ServiceOrigin`. Sin imports de Spring, JPA
-  ni HTTP.
-- `application`: casos de uso `CreateLink`, `ResolveLink`, resultado
-  `CreatedLink` y puertos `port.AliasStore`, `port.AssignmentStore`. Los casos
-  de uso solo importan `spring-tx` para el límite transaccional.
-- `infrastructure.persistence`: entidades JPA, repositorios Spring Data y
-  adaptadores `JpaAliasStore`, `JpaAssignmentStore` que implementan los
-  puertos.
-- `infrastructure.http`: `LinkApiController`, `RedirectController`, DTOs
-  propios (no se exponen entidades JPA) y `ApiExceptionHandler`.
-- `infrastructure.config`: `ShortenerProperties` y el cableado de los puertos
-  del dominio (`DomainConfig`).
+- `controller`: `LinkApiController` (`POST /api/links`),
+  `RedirectController` (`GET /{alias}`), `ApiExceptionHandler` y `dto/`
+  (`CreateLinkRequest`, `ApiErrorResponse`). Controllers pass-through:
+  traducen la request, llaman al método del service y devuelven su
+  resultado; el `201` serializa el record `EnlaceCreado` directo como
+  body.
+- `service`: `AcortadorService`, el único `@Service`: los casos de uso
+  `acortar` y `resolver` como métodos públicos y todas las reglas de
+  negocio como helpers privados del mismo archivo (validación de
+  destino, cálculo de vencimiento, enumeración de códigos, elección del
+  reciclable, orígenes propios). La inyección es `@Autowired` en campos,
+  incluido el `EntityManager`. También viven acá el record de resultado
+  `EnlaceCreado` e `InvalidDestinationException`, cuyo `Reason` es el
+  contrato de errores de la API.
+- `mappings`: entities JPA públicas `Alias`, `Asignacion` y
+  `GeneradorAlias`, el modelo del servicio. El service las consulta y
+  persiste con `EntityManager` y HQL, sin repositorios Spring Data ni
+  clases de dominio paralelas que traducir. Las tablas y columnas son
+  las mismas del esquema versionado.
+- `config`: `ShortenerProperties` (`@ConfigurationProperties`) y una
+  `@Configuration` mínima con el bean `Clock`.
 - `resources/static`: web `index.html`, `app.js`, `styles.css`, módulo
   `qr-code.js` y biblioteca vendorizada `vendor/qrcode.js`
   (ver «QR del enlace»).
@@ -234,8 +284,8 @@ El QR se genera íntegramente en el cliente, sobre el `shortUrl` devuelto
 por `POST /api/links` (la dirección pública del enlace, no el destino ni
 una asignación histórica; ver «Código QR del enlace» en
 [CONTEXT.md](../CONTEXT.md)). El backend no almacena ni sirve imágenes
-QR y el cliente no recibe entidades JPA: consume solo el DTO del
-contrato.
+QR y el cliente no recibe entities JPA: consume solo el record
+`EnlaceCreado` serializado con los nombres del contrato.
 
 - `static/vendor/qrcode.js`: qrcode-generator 1.4.4 (Kazuhiko Arase,
   MIT), vendorizada porque la demo corre en LAN sin garantía de
@@ -271,8 +321,9 @@ incluida la verificación visual manual, en
 
 ## Reloj
 
-Los casos de uso usan `java.time.Clock` inyectado (`Clock.systemUTC()` en
-producción). No existe operación pública para mover el reloj.
+`AcortadorService` usa `java.time.Clock` inyectado (bean
+`Clock.systemUTC()` declarado en `config`). No existe operación pública
+para mover el reloj.
 
 La vigencia se evalúa en el servidor en el instante de resolución: la
 consulta compara `clock.instant()` con el `vence_en` persistido de la
@@ -301,8 +352,7 @@ reiniciar contra el mismo PostgreSQL.
 
 La reutilización de alias (issue #5) se verifica en
 `ReciclajeAliasHttpTest`, `RutasReservadasHttpTest` y
-`ReinicioServicioHttpTest` sobre PostgreSQL, y en las pruebas de dominio y
-caso de uso (`AliasRecyclingTest`, `AliasSequenceTest`, `CreateLinkTest`):
+`ReinicioServicioHttpTest` sobre PostgreSQL:
 reciclaje del alias vencido antes de emitir un código nuevo, prioridad de
 menor longitud con desempate determinista por orden natural, expansión
 agotando los 58 códigos de un carácter antes del primero de dos, salto de
@@ -315,7 +365,7 @@ continuidad del reciclaje y del avance del generador tras reiniciar.
 
 El experimento de adaptación (issue #10) se verificó en
 `EvolucionDuracionHttpTest`: dos contextos sucesivos sobre el mismo
-PostgreSQL — `PT60M` y luego `PT5M` solo para nuevas creaciones —
+PostgreSQL (`PT60M` y luego `PT5M` solo para nuevas creaciones)
 demuestran que cada asignación conserva el `vence_en` que persistió al
 crearse, con la duración de entrega restituida a 60 minutos. El
 procedimiento reproducible y el análisis de alias personalizados,

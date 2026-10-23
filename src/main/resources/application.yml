@@ -22,4 +22,8 @@ shortener:
   public-base-url: ${PUBLIC_BASE_URL:http://localhost:8080}
   link-duration: ${LINK_DURATION:PT60M}
   own-origins: ${OWN_ORIGINS:}
-  reserved-routes: api, error
+  reserved-routes: ${RESERVED_ROUTES:api,error}
+  alias-alphabet: ${ALIAS_ALPHABET:123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz}
+  max-destination-length: ${MAX_DESTINATION_LENGTH:8192}
+  # Si cambia ALIAS_ALPHABET hay que revisar este patrón: deben ser consistentes.
+  alias-route-pattern: ${ALIAS_ROUTE_PATTERN:[1-9A-HJ-NP-Za-km-z]{1,32}}

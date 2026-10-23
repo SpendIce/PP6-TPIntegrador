@@ -1,9 +1,7 @@
 package io.github.spendice.linkshortener;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import io.github.spendice.linkshortener.domain.AliasSequence;
 import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
 
 import java.net.http.HttpResponse;
 import java.sql.Timestamp;
@@ -47,9 +45,6 @@ class ConcurrenciaHttpTest extends HttpApiFixture {
 
     private static final Duration DURACION = Duration.ofMinutes(60);
     private static final Duration ESPERA_HILOS = Duration.ofSeconds(30);
-
-    @Autowired
-    AliasSequence sequence;
 
     @Test
     void competicionPorUnAliasVencidoLoObtieneExactamenteUnaCreacion() throws Exception {
@@ -127,7 +122,7 @@ class ConcurrenciaHttpTest extends HttpApiFixture {
             }
         }
         for (int i = 0; i < 3; i++) {
-            marcarVencido(sequence.codeAt(i));
+            marcarVencido(CodigosDeAlias.codigoEn(i));
         }
         assertThat(proximoIndice()).isEqualTo(58);
 
@@ -388,7 +383,7 @@ class ConcurrenciaHttpTest extends HttpApiFixture {
     }
 
     private String seedAlias(int indiceEnumeracion, String destino, Instant creadaEn, Instant venceEn) {
-        String codigo = sequence.codeAt(indiceEnumeracion);
+        String codigo = CodigosDeAlias.codigoEn(indiceEnumeracion);
         db.update("INSERT INTO alias (codigo) VALUES (?)", codigo);
         Long id = db.queryForObject(
                 "INSERT INTO asignacion (alias_codigo, destino, creada_en, vence_en)"
