@@ -13,3 +13,5 @@ Los contratos de la API se describirán mediante DTO propios, evitando que las e
 Acuerdos: respuestas Q8, Q14 y Q15 de la entrevista iniciada el 2026-10-05.
 
 El 2026-10-07 Maven se reemplazó por Gradle a pedido del docente: ver el [ADR 0005](0005-gradle-y-perfil-hsqldb.md).
+
+El 2026-10-23 la separación entre reglas, casos de uso y adaptadores se reemplazó por el esquema de clase (service único con `EntityManager` y HQL sobre las entities de `mappings`), también a pedido del docente: ver el [ADR 0006](0006-service-unico-hql-mappings.md).
