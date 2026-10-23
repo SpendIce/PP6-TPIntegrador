@@ -65,6 +65,10 @@ public record ShortenerProperties(
         if (aliasAlphabet == null || aliasAlphabet.isBlank()) {
             aliasAlphabet = ALFABETO_POR_DEFECTO;
         }
+        if (aliasAlphabet.chars().distinct().count() != aliasAlphabet.length()) {
+            throw new IllegalArgumentException(
+                    "El alfabeto de alias no puede tener símbolos repetidos");
+        }
         if (maxDestinationLength <= 0) {
             throw new IllegalArgumentException(
                     "El largo máximo de la URL de destino debe ser positivo");

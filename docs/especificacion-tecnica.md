@@ -77,14 +77,20 @@ la respuesta `400` de `openapi.yaml`):
   sin contraseña) levantado con `./gradlew hsqldbServer`. Flyway 11 no soporta
   HSQLDB: el esquema equivalente vive en `db/hsqldb/schema.sql` y lo aplica
   `spring.sql.init`, con `flyway` deshabilitado y `ddl-auto=none` en el perfil.
-- Pruebas de integración: Testcontainers levanta `postgres:16.4-alpine` con
-  `@ServiceConnection`. Las suites que comparten la configuración del
-  fixture extienden `HttpApiFixture` y comparten un único contenedor
-  (singleton); las que necesitan el reloj mutable
-  (`VencimientoHttpTest`, `ReciclajeAliasHttpTest`) o dos contextos
-  sucesivos (`EvolucionDuracionHttpTest`, `ReinicioServicioHttpTest`)
-  declaran su propia configuración y su propio contenedor. No se usa
-  H2 (ADR 0004).
+- Pruebas de integración: Testcontainers levanta `postgres:16.4-alpine`
+  en tres grupos de contextos. `LinkApiHttpTest`,
+  `ConcurrenciaHttpTest`, `DestinationValidationHttpTest` y
+  `RutasReservadasHttpTest` extienden `HttpApiFixture` y comparten un
+  único contenedor (patrón singleton con `@ServiceConnection`);
+  `RutasReservadasHttpTest` declara sus propias `properties` de
+  `@SpringBootTest`, así que corre en un contexto Spring cacheado
+  distinto pero contra el mismo contenedor. `VencimientoHttpTest` y
+  `ReciclajeAliasHttpTest` agregan `ClockTestConfiguration` (reloj
+  mutable) y declaran su propio `@Container` con `@ServiceConnection`.
+  `EvolucionDuracionHttpTest` y `ReinicioServicioHttpTest` levantan los
+  contextos programáticamente con `SpringApplicationBuilder` contra su
+  propio `@Container`, con el datasource pasado por argumentos de
+  arranque (sin `@ServiceConnection`). No se usa H2 (ADR 0004).
 
 ## Migraciones
 

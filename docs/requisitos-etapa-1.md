@@ -20,7 +20,7 @@ Estado: entrevista cerrada con confirmación explícita del usuario de que los d
 | Presentación del resultado | Mostrar enlace, QR, hora de vencimiento y aviso de posible reutilización posterior del alias en web y extensión. | Q17 | Sin confirmar |
 | Demo | Servicio accesible por red local para usarlo desde un celular; también accesible desde el equipo anfitrión. | Q6 | Equipo |
 | Equipo y plazo | Dos integrantes con poca experiencia, aunque no nula, en Java/Spring. Primera etapa en siete días, el lunes siguiente; duración total de un mes y medio. | Respuesta sobre equipo y plazo | Equipo |
-| Arquitectura | Monolito modular con reglas, casos de uso y adaptadores separados. | Q8 y ADR 0001 | Equipo |
+| Arquitectura | Monolito modular con el esquema de clase (service único con `EntityManager` y HQL sobre las entities de `mappings`). Hasta el 2026-10-23 se usó la separación de reglas, casos de uso y adaptadores, reemplazada a pedido del docente. | Q8, ADR 0001 y ADR 0006 | Equipo; el esquema de clase, docente |
 | Historial | Conservar identificador de asignación, alias, destino completo, creación y vencimiento, aunque se reutilice el alias. Sin purga automática durante el trabajo ni registro de visitas en esta etapa. | Q9, Q18 y ADR 0003 | Equipo |
 | Alias sin asignación vigente | Página con el mensaje «Este enlace no existe o venció» y respuesta HTTP 404, tanto para vencidos como para desconocidos. | Q11 | Equipo |
 | Capacidad de referencia | Verificar 10 clientes simultáneos y 1.000 asignaciones vigentes como objetivo inicial, sin compromiso de servicio público. No es un límite comercial para rechazar la creación número 1.001. | Q13 y Q19 | Equipo |
@@ -82,4 +82,5 @@ El documento de [arquitectura y validación](arquitectura-y-validacion.md) concr
 - [ADR 0003: conservar historial](adr/0003-conservar-historial-asignaciones.md).
 - [ADR 0004: PostgreSQL en integración](adr/0004-postgresql-en-integracion.md).
 - [ADR 0005: Gradle y perfil HSQLDB](adr/0005-gradle-y-perfil-hsqldb.md).
+- [ADR 0006: service único con HQL sobre mappings](adr/0006-service-unico-hql-mappings.md).
 - [Arquitectura y validación](arquitectura-y-validacion.md).
