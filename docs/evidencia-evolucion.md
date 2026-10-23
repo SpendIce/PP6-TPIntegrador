@@ -149,7 +149,7 @@ Escenario «Alias personalizados» de la tabla «Cambios representativos»:
   Hallazgo concreto del código actual: `AcortadorService.reservarAlias`
   emite el siguiente código de la secuencia persistida
   (`generador_alias.proximo_indice`, saltando `reserved-routes`) sin
-  consultar la tabla `alias` — válido hoy porque la secuencia es la
+  consultar la tabla `alias`: válido hoy porque la secuencia es la
   única fuente de altas, pero si un alias personalizado ocupa un
   código que la secuencia aún no emitió, el generador lo alcanzaría
   después y chocaría con la PK.
