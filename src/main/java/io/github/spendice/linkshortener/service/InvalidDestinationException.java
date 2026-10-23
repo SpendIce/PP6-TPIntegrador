@@ -1,4 +1,4 @@
-package io.github.spendice.linkshortener.domain;
+package io.github.spendice.linkshortener.service;
 
 /**
  * Rechazo de una URL de destino. El {@link Reason} coincide con los
