@@ -319,10 +319,12 @@ directamente. El celular llega al destino a través del acortador.
 ./gradlew test
 ```
 
-Compila y corre las pruebas: unitarias de dominio y casos de uso, más el
-recorrido HTTP completo sobre PostgreSQL real con Testcontainers
-(creación, contrato de respuesta, persistencia, redirección 302/404,
-rechazos del contrato y recursos estáticos de la web, incluido el QR).
+Compila y corre las pruebas: el recorrido HTTP completo sobre
+PostgreSQL real con Testcontainers (creación, contrato de respuesta,
+persistencia, redirección 302/404, rechazos del contrato y recursos
+estáticos de la web, incluido el QR). Es el único seam de verificación:
+desde el refactor al esquema de clase (ADR 0006) no hay suites
+unitarias de dominio ni de casos de uso.
 No ejecutar `./gradlew build` ni `./gradlew check` como verificación de
 cambios: `./gradlew test` es la evidencia acordada.
 
@@ -391,9 +393,9 @@ El perfil `hsqldb` crea el mismo esquema traducido desde
 ## Estructura del repositorio
 
 ```text
-src/main/java/...   dominio, casos de uso, HTTP y persistencia (monolito modular)
+src/main/java/...   controller, service, mappings y config (esquema de clase, ADR 0006)
 src/main/resources/ application.yml, perfil hsqldb, migraciones Flyway y web estática
-src/test/java/      pruebas de dominio, casos de uso y HTTP (Testcontainers)
+src/test/java/      pruebas HTTP de integración sobre PostgreSQL real (Testcontainers)
 src/test/js/        pruebas del QR del cliente (node --test)
 extensiones/        complementos Chrome/Firefox + sus pruebas (node --test)
 scripts/            demo integrada y medición de capacidad
