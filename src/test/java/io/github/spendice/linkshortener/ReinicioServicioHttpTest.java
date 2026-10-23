@@ -24,8 +24,6 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import java.time.Duration;
 import java.time.Instant;
-import java.time.OffsetDateTime;
-import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -104,9 +102,9 @@ class ReinicioServicioHttpTest {
 
             // El reinicio no renueva ni altera lo persistido.
             JdbcTemplate db = reiniciada.getBean(JdbcTemplate.class);
-            assertAsignacionPersistida(db, aliasVencido,
+            AsignacionesPersistidas.verificar(db, aliasVencido,
                     "https://ejemplo.com/que-vence", T0, T0.plus(DURACION));
-            assertAsignacionPersistida(db, aliasVigente,
+            AsignacionesPersistidas.verificar(db, aliasVigente,
                     "https://ejemplo.com/que-sigue", creadaVigente, creadaVigente.plus(DURACION));
         } finally {
             reiniciada.close();
@@ -151,23 +149,6 @@ class ReinicioServicioHttpTest {
         } finally {
             reiniciada.close();
         }
-    }
-
-    private void assertAsignacionPersistida(JdbcTemplate db, String alias,
-                                            String destino, Instant creadaEn, Instant venceEn) {
-        Map<String, Object> row = db.queryForMap(
-                "SELECT id, destino FROM asignacion WHERE alias_codigo = ?", alias);
-        assertThat(row.get("destino")).isEqualTo(destino);
-        Long id = (Long) row.get("id");
-        assertThat(db.queryForObject(
-                "SELECT asignacion_actual_id FROM alias WHERE codigo = ?",
-                Long.class, alias)).isEqualTo(id);
-        assertThat(db.queryForObject(
-                "SELECT creada_en FROM asignacion WHERE id = ?",
-                OffsetDateTime.class, id).toInstant()).isEqualTo(creadaEn);
-        assertThat(db.queryForObject(
-                "SELECT vence_en FROM asignacion WHERE id = ?",
-                OffsetDateTime.class, id).toInstant()).isEqualTo(venceEn);
     }
 
     private ConfigurableApplicationContext startApp() {

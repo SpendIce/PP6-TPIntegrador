@@ -19,8 +19,6 @@ import java.net.http.HttpResponse;
 import java.net.http.HttpResponse.BodyHandlers;
 import java.time.Duration;
 import java.time.Instant;
-import java.time.OffsetDateTime;
-import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -59,15 +57,15 @@ class EvolucionDuracionHttpTest {
 
             // El grupo A conserva creación y vencimiento de 60 minutos:
             // ninguna fila se recalculó al cambiar la duración.
-            assertAsignacion(db, experimento.aliasA1(), "https://ejemplo.com/grupo-a1",
+            AsignacionesPersistidas.verificar(db, experimento.aliasA1(), "https://ejemplo.com/grupo-a1",
                     T0, T0.plus(DURACION_ENTREGA));
-            assertAsignacion(db, experimento.aliasA2(), "https://ejemplo.com/grupo-a2",
+            AsignacionesPersistidas.verificar(db, experimento.aliasA2(), "https://ejemplo.com/grupo-a2",
                     T0.plus(Duration.ofMinutes(1)), T0.plus(Duration.ofMinutes(1)).plus(DURACION_ENTREGA));
 
             // El grupo B recibió la duración del experimento al crearse.
-            assertAsignacion(db, experimento.aliasB1(), "https://ejemplo.com/grupo-b1",
+            AsignacionesPersistidas.verificar(db, experimento.aliasB1(), "https://ejemplo.com/grupo-b1",
                     T0.plus(Duration.ofMinutes(2)), T0.plus(Duration.ofMinutes(2)).plus(DURACION_EXPERIMENTO));
-            assertAsignacion(db, experimento.aliasB2(), "https://ejemplo.com/grupo-b2",
+            AsignacionesPersistidas.verificar(db, experimento.aliasB2(), "https://ejemplo.com/grupo-b2",
                     T0.plus(Duration.ofMinutes(3)), T0.plus(Duration.ofMinutes(3)).plus(DURACION_EXPERIMENTO));
         }
     }
@@ -145,23 +143,6 @@ class EvolucionDuracionHttpTest {
             conNuevaDuracion.close();
             throw e;
         }
-    }
-
-    private void assertAsignacion(JdbcTemplate db, String alias,
-                                  String destino, Instant creadaEn, Instant venceEn) {
-        Map<String, Object> row = db.queryForMap(
-                "SELECT id, destino FROM asignacion WHERE alias_codigo = ?", alias);
-        assertThat(row.get("destino")).isEqualTo(destino);
-        Long id = (Long) row.get("id");
-        assertThat(db.queryForObject(
-                "SELECT asignacion_actual_id FROM alias WHERE codigo = ?",
-                Long.class, alias)).isEqualTo(id);
-        assertThat(db.queryForObject(
-                "SELECT creada_en FROM asignacion WHERE id = ?",
-                OffsetDateTime.class, id).toInstant()).isEqualTo(creadaEn);
-        assertThat(db.queryForObject(
-                "SELECT vence_en FROM asignacion WHERE id = ?",
-                OffsetDateTime.class, id).toInstant()).isEqualTo(venceEn);
     }
 
     private void assertResuelve(int port, String alias, String destinoContiene) throws Exception {
