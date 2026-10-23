@@ -1,26 +1,26 @@
 # Arquitectura y validación de la etapa 1
 
-Estado: diseño confirmado por el usuario al cierre de la entrevista, sobre los [acuerdos de requisitos](requisitos-etapa-1.md). La revisión de requisitos y arquitectura queda cerrada. La especificación técnica detallada, la implementación y las pruebas del sistema permanecen pendientes.
+Estado: diseño confirmado por el usuario al cierre de la entrevista, sobre los [acuerdos de requisitos](requisitos-etapa-1.md). La revisión de requisitos y arquitectura queda cerrada. «Estructura y dependencias» describe el esquema vigente: el refactor del issue #15 reemplazó la separación hexagonal por el esquema de clase ([ADR 0006](adr/0006-service-unico-hql-mappings.md)).
 
 ## Estructura y dependencias
 
-Un monolito Spring Boot contiene las reglas de negocio, los casos de uso y los adaptadores de entrada HTTP y salida JPA/PostgreSQL. La web y las extensiones comparten la API de creación. La redirección es un adaptador HTTP del mismo caso de uso de resolución.
+Un monolito Spring Boot sigue el esquema de paquetes mostrado en clase (issue #15): `controller`, `service`, `mappings` y `config`. Los controllers son pass-through, con un método del service por endpoint. `AcortadorService` concentra los dos casos de uso (`acortar` y `resolver`) y todas las reglas de negocio como helpers privados del mismo archivo, y accede a la base con `EntityManager` y HQL directo sobre las entities de `mappings`, que son el modelo del sistema. La web y las extensiones comparten la API de creación y el visitante del enlace usa la resolución; los clientes no cambian.
 
 ```mermaid
 flowchart LR
-    W[Web] --> H[Adaptador HTTP]
-    E[Extensiones] --> H
-    V[Visitante del enlace] --> H
-    H --> U[Casos de uso: crear y resolver]
-    U --> D[Reglas del dominio]
-    U --> P[Puertos de persistencia y tiempo]
-    J[Adaptador JPA / PostgreSQL] -. implementa .-> P
-    C[Reloj del sistema] -. implementa .-> P
+    W[Web] --> C[Controllers]
+    E[Extensiones] --> C
+    V[Visitante del enlace] --> C
+    C --> S[AcortadorService: casos de uso y reglas]
+    S --> Q[EntityManager + HQL]
+    Q --> M[Entities de mappings]
+    M --> P[(PostgreSQL)]
+    R[Reloj del sistema] -. inyectado .-> S
 ```
 
-El dominio no importa Spring, JPA ni tipos HTTP. Los casos de uso coordinan reglas, tiempo y persistencia; los adaptadores traducen solicitudes, respuestas y registros. El alcance de las transacciones debe abarcar reserva de alias, creación de asignación y actualización de su referencia actual, aunque ese límite se implemente mediante mecanismos de Spring.
+El alcance de las transacciones abarca reserva de alias, creación de asignación y actualización de su referencia actual dentro de `acortar`, implementado con el `@Transactional` del service; `resolver` es de solo lectura. La selección del alias la deciden helpers privados del service sobre los candidatos que devuelve la consulta, serializada por el bloqueo pesimista de la fila única del generador.
 
-La API expone DTO propios. La política de selección de alias se separa de las operaciones que permiten reservarlo de forma atómica. No se agrega una interfaz por cada clase: se utilizan puertos para dependencias externas y variabilidad acordada.
+La API no expone entities: la request de creación y las respuestas de error usan DTO propios, y el `201` devuelve el record `EnlaceCreado` del service serializado con los nombres del contrato.
 
 ## Modelo lógico de datos
 
@@ -63,7 +63,7 @@ La enumeración no necesita precargar todo el espacio de códigos. La persistenc
 
 Con 58 símbolos existen 58 códigos de un carácter y 3.364 de dos, antes de descontar reservas. El objetivo de 1.000 asignaciones vigentes cabe en ese espacio; la cantidad de asignaciones históricas puede superar ampliamente la cantidad de alias.
 
-Las búsquedas y la reserva deben impedir tanto duplicaciones como decisiones simultáneas que salteen códigos más cortos disponibles. Para la carga de referencia puede utilizarse una coordinación transaccional única para la asignación de códigos; el mecanismo concreto queda para la especificación técnica. Si aumenta la carga, ese mecanismo se puede modificar dentro del adaptador sin cambiar el contrato ni la identidad de las asignaciones.
+Las búsquedas y la reserva deben impedir tanto duplicaciones como decisiones simultáneas que salteen códigos más cortos disponibles. Para la carga de referencia puede utilizarse una coordinación transaccional única para la asignación de códigos; el mecanismo concreto queda para la especificación técnica. Si aumenta la carga, ese mecanismo se puede modificar dentro del service sin cambiar el contrato ni la identidad de las asignaciones.
 
 ## Contratos y configuración por completar
 
@@ -73,7 +73,7 @@ La resolución verifica la asignación actual y su vencimiento en el instante de
 
 La URL pública es configuración del despliegue, no un valor derivado de cada solicitud ni un `localhost` incrustado en el resultado. Los orígenes configurados del servicio incluyen sus direcciones equivalentes para rechazar enlaces propios. Las extensiones deben poder configurar la dirección de la API para la instalación manual.
 
-La entrada de destino admite hasta 8.192 caracteres. Se rechazan formato inválido y espacios sin codificar; no se trunca ni corrige silenciosamente el destino. OpenAPI ya fija estos límites, sus errores y los casos de caracteres internacionales (Unicode en crudo rechazado; dominio punycode y percent-encoding UTF-8 aceptados; escapes `%` inválidos rechazados), con ejemplos por código de error. Esta decisión no autoriza rechazar credenciales incrustadas ni consultar la disponibilidad del destino. Las versiones y bibliotecas se fijarán junto al proyecto, manteniendo Java 17, Maven y una versión estable compatible de Spring Boot. Las migraciones de esquema se versionarán desde el inicio para conservar datos entre etapas.
+La entrada de destino admite hasta 8.192 caracteres (límite configurable con `MAX_DESTINATION_LENGTH`). Se rechazan formato inválido y espacios sin codificar; no se trunca ni corrige silenciosamente el destino. OpenAPI ya fija estos límites, sus errores y los casos de caracteres internacionales (Unicode en crudo rechazado; dominio punycode y percent-encoding UTF-8 aceptados; escapes `%` inválidos rechazados), con ejemplos por código de error. Esta decisión no autoriza rechazar credenciales incrustadas ni consultar la disponibilidad del destino. Las versiones y bibliotecas se fijaron junto al proyecto: Java 17, Gradle con wrapper (ADR 0005) y una versión estable compatible de Spring Boot. Las migraciones de esquema se versionaron desde el inicio para conservar datos entre etapas.
 
 ## Pruebas previstas
 
@@ -95,7 +95,7 @@ La entrada de destino admite hasta 8.192 caracteres. Se rechazan formato inváli
 | Demo LAN | Celular escanea el QR y alcanza el destino mediante el servicio. |
 | Capacidad | Con 1.000 asignaciones vigentes y 10 clientes simultáneos conserva las reglas de unicidad, resolución y persistencia; al menos el 95 % de las solicitudes responden en un segundo o menos. |
 
-Las reglas se prueban sin servidor HTTP ni base cuando sea posible; la reserva concurrente, transacciones y reinicio se verifican en integración sobre PostgreSQL. Los contratos HTTP se prueban además de las reglas. La capacidad es un objetivo de verificación, no un límite comercial.
+El seam único de verificación es la API HTTP sobre PostgreSQL real (issue #15): las reglas del service, la reserva concurrente, las transacciones, el reinicio y los contratos se ejercitan a través de los endpoints, sin suites unitarias por debajo de HTTP. La capacidad es un objetivo de verificación, no un límite comercial.
 
 ### Procedimiento para medir respuesta
 
@@ -111,6 +111,6 @@ La medición termina al recibir la respuesta del acortador. Para resolución, de
 | Alias personalizados | Entrada opcional en el contrato y política de reserva. | Analizar validación, colisiones y reutilización; mantener creación automática y clientes existentes compatibles. No se implementa en etapa 1. |
 | Consola de gestión | Nuevos casos de uso de consulta y un cliente de gestión. | Consultar identidad e historial sin alterar cómo resuelve el enlace público. Si permite editar o borrar, requerirá nuevas reglas y posiblemente autorización. |
 | Estadísticas | Registro de visitas y consultas asociadas a la identidad de la asignación. | Las estadísticas deben distinguir usos sucesivos del mismo alias; el historial de asignaciones no recupera visitas pasadas. |
-| Mayor concurrencia | Coordinación y consultas de reserva en persistencia. | Cambiar el adaptador manteniendo las invariantes y las pruebas. No implica que el mecanismo inicial escale sin límites. |
+| Mayor concurrencia | Coordinación y consultas de reserva en persistencia. | Cambiar el mecanismo dentro del service manteniendo las invariantes y las pruebas. No implica que el mecanismo inicial escale sin límites. |
 
 Este diseño localiza cambios plausibles y conserva datos útiles; no demuestra todavía su costo real. La evidencia de adaptación provendrá del experimento y de las pruebas, no únicamente del diagrama.
