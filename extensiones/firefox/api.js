@@ -81,6 +81,13 @@
     return (url.origin + path).replace(/\/+$/, "");
   }
 
+  /* El destino vacio se rechaza antes de cualquier llamada a la API. */
+  function requireDestination(destination) {
+    if (typeof destination !== "string" || destination.trim() === "") {
+      throw new ApiError("INVALID_DESTINATION", "No hay una URL de destino para acortar.");
+    }
+  }
+
   /* Solo las pestañas http/https pueden enviarse a la API. */
   function isShortenableTabUrl(url) {
     return typeof url === "string" && /^https?:\/\//i.test(url);
@@ -113,9 +120,7 @@
    */
   function buildCreateLinkRequest(apiBase, destination, csrfToken) {
     const base = normalizeApiBase(apiBase);
-    if (typeof destination !== "string" || destination.trim() === "") {
-      throw new ApiError("INVALID_DESTINATION", "No hay una URL de destino para acortar.");
-    }
+    requireDestination(destination);
     if (typeof csrfToken !== "string" || csrfToken === "") {
       throw new ApiError("CSRF_UNAVAILABLE", `La API en ${base} no entregó un token CSRF utilizable.`);
     }
@@ -230,6 +235,7 @@
    */
   async function createLink(apiBase, destination, fetchImpl) {
     const base = normalizeApiBase(apiBase);
+    requireDestination(destination);
     const doFetch = fetchImpl || (typeof fetch === "function" ? fetch.bind(globalThis) : null);
     if (!doFetch) {
       throw new ApiError("NETWORK_ERROR", "Este navegador no provee fetch para contactar la API.");
