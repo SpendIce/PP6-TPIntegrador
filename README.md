@@ -129,6 +129,19 @@ configuración abajo.
 | `SERVER_PORT` | `server.port` | `8080` | Puerto HTTP. |
 | `DB_HOST` `DB_PORT` `DB_NAME` `DB_USER` `DB_PASSWORD` | `spring.datasource.*` | `localhost` `5432` `acortador` | Conexión a PostgreSQL. |
 
+Las variables se pueden pasar en el entorno del proceso o declarar en un
+archivo `.env` en la raíz (ignorado por git; plantilla en `.env.example`):
+
+```bash
+cp .env.example .env
+echo 'LINK_DURATION=PT40M' >> .env
+./gradlew bootRun   # las asignaciones nuevas vencen a los 40 minutos
+```
+
+El `.env` se lee en formato properties (sin `export` ni comillas) desde el
+directorio de trabajo; `ENV_FILE` apunta a otra ruta. Una variable de
+entorno real le gana al archivo, y `./gradlew test` no lo lee.
+
 ## Probar las funcionalidades
 
 Con el servidor arriba, cada sección siguiente ejercita una

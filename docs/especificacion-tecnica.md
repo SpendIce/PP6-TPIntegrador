@@ -211,7 +211,10 @@ mixta, resolución durante la reasignación y reintento sin idempotencia.
 
 Prefijo `shortener` (`ShortenerProperties`). Cada clave se declara en
 `application.yml` como `${ENV:default}`, para que ningún valor variable
-quede hardcodeado (issue #15):
+quede hardcodeado (issue #15). Las variables pueden venir del entorno o
+de un `.env` opcional importado con `spring.config.import` (ruta en
+`ENV_FILE`, default `.env`); el entorno real tiene precedencia y la tarea
+`test` desactiva el archivo para que las pruebas usen los defaults:
 
 - `public-base-url` (`PUBLIC_BASE_URL`, default `http://localhost:8080`):
   dirección pública del servicio usada para componer `shortUrl`. No se

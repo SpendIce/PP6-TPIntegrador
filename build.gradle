@@ -44,6 +44,9 @@ dependencies {
 
 tasks.named('test') {
     useJUnitPlatform()
+    // Las pruebas no leen el .env del desarrollador: los defaults que
+    // verifican son los de application.yml.
+    systemProperty 'ENV_FILE', layout.buildDirectory.file('pruebas-sin-env').get().asFile.path
 }
 
 // `./gradlew bootRun -Phsqldb` levanta el servicio contra el servidor
