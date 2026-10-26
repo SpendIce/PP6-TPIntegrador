@@ -101,8 +101,8 @@ class SeguridadCsrfHttpTest extends HttpApiFixture {
 
     @Test
     void laRutaConPuntoYComaSigueResolviendo() throws Exception {
-        // La etapa 1 resolvía `/zz9;x=1` como `/zz9`; el firewall de Spring
-        // Security lo permite con setAllowSemicolon(true).
+        // La etapa 1 resolvía `/zz9;x=1` como `/zz9`; el firewall por
+        // defecto que declara SecurityConfig no rechaza el punto y coma.
         HttpResponse<String> conMatriz = get(client, "/zz9;x=1");
 
         assertThat(conMatriz.statusCode()).isEqualTo(404);
