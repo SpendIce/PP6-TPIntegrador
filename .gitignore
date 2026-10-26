@@ -13,3 +13,8 @@ node_modules/
 
 # Configuración local con posibles credenciales (ver .env.example)
 .env
+
+# Configuración de stinter y artefactos de sus Changes. Son de esta máquina y
+# de la orquestación, no del producto: nunca se commitean.
+.stinter/
+.atl/
