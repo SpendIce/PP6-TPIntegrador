@@ -29,7 +29,7 @@ en `openapi.yaml` y «Elección del namespace» de
   `db/hsqldb/schema.sql` (ADR 0005).
 - Web: con sesión y sin namespace aparece el formulario con la
   sugerencia precargada; los errores del contrato se muestran y el
-  nombre elegido reemplaza el email en la cabecera.
+  namespace elegido se suma al email en la cabecera.
 
 ## Concurrencia
 
