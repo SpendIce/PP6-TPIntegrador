@@ -9,6 +9,7 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpRequest.BodyPublishers;
 import java.net.http.HttpResponse;
 import java.net.http.HttpResponse.BodyHandlers;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -78,13 +79,24 @@ class SeguridadCsrfHttpTest extends HttpApiFixture {
         // completo del POST anónimo no crea sesión de aplicación.
         HttpClient dispositivo = nuevoClienteDispositivo();
 
+        // El GET /api/csrf es donde nacería una sesión si el repositorio del
+        // token cambiara a uno con estado: se revisan sus Set-Cookie además
+        // de los del POST.
+        HttpResponse<String> csrf = get(dispositivo, "/api/csrf");
+        assertThat(csrf.statusCode()).isEqualTo(200);
+        assertThat(cookiesDeSesion(csrf)).isEmpty();
+
         HttpResponse<String> response = postJson(dispositivo, "{\"destination\":\"https://ejemplo.com/movil\"}");
 
         assertThat(response.statusCode()).isEqualTo(201);
-        String setCookie = response.headers().firstValue("set-cookie").orElse("");
-        assertThat(setCookie).doesNotContain("SESSION");
-        assertThat(response.headers().allValues("set-cookie"))
-                .noneMatch(cookie -> cookie.startsWith("SESSION"));
+        assertThat(cookiesDeSesion(response)).isEmpty();
+    }
+
+    /** Cookies de sesión de aplicación: {@code JSESSIONID} o cualquier {@code SESSION=}. */
+    private static List<String> cookiesDeSesion(HttpResponse<String> response) {
+        return response.headers().allValues("set-cookie").stream()
+                .filter(cookie -> cookie.startsWith("JSESSIONID=") || cookie.startsWith("SESSION="))
+                .toList();
     }
 
     @Test
@@ -96,6 +108,10 @@ class SeguridadCsrfHttpTest extends HttpApiFixture {
 
         HttpResponse<String> estatico = get(dispositivo, "/styles.css");
         assertThat(estatico.statusCode()).isEqualTo(200);
+        // Spring Security no debe imponer su `no-store` por defecto a los
+        // estáticos: el navegador tiene que poder cachearlos como antes.
+        assertThat(estatico.headers().allValues("cache-control"))
+                .noneMatch(valor -> valor.contains("no-store"));
 
         HttpResponse<String> aliasDesconocido = get(dispositivo, "/zz9");
         assertThat(aliasDesconocido.statusCode()).isEqualTo(404);

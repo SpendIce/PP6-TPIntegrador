@@ -40,6 +40,13 @@ class SecurityConfig {
                 .csrf(csrf -> csrf
                         .csrfTokenRepository(CookieCsrfTokenRepository.withHttpOnlyFalse())
                         .csrfTokenRequestHandler(new CsrfTokenRequestAttributeHandler()))
+                // Spring Security agrega por defecto `Cache-Control: no-store` a
+                // toda respuesta, incluso a los estáticos: la web y el vendor
+                // del QR dejaban de cachearse. Los controladores que necesitan
+                // `no-store` ya lo declaran por su cuenta (resolución, API y
+                // token), así que se apaga el escritor por defecto para que los
+                // estáticos respondan como antes de este Change.
+                .headers(headers -> headers.cacheControl(cache -> cache.disable()))
                 .exceptionHandling(handling -> handling
                         .accessDeniedHandler(csrfRechazado(json)))
                 .build();

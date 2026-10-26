@@ -28,14 +28,18 @@ paths:
       operationId: obtenerTokenCsrf
       responses:
         '200':
-          description: Token emitido; la cookie `XSRF-TOKEN` viaja en `Set-Cookie` con el mismo valor.
+          description: >
+            Token vigente. La cookie `XSRF-TOKEN` lo repite y solo se fija con
+            `Set-Cookie` cuando la solicitud todavía no la trae.
           headers:
             Cache-Control:
               schema:
                 type: string
                 example: no-store
             Set-Cookie:
-              description: "XSRF-TOKEN=<token>; Path=/ — cookie legible (no HttpOnly)."
+              description: >
+                `XSRF-TOKEN=<token>; Path=/` — cookie legible (no HttpOnly).
+                Se fija solo cuando la solicitud no trae una cookie previa.
               schema:
                 type: string
           content:
@@ -55,15 +59,17 @@ paths:
         cortos primero) o, sin vencidos reutilizables, el siguiente código
         nunca usado de la menor longitud disponible. La solicitud exige el
         token CSRF del doble envío: la cookie `XSRF-TOKEN` y el encabezado
-        `X-XSRF-TOKEN` con el mismo valor emitido por `GET /api/csrf`.
+        `X-XSRF-TOKEN` con el mismo valor que la cookie de la solicitud.
       operationId: crearEnlace
       parameters:
         - name: X-XSRF-TOKEN
           in: header
           required: true
           description: >
-            Token CSRF emitido por `GET /api/csrf`, repetido con el mismo
-            valor que la cookie `XSRF-TOKEN` de la solicitud.
+            Valor de la cookie `XSRF-TOKEN` de la misma solicitud. El
+            servidor no firma ni guarda tokens: acepta cualquier par
+            cookie/encabezado coincidente, y el ataque cross-site no puede
+            leer la cookie para repetirla.
           schema:
             type: string
       requestBody:
@@ -150,8 +156,10 @@ paths:
           description: >
             Token CSRF ausente o inválido: falta el encabezado
             `X-XSRF-TOKEN`, falta la cookie `XSRF-TOKEN` o sus valores no
-            coinciden con un token emitido por `GET /api/csrf`. Ningún
-            rechazo crea una asignación ni consume un alias.
+            coinciden entre sí. El servidor no guarda ni firma tokens: el
+            doble envío solo exige que el encabezado repita la cookie de la
+            misma solicitud. Ningún rechazo crea una asignación ni consume
+            un alias.
           content:
             application/json:
               schema:
@@ -311,8 +319,8 @@ components:
         token:
           type: string
           description: >
-            Valor del token CSRF; coincide con la cookie `XSRF-TOKEN`
-            fijada en la misma respuesta y se repite en el encabezado
+            Valor del token CSRF; la cookie `XSRF-TOKEN` lo repite (se fija
+            cuando la solicitud no la trae) y se repite en el encabezado
             `X-XSRF-TOKEN` de los POST.
           example: "f1d2d2f9-4e5a-4b6c-8d7e-9f0a1b2c3d4e"
     ApiError:
