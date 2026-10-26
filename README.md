@@ -115,6 +115,13 @@ La web queda en `http://<ip-lan>:8080` para cualquier equipo de la red.
 host) para que también se rechacen como destino; ver la tabla de
 configuración abajo.
 
+### Publicar con Tailscale Funnel y Google (etapa 2)
+
+El login con Google necesita una URL HTTPS estable y un cliente OAuth
+registrado. El procedimiento está en
+[`docs/despliegue-funnel-google.md`](docs/despliegue-funnel-google.md) y se
+recorre con `bash scripts/wizard-funnel-google.sh`.
+
 ## Configuración de despliegue
 
 | Variable | Propiedad | Defecto | Uso |
