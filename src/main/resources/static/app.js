@@ -15,9 +15,17 @@ form.addEventListener("submit", async (event) => {
 
     let response;
     try {
+        // CSRF (issue #18): el POST exige el token de GET /api/csrf,
+        // repetido en X-XSRF-TOKEN; la cookie viaja sola por ser mismo
+        // origen.
+        const csrfResponse = await fetch("/api/csrf");
+        const csrf = await csrfResponse.json();
         response = await fetch("/api/links", {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: {
+                "Content-Type": "application/json",
+                "X-XSRF-TOKEN": csrf.token
+            },
             body: JSON.stringify({ destination: input.value })
         });
     } catch (e) {
