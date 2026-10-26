@@ -165,7 +165,7 @@ class EvolucionDuracionHttpTest {
                 .sources(ClockTestConfiguration.class)
                 .run(
                         "--server.port=0",
-                        "--spring.datasource.url=" + POSTGRES.getJdbcUrl(),
+                        "--spring.datasource.url=" + TestHost.jdbcUrl(POSTGRES),
                         "--spring.datasource.username=" + POSTGRES.getUsername(),
                         "--spring.datasource.password=" + POSTGRES.getPassword(),
                         "--shortener.public-base-url=http://192.168.50.10:8080",

@@ -6,7 +6,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
-import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -54,12 +53,25 @@ abstract class HttpApiFixture {
      * datasource: un ciclo de vida por clase reiniciaría la base con otro
      * puerto mientras el contexto sigue apuntando al primero.
      */
-    @ServiceConnection
     static final PostgreSQLContainer<?> POSTGRES =
             new PostgreSQLContainer<>("postgres:16.4-alpine");
 
     static {
         POSTGRES.start();
+    }
+
+    /**
+     * `@ServiceConnection` arma la URL con `localhost`, y en el sandbox de
+     * stinter el puerto mapeado vive en el host: la conexión se rechaza y el
+     * contexto no carga. El datasource se declara con el host de
+     * {@link TestHost}, que es `localhost` en el host y el gateway del bridge
+     * dentro de un contenedor.
+     */
+    @DynamicPropertySource
+    static void datasource(DynamicPropertyRegistry registry) {
+        registry.add("spring.datasource.url", () -> TestHost.jdbcUrl(POSTGRES));
+        registry.add("spring.datasource.username", POSTGRES::getUsername);
+        registry.add("spring.datasource.password", POSTGRES::getPassword);
     }
 
     /**

@@ -57,7 +57,7 @@ final class GoogleSimulado {
      * apunta a {@code accounts.google.com}.
      */
     static String issuerUri() {
-        return "http://localhost:" + OAUTH2.getMappedPort(8080) + "/" + ISSUER_ID;
+        return "http://" + TestHost.host() + ":" + OAUTH2.getMappedPort(8080) + "/" + ISSUER_ID;
     }
 
     /**
