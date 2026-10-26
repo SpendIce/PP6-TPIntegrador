@@ -13,7 +13,10 @@ info:
     el inicio de sesión con Google (issue #19): `GET
     /oauth2/authorization/google` inicia el flujo OIDC que vuelve por
     `/login/oauth2/code/google` y deja una sesión principal persistida;
-    `GET /api/sesion` la consulta y `POST /api/logout` la cierra.
+    `GET /api/sesion` la consulta y `POST /api/logout` la cierra. El issue
+    #20 suma la elección del namespace del primer login: `POST
+    /api/namespace` lo registra y `GET /api/namespace/sugerencia` propone
+    un nombre derivado de la parte local del email.
 servers:
   - url: /
     description: Mismo origen que sirve la web; la dirección pública del servicio es configurable por despliegue.
@@ -209,12 +212,165 @@ paths:
                   value:
                     usuario: null
                 conSesion:
-                  summary: Sesión principal iniciada
+                  summary: Sesión principal iniciada sin namespace elegido
                   value:
                     usuario:
                       email: "juan@ejemplo.com"
                       namespace: ""
                       tipo: "principal"
+                      sugerencia: "juan"
+  /api/namespace:
+    post:
+      summary: Elegir el namespace en el primer login
+      description: >
+        Registra el namespace del usuario de la sesión actual, que no
+        puede tener otro: la repetición del mismo nombre es idempotente y
+        cualquier nombre distinto se rechaza con
+        `NAMESPACE_ALREADY_CHOSEN` (el cambio llega en otro Change). El
+        nombre se normaliza a minúsculas antes de validar y guardar, así
+        que `Juan` es válido y ocupa `juan`. El formato es de 3 a 30
+        caracteres `a-z`, `0-9` y `-`, sin guion inicial ni final; los
+        nombres reservados por configuración (`NAMESPACE_RESERVED_NAMES`,
+        por defecto las rutas del sistema `api`, `login`, `logout`,
+        `vincular`, `oauth2` y `error`) no se pueden elegir. La unicidad
+        es sin distinguir mayúsculas: si `juan` existe, `JUAN` se rechaza
+        con `NAMESPACE_TAKEN`. Dos usuarios que piden el mismo nombre a la
+        vez nunca terminan ambos con él: la restricción única de la base
+        decide y el perdedor recibe `NAMESPACE_TAKEN`. Exige el token CSRF
+        del doble envío, como todo POST.
+      operationId: elegirNamespace
+      parameters:
+        - name: X-XSRF-TOKEN
+          in: header
+          required: true
+          description: Valor de la cookie `XSRF-TOKEN` de la misma solicitud.
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ElegirNamespaceRequest'
+            examples:
+              valido:
+                value:
+                  namespace: "juan"
+      responses:
+        '200':
+          description: Namespace elegido; devuelve la sesión actual ya actualizada.
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+                example: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SesionActual'
+              examples:
+                elegido:
+                  value:
+                    usuario:
+                      email: "juan@ejemplo.com"
+                      namespace: "juan"
+                      tipo: "principal"
+                      sugerencia: ""
+        '400':
+          description: >
+            El namespace no cumple el formato (`NAMESPACE_INVALID`) o es
+            un nombre reservado (`NAMESPACE_RESERVED`). Ningún rechazo
+            guarda el nombre.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+              examples:
+                formatoInvalido:
+                  value:
+                    error: NAMESPACE_INVALID
+                    message: "El namespace debe tener entre 3 y 30 caracteres a-z, 0-9 y -, sin guion inicial ni final."
+                reservado:
+                  value:
+                    error: NAMESPACE_RESERVED
+                    message: "El namespace 'api' está reservado por el sistema; probá con otro."
+        '401':
+          description: No hay sesión con usuario autenticado.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+              examples:
+                sinSesion:
+                  value:
+                    error: NOT_AUTHENTICATED
+                    message: "Iniciá sesión con Google para elegir tu namespace."
+        '403':
+          description: Token CSRF ausente o inválido.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+              examples:
+                csrfInvalido:
+                  value:
+                    error: CSRF_TOKEN_INVALID
+                    message: "La solicitud no trae un token CSRF válido; se obtiene con GET /api/csrf."
+        '409':
+          description: >
+            El nombre ya lo tiene otro usuario (`NAMESPACE_TAKEN`) o el
+            usuario de la sesión ya eligió otro (`NAMESPACE_ALREADY_CHOSEN`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+              examples:
+                tomado:
+                  value:
+                    error: NAMESPACE_TAKEN
+                    message: "El namespace 'juan' ya está tomado; probá con otro."
+                yaElegido:
+                  value:
+                    error: NAMESPACE_ALREADY_CHOSEN
+                    message: "Ya elegiste el namespace 'juan'; cambiarlo llega en otro ticket."
+  /api/namespace/sugerencia:
+    get:
+      summary: Sugerir un namespace para el primer login
+      description: >
+        Devuelve un nombre derivado de la parte local del email del
+        usuario de la sesión, adaptado al formato: minúsculas, caracteres
+        inválidos reemplazados por `-`, guiones repetidos colapsados y sin
+        guion inicial ni final. Es solo una sugerencia y no se reserva:
+        si ya está tomada, la web deja escribir otro nombre. Responde
+        `Cache-Control: no-store`.
+      operationId: sugerirNamespace
+      responses:
+        '200':
+          description: Sugerencia calculada a partir del email de la sesión.
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+                example: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NamespaceSugerencia'
+              examples:
+                desdeEmail:
+                  value:
+                    sugerencia: "juan-perez"
+        '401':
+          description: No hay sesión con usuario autenticado.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+              examples:
+                sinSesion:
+                  value:
+                    error: NOT_AUTHENTICATED
+                    message: "Iniciá sesión con Google para elegir tu namespace."
   /api/logout:
     post:
       summary: Cerrar sesión
@@ -403,6 +559,30 @@ components:
             cuando la solicitud no la trae) y se repite en el encabezado
             `X-XSRF-TOKEN` de los POST.
           example: "f1d2d2f9-4e5a-4b6c-8d7e-9f0a1b2c3d4e"
+    ElegirNamespaceRequest:
+      type: object
+      required:
+        - namespace
+      additionalProperties: false
+      properties:
+        namespace:
+          type: string
+          description: >
+            Nombre propuesto. Se normaliza a minúsculas antes de validar;
+            el formato es de 3 a 30 caracteres `a-z`, `0-9` y `-`, sin
+            guion inicial ni final.
+          example: "juan"
+    NamespaceSugerencia:
+      type: object
+      required:
+        - sugerencia
+      properties:
+        sugerencia:
+          type: string
+          description: >
+            Nombre sugerido a partir de la parte local del email, adaptado
+            al formato del namespace. No se reserva automáticamente.
+          example: "juan-perez"
     SesionActual:
       type: object
       required:
@@ -421,6 +601,7 @@ components:
             - email
             - namespace
             - tipo
+            - sugerencia
           properties:
             email:
               type: string
@@ -430,9 +611,16 @@ components:
             namespace:
               type: string
               description: >
-                Namespace público del usuario; vacío hasta que lo elija (la
-                elección es un Change posterior).
+                Namespace público elegido por el usuario; vacío hasta que lo
+                elija en `POST /api/namespace`.
               example: ""
+            sugerencia:
+              type: string
+              description: >
+                Sugerencia para la pantalla del primer login, derivada de la
+                parte local del email; vacía cuando el usuario ya tiene
+                namespace.
+              example: "juan"
             tipo:
               type: string
               description: >
@@ -460,6 +648,11 @@ components:
             - OWN_ORIGIN
             - INVALID_REQUEST
             - CSRF_TOKEN_INVALID
+            - NOT_AUTHENTICATED
+            - NAMESPACE_INVALID
+            - NAMESPACE_RESERVED
+            - NAMESPACE_TAKEN
+            - NAMESPACE_ALREADY_CHOSEN
         message:
           type: string
           description: Descripción legible del problema para mostrar al usuario.
