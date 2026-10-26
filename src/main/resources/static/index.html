@@ -18,6 +18,24 @@
         <button id="cuenta-salir" type="button" hidden>Cerrar sesión</button>
     </div>
     <h1>Acortador de enlaces</h1>
+    <!-- Elección del namespace (issue #20): visible con sesión y sin
+         namespace; la sugerencia sale de la parte local del email. -->
+    <section id="namespace" hidden>
+        <h2>Elegí tu namespace</h2>
+        <p class="notice">
+            Es el nombre público de tus enlaces personales.
+        </p>
+        <form id="namespace-form" novalidate>
+            <label for="namespace-input">Namespace</label>
+            <div class="field-row">
+                <input id="namespace-input" name="namespace" type="text"
+                       autocomplete="off" spellcheck="false"
+                       placeholder="juan">
+                <button type="submit">Elegir</button>
+            </div>
+        </form>
+        <p id="namespace-error" class="error" hidden></p>
+    </section>
     <form id="shorten-form" novalidate>
         <label for="destination">Dirección a acortar</label>
         <div class="field-row">

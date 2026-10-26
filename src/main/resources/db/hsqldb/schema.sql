@@ -51,6 +51,12 @@ CREATE TABLE IF NOT EXISTS usuario (
     CONSTRAINT uq_usuario_google_sub UNIQUE (google_sub)
 );
 
+-- Namespace elegido en el primer login (V4). Se agrega con ALTER para
+-- que tambien aplique a bases ya creadas; en reinicios la restriccion ya
+-- existe y continue-on-error omite el ALTER (ADR 0005).
+ALTER TABLE usuario
+    ADD CONSTRAINT uq_usuario_namespace UNIQUE (namespace);
+
 -- Spring Session JDBC (V3): LONGVARBINARY en lugar de BYTEA.
 CREATE TABLE IF NOT EXISTS spring_session (
     primary_id            CHAR(36)     NOT NULL,

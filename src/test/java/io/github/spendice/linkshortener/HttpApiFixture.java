@@ -137,9 +137,15 @@ abstract class HttpApiFixture {
      * queda en su propio almacén — y lo repite por encabezado y cookie.
      */
     HttpResponse<String> postJson(HttpClient cliente, String jsonBody) throws Exception {
+        return postJson(cliente, "/api/links", jsonBody);
+    }
+
+    /** POST con cuerpo JSON y CSRF a cualquier ruta del contrato. */
+    HttpResponse<String> postJson(HttpClient cliente, String path, String jsonBody)
+            throws Exception {
         String csrf = Csrf.obtener(cliente, baseUrl());
         HttpRequest request = Csrf.aplicar(cliente,
-                        HttpRequest.newBuilder(URI.create(baseUrl() + "/api/links")), csrf)
+                        HttpRequest.newBuilder(URI.create(baseUrl() + path)), csrf)
                 .header("Content-Type", "application/json")
                 .timeout(REQUEST_TIMEOUT)
                 .POST(BodyPublishers.ofString(jsonBody))
@@ -177,7 +183,13 @@ abstract class HttpApiFixture {
      * para el cliente y texto legible para mostrar al usuario.
      */
     void assertError(HttpResponse<String> response, String expectedCode) throws Exception {
-        assertThat(response.statusCode()).isEqualTo(400);
+        assertError(response, 400, expectedCode);
+    }
+
+    /** Igual que {@link #assertError(HttpResponse, String)} con estado explícito. */
+    void assertError(HttpResponse<String> response, int expectedStatus, String expectedCode)
+            throws Exception {
+        assertThat(response.statusCode()).isEqualTo(expectedStatus);
         JsonNode body = json.readTree(response.body());
         assertThat(body.get("error").asText()).isEqualTo(expectedCode);
         assertThat(body.get("message").asText()).isNotBlank();

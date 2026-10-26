@@ -1,7 +1,10 @@
 package io.github.spendice.linkshortener.service;
 
+import io.github.spendice.linkshortener.config.CuentaProperties;
 import io.github.spendice.linkshortener.mappings.Usuario;
+import io.github.spendice.linkshortener.service.InvalidNamespaceException.Reason;
 import jakarta.persistence.EntityManager;
+import jakarta.persistence.LockModeType;
 import jakarta.persistence.PersistenceException;
 import org.hibernate.exception.ConstraintViolationException;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -11,6 +14,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
 
 /**
@@ -44,11 +48,29 @@ public class CuentaService {
     /** Tipo de la sesión abierta con login directo de Google. */
     public static final String TIPO_PRINCIPAL = "principal";
 
+    /** Largo mínimo y máximo del namespace (issue #20). */
+    private static final int NAMESPACE_MIN = 3;
+    private static final int NAMESPACE_MAX = 30;
+
+    /**
+     * Solo minúsculas, dígitos y guiones; el primer y el último carácter
+     * no pueden ser guion. La entrada se normaliza a minúsculas antes de
+     * validar, así que «Juan» es un nombre válido que se guarda como
+     * «juan».
+     */
+    private static final String NAMESPACE_VALIDO = "[a-z0-9](?:[a-z0-9-]*[a-z0-9])?";
+
+    /** Sugerencia de reemplazo cuando la parte local no llega al mínimo. */
+    private static final String SUGERENCIA_POR_DEFECTO = "usuario";
+
     @Autowired
     EntityManager em;
 
     @Autowired
     TransactionTemplate transacciones;
+
+    @Autowired
+    CuentaProperties properties;
 
     /**
      * Caso de uso del login: devuelve el usuario de la identidad de
@@ -124,6 +146,155 @@ public class CuentaService {
             usuario.setEmail(email);
         }
         return usuario;
+    }
+
+    /**
+     * Caso de uso de la elección de namespace en el primer login (issue
+     * #20): valida formato y nombres reservados, comprueba que el nombre
+     * esté libre sin distinguir mayúsculas y lo guarda normalizado.
+     *
+     * <p>La elección corre en su propia transacción con la fila del
+     * usuario bloqueada (dos pedidos del mismo usuario no se pisan) y la
+     * unicidad final la impone {@code uq_usuario_namespace}. Si dos
+     * usuarios piden el mismo nombre a la vez, el perdedor recibe la
+     * violación de la restricción y se traduce a {@code
+     * NAMESPACE_TAKEN}: nunca terminan ambos con él. Un usuario que ya
+     * tiene namespace solo puede repetir el mismo; cualquier otro nombre
+     * se rechaza con {@code NAMESPACE_ALREADY_CHOSEN} porque el cambio
+     * llega en otro Change.</p>
+     */
+    public Usuario elegirNamespace(Long usuarioId, String propuesta) {
+        String namespace = normalizarNamespace(propuesta);
+        try {
+            return transacciones.execute(status -> asignarNamespace(usuarioId, namespace));
+        } catch (DataIntegrityViolationException | PersistenceException carrera) {
+            if (!esCarreraDeNamespace(carrera)) {
+                throw carrera;
+            }
+            throw namespaceTomado(namespace);
+        }
+    }
+
+    private Usuario asignarNamespace(Long usuarioId, String namespace) {
+        Usuario usuario = em.find(Usuario.class, usuarioId, LockModeType.PESSIMISTIC_WRITE);
+        if (usuario == null) {
+            throw new IllegalStateException(
+                    "El usuario " + usuarioId + " de la sesión ya no existe");
+        }
+        String actual = usuario.getNamespace();
+        if (actual != null) {
+            // El usuario ya eligió: repetir el mismo nombre es idempotente y
+            // cualquier otro se rechaza antes de validar su formato, porque
+            // por esta vía no hay cambio de namespace.
+            if (actual.equalsIgnoreCase(namespace)) {
+                return usuario;
+            }
+            throw new InvalidNamespaceException(Reason.NAMESPACE_ALREADY_CHOSEN,
+                    "Ya elegiste el namespace '" + actual
+                            + "'; cambiarlo llega en otro ticket.");
+        }
+        validarFormatoNamespace(namespace);
+        validarNamespaceReservado(namespace);
+        if (estaTomado(namespace)) {
+            throw namespaceTomado(namespace);
+        }
+        usuario.setNamespace(namespace);
+        // El flush dentro de la transacción hace saltar la restricción
+        // única antes del commit, para poder traducir la carrera.
+        em.flush();
+        return usuario;
+    }
+
+    private boolean estaTomado(String namespace) {
+        return !em.createQuery(
+                        "select u.id from Usuario u where lower(u.namespace) = :namespace",
+                        Long.class)
+                .setParameter("namespace", namespace)
+                .setMaxResults(1)
+                .getResultList()
+                .isEmpty();
+    }
+
+    private static InvalidNamespaceException namespaceTomado(String namespace) {
+        return new InvalidNamespaceException(Reason.NAMESPACE_TAKEN,
+                "El namespace '" + namespace + "' ya está tomado; probá con otro.");
+    }
+
+    /** ¿La excepción es la violación única de {@code uq_usuario_namespace}? */
+    private static boolean esCarreraDeNamespace(Throwable error) {
+        for (Throwable actual = error; actual != null; actual = actual.getCause()) {
+            if (actual instanceof ConstraintViolationException violacion
+                    && "uq_usuario_namespace".equalsIgnoreCase(violacion.getConstraintName())) {
+                return true;
+            }
+            String mensaje = actual.getMessage();
+            // HSQLDB devuelve el nombre del constraint en mayúsculas.
+            if (mensaje != null
+                    && mensaje.toLowerCase(Locale.ROOT).contains("uq_usuario_namespace")) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static String normalizarNamespace(String propuesta) {
+        return propuesta == null ? null : propuesta.toLowerCase(Locale.ROOT);
+    }
+
+    private static void validarFormatoNamespace(String namespace) {
+        if (namespace == null
+                || namespace.length() < NAMESPACE_MIN
+                || namespace.length() > NAMESPACE_MAX
+                || !namespace.matches(NAMESPACE_VALIDO)) {
+            throw new InvalidNamespaceException(Reason.NAMESPACE_INVALID,
+                    "El namespace debe tener entre " + NAMESPACE_MIN + " y " + NAMESPACE_MAX
+                            + " caracteres a-z, 0-9 y -, sin guion inicial ni final.");
+        }
+    }
+
+    private void validarNamespaceReservado(String namespace) {
+        if (properties.namespaceReservedNames().contains(namespace)) {
+            throw new InvalidNamespaceException(Reason.NAMESPACE_RESERVED,
+                    "El namespace '" + namespace + "' está reservado por el sistema;"
+                            + " probá con otro.");
+        }
+    }
+
+    /**
+     * Sugerencia para el primer login (issue #20): la parte local del
+     * email pasada al formato del namespace. No se reserva: si ya está
+     * tomada, la web deja escribir otro nombre.
+     */
+    public String sugerenciaDeNamespace(String email) {
+        if (email == null) {
+            return SUGERENCIA_POR_DEFECTO;
+        }
+        int arroba = email.indexOf('@');
+        String local = arroba < 0 ? email : email.substring(0, arroba);
+        StringBuilder sugerencia = new StringBuilder();
+        for (int i = 0; i < local.length(); i++) {
+            char caracter = Character.toLowerCase(local.charAt(i));
+            boolean valido = (caracter >= 'a' && caracter <= 'z')
+                    || (caracter >= '0' && caracter <= '9');
+            if (valido) {
+                sugerencia.append(caracter);
+            } else if (sugerencia.length() > 0
+                    && sugerencia.charAt(sugerencia.length() - 1) != '-') {
+                sugerencia.append('-');
+            }
+        }
+        while (sugerencia.length() > 0
+                && sugerencia.charAt(sugerencia.length() - 1) == '-') {
+            sugerencia.setLength(sugerencia.length() - 1);
+        }
+        if (sugerencia.length() > NAMESPACE_MAX) {
+            sugerencia.setLength(NAMESPACE_MAX);
+            while (sugerencia.charAt(sugerencia.length() - 1) == '-') {
+                sugerencia.setLength(sugerencia.length() - 1);
+            }
+        }
+        return sugerencia.length() < NAMESPACE_MIN
+                ? SUGERENCIA_POR_DEFECTO : sugerencia.toString();
     }
 
     /**

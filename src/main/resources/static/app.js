@@ -10,9 +10,15 @@ const qrDownload = document.getElementById("qr-download");
 const cuentaEntrar = document.getElementById("cuenta-entrar");
 const cuentaUsuario = document.getElementById("cuenta-usuario");
 const cuentaSalir = document.getElementById("cuenta-salir");
+const namespaceSection = document.getElementById("namespace");
+const namespaceForm = document.getElementById("namespace-form");
+const namespaceInput = document.getElementById("namespace-input");
+const namespaceError = document.getElementById("namespace-error");
 
 // Sesión actual (issue #19): sin sesión se ofrece el acceso con Google;
-// con sesión principal se muestra el email del usuario y el cierre.
+// con sesión principal se muestra el email del usuario y el cierre. Si
+// todavía no eligió namespace, se abre la pantalla del primer login
+// (issue #20) con la sugerencia que calcula el servidor.
 (async () => {
     try {
         const respuesta = await fetch("/api/sesion", {
@@ -24,13 +30,68 @@ const cuentaSalir = document.getElementById("cuenta-salir");
             cuentaEntrar.hidden = false;
             return;
         }
-        cuentaUsuario.textContent = sesion.usuario.email;
-        cuentaUsuario.hidden = false;
+        mostrarUsuario(sesion.usuario);
         cuentaSalir.hidden = false;
+        if (!sesion.usuario.namespace) {
+            namespaceInput.value = sesion.usuario.sugerencia || "";
+            namespaceSection.hidden = false;
+        }
     } catch (error) {
         console.warn("No se pudo consultar la sesión actual", error);
     }
 })();
+
+namespaceForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    namespaceError.hidden = true;
+
+    // El valor se captura antes del await del token CSRF, como en el
+    // formulario de enlaces: se envía lo que el usuario confirmó.
+    const propuesta = namespaceInput.value;
+    let respuesta;
+    try {
+        const csrfResponse = await fetch("/api/csrf");
+        const csrf = csrfResponse.ok ? await csrfResponse.json() : null;
+        if (!csrf || typeof csrf.token !== "string" || !csrf.token) {
+            throw new Error("sin token csrf");
+        }
+        respuesta = await fetch("/api/namespace", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "X-XSRF-TOKEN": csrf.token
+            },
+            body: JSON.stringify({ namespace: propuesta })
+        });
+    } catch (error) {
+        showNamespaceError("No se pudo contactar al servicio.");
+        return;
+    }
+
+    const body = await respuesta.json().catch(() => null);
+    if (!respuesta.ok) {
+        // Cada rechazo del contrato trae {error, message}: se muestra el
+        // mensaje legible sin inventar el motivo.
+        showNamespaceError(body && body.message
+                ? body.message : "Ese namespace no se pudo elegir.");
+        return;
+    }
+    mostrarUsuario(body.usuario);
+    namespaceSection.hidden = true;
+});
+
+function mostrarUsuario(usuario) {
+    cuentaUsuario.textContent = usuario.namespace
+            ? usuario.email + " · " + usuario.namespace
+            : usuario.email;
+    cuentaUsuario.hidden = false;
+}
+
+function showNamespaceError(message) {
+    namespaceError.textContent = message;
+    namespaceError.hidden = false;
+    namespaceInput.focus();
+}
 
 cuentaSalir.addEventListener("click", async () => {
     // El logout exige CSRF igual que el POST de enlaces (issue #18). Si no

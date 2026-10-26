@@ -3,8 +3,9 @@
 Estado: decisiones técnicas fijadas para el issue #2, extendidas con la
 evidencia de vencimiento y reinicio del issue #3, la reutilización de
 alias del issue #5, las garantías de concurrencia del issue #6, la capa
-de seguridad con CSRF del issue #18 y el inicio de sesión con Google con
-sesión principal persistida del issue #19. La
+de seguridad con CSRF del issue #18, el inicio de sesión con Google con
+sesión principal persistida del issue #19 y la elección del namespace del
+primer login del issue #20. La
 estructura descrita refleja el refactor al esquema de clase del issue
 #15 (service único con `EntityManager` y HQL sobre las entities de
 `mappings`, [ADR 0006](adr/0006-service-unico-hql-mappings.md)). Cierra
@@ -33,10 +34,21 @@ El contrato REST de creación y resolución está en [openapi.yaml](../openapi.y
   `Cache-Control: no-store` cuando hay asignación vigente; `404` con la página
   «Este enlace no existe o venció» y `Cache-Control: no-store` en caso contrario.
 - `GET /api/sesion` devuelve `{"usuario": null}` sin sesión o sin usuario
-  en la sesión, y `{"usuario": {"email", "namespace", "tipo"}}` con sesión
-  iniciada: `email` de la cuenta de Google, `namespace` vacío hasta que el
-  usuario lo elija y `tipo` `principal` (la vinculación por QR sumará
-  `vinculada`). Responde `Cache-Control: no-store`.
+  en la sesión, y `{"usuario": {"email", "namespace", "tipo", "sugerencia"}}`
+  con sesión iniciada: `email` de la cuenta de Google, `namespace` vacío
+  hasta que el usuario lo elija, `tipo` `principal` (la vinculación por QR
+  sumará `vinculada`) y `sugerencia` para la pantalla del primer login
+  (vacía cuando ya hay namespace). Responde `Cache-Control: no-store`.
+- `POST /api/namespace` registra el namespace del usuario de la sesión.
+  Normaliza a minúsculas y exige de 3 a 30 caracteres `a-z`, `0-9` y `-`,
+  sin guion inicial ni final. Rechaza con su propio código en
+  `{error, message}`: `NAMESPACE_INVALID` (`400`), `NAMESPACE_RESERVED`
+  (`400`), `NAMESPACE_TAKEN` (`409`) y `NAMESPACE_ALREADY_CHOSEN` (`409`);
+  sin sesión responde `401` con `NOT_AUTHENTICATED` y exige CSRF como todo
+  POST. Devuelve la sesión actual ya actualizada.
+- `GET /api/namespace/sugerencia` propone un nombre derivado de la parte
+  local del email, adaptado al formato. No lo reserva: si está tomado, el
+  usuario puede escribir otro. Sin sesión responde `401`.
 - `POST /api/logout` invalida la sesión del dispositivo que llama y
   responde `204` sin cuerpo, también cuando no hay sesión. Exige el token
   CSRF del doble envío, como todo POST.
@@ -264,7 +276,7 @@ La migración `V3__usuario_y_sesiones.sql` (issue #19) agrega:
   VARCHAR(255) UNIQUE NOT NULL, email VARCHAR(255) NOT NULL, namespace
   VARCHAR(30))`: la identidad del usuario la fija el `sub` de Google
   (único y requerido); el email se guarda en cada login y `namespace`
-  queda `NULL` hasta que el usuario lo elija en un Change posterior.
+  queda `NULL` hasta que el usuario lo elija con `POST /api/namespace`.
 - `spring_session` y `spring_session_attributes`, con el esquema que
   documenta Spring Session JDBC, con `session_id`/`principal_name`/
   `expiry_time`/`last_access_time`/`max_inactive_interval` y la tabla de
@@ -272,9 +284,18 @@ La migración `V3__usuario_y_sesiones.sql` (issue #19) agrega:
   El esquema lo mantiene la migración propia, no el inicializador de
   Spring Session (`initialize-schema: never`).
 
-El perfil `hsqldb` traduce ambas tablas a mano en
+La migración `V4__namespace_usuario.sql` (issue #20) agrega
+`uq_usuario_namespace`, una restricción única sobre `usuario.namespace`.
+El service guarda siempre el valor normalizado a minúsculas, así que esa
+restricción también impone la unicidad sin distinguir mayúsculas. En
+PostgreSQL los múltiples `NULL` de los usuarios que todavía no eligieron
+no colisionan.
+
+El perfil `hsqldb` traduce esas tablas a mano en
 `db/hsqldb/schema.sql` (mismos nombres y columnas; `BYTEA` se vuelve
-`LONGVARBINARY`), como manda el ADR 0005.
+`LONGVARBINARY`), como manda el ADR 0005. La restricción del namespace se
+agrega con un `ALTER` tolerado por `continue-on-error`, para que aplique
+tanto a bases nuevas como a las que ya existían.
 
 ## Coordinación transaccional
 
@@ -428,6 +449,11 @@ misma regla del entorno/`.env` pero sin default en el primer caso:
   principal; se aplica al materializar la sesión en el login y queda
   persistida en `spring_session.max_inactive_interval`. Valores no
   positivos o nulos cortan el arranque.
+- `cuenta.namespace-reserved-names` (lista, `NAMESPACE_RESERVED_NAMES`,
+  default `api,login,logout,vincular,oauth2,error`, `CuentaProperties`):
+  nombres que no se pueden elegir como namespace porque chocan con las
+  rutas del propio servicio. Se normalizan a minúsculas y una lista vacía
+  corta el arranque.
 
 ## Estructura de paquetes
 
@@ -437,9 +463,11 @@ issue #15 (ADR 0006):
 - `controller`: `LinkApiController` (`POST /api/links`),
   `RedirectController` (`GET /{alias}`), `CsrfController`
   (`GET /api/csrf`), `SesionController` (`GET /api/sesion`,
-  `POST /api/logout`), `ApiExceptionHandler` y `dto/`
+  `POST /api/logout`), `NamespaceController` (`POST /api/namespace`,
+  `GET /api/namespace/sugerencia`), `ApiExceptionHandler` y `dto/`
   (`CreateLinkRequest`, `CsrfTokenResponse`, `ApiErrorResponse`,
-  `SesionActualResponse`, `UsuarioSesion`). Controllers pass-through:
+  `SesionActualResponse`, `UsuarioSesion`, `ElegirNamespaceRequest`,
+  `NamespaceSugerenciaResponse`). Controllers pass-through:
   traducen la request, llaman al método del service y devuelven su
   resultado; el `201` serializa el record `EnlaceCreado` directo como
   body.
@@ -449,11 +477,14 @@ issue #15 (ADR 0006):
   destino, cálculo de vencimiento, enumeración de códigos, elección del
   reciclable, orígenes propios), y `CuentaService` (ADR 0008) con los
   casos de uso de la cuenta: `usuarioDeLogin` (alta por `sub` o reúso y
-  refresco del email) y `usuarioDeSesion` (usuario de la sesión actual).
+  refresco del email), `usuarioDeSesion` (usuario de la sesión actual),
+  `elegirNamespace` (validación, unicidad y persistencia del namespace) y
+  `sugerenciaDeNamespace` (adaptación de la parte local del email).
   La inyección es `@Autowired` en campos, incluido el `EntityManager`.
   También viven acá el record de resultado
-  `EnlaceCreado` e `InvalidDestinationException`, cuyo `Reason` es el
-  contrato de errores de la API.
+  `EnlaceCreado`, `InvalidDestinationException` e
+  `InvalidNamespaceException`, cuyos `Reason` son los contratos de
+  errores de la API.
 - `mappings`: entities JPA públicas `Alias`, `Asignacion`,
   `GeneradorAlias` y `Usuario`, el modelo del servicio. El service las consulta y
   persiste con `EntityManager` y HQL, sin repositorios Spring Data ni
@@ -588,10 +619,20 @@ sobre la misma base, arranque cortado con mensaje claro cuando faltan
 `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET` y creación de enlaces anónima
 intacta.
 
+La elección del namespace (issue #20) se verifica en
+`NamespaceHttpTest`, también sobre PostgreSQL real y el proveedor OIDC
+simulado: sugerencia derivada de la parte local del email, formato y
+normalización a minúsculas, nombres reservados sin distinguir mayúsculas,
+unicidad sin distinguir mayúsculas, un solo namespace por usuario,
+repetición idempotente del mismo nombre, `401` sin sesión y carrera entre
+dos usuarios por el mismo nombre, donde exactamente uno confirma y el
+otro recibe `NAMESPACE_TAKEN`. `CuentaPropertiesTest` cubre la
+normalización y la obligatoriedad de la lista reservada.
+
 No implementa esta especificación: alias personalizados, consola de
 gestión, estadísticas de visitas ni purga del historial (analizados en
 [evidencia-evolucion.md](evidencia-evolucion.md)). Tampoco las piezas de
-la etapa 2 que dependen del login: elección de namespace, sesiones
+la etapa 2 que dependen del login: cambio de namespace, sesiones
 vinculadas por QR, período de gracia, enlaces personales del usuario ni
 otros proveedores de identidad. Los complementos
 Chrome y Firefox se entregan en `extensiones/` (issue #8) y el QR de la

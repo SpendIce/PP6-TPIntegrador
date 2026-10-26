@@ -60,3 +60,6 @@ cuenta:
   # Inactividad máxima que se graba en cada sesión principal al iniciar
   # sesión con Google (issue #19).
   main-session-idle-timeout: ${MAIN_SESSION_IDLE_TIMEOUT:P30D}
+  # Nombres que ningún usuario puede elegir como namespace porque chocan
+  # con rutas del propio servicio (issue #20).
+  namespace-reserved-names: ${NAMESPACE_RESERVED_NAMES:api,login,logout,vincular,oauth2,error}

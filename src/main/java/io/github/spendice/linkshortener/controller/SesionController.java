@@ -29,10 +29,15 @@ class SesionController {
         Long usuarioId = sesion == null
                 ? null : (Long) sesion.getAttribute(CuentaService.ATRIBUTO_USUARIO_ID);
         UsuarioSesion usuario = cuentas.usuarioDeSesion(usuarioId)
-                .map(u -> new UsuarioSesion(
-                        u.getEmail(),
-                        u.getNamespace() == null ? "" : u.getNamespace(),
-                        tipoDe(sesion)))
+                .map(u -> {
+                    String namespace = u.getNamespace() == null ? "" : u.getNamespace();
+                    return new UsuarioSesion(
+                            u.getEmail(),
+                            namespace,
+                            tipoDe(sesion),
+                            namespace.isEmpty()
+                                    ? cuentas.sugerenciaDeNamespace(u.getEmail()) : "");
+                })
                 .orElse(null);
         return ResponseEntity.ok()
                 .cacheControl(CacheControl.noStore())
