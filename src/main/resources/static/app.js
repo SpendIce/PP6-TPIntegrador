@@ -13,6 +13,11 @@ form.addEventListener("submit", async (event) => {
     errorBox.hidden = true;
     result.hidden = true;
 
+    // El destino se captura antes del primer await: si el usuario edita el
+    // campo mientras llega el token CSRF, se acorta lo que envió al pulsar
+    // «Acortar», no lo que quedó escrito después.
+    const destination = input.value;
+
     let response;
     try {
         // CSRF (issue #18): el POST exige el token de GET /api/csrf,
@@ -29,7 +34,7 @@ form.addEventListener("submit", async (event) => {
                 "Content-Type": "application/json",
                 "X-XSRF-TOKEN": csrf.token
             },
-            body: JSON.stringify({ destination: input.value })
+            body: JSON.stringify({ destination })
         });
     } catch (e) {
         showError("No se pudo contactar al servicio.");
