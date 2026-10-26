@@ -3,7 +3,9 @@ package io.github.spendice.linkshortener.service;
 import io.github.spendice.linkshortener.config.ShortenerProperties;
 import io.github.spendice.linkshortener.mappings.Alias;
 import io.github.spendice.linkshortener.mappings.Asignacion;
+import io.github.spendice.linkshortener.mappings.AsignacionPersonal;
 import io.github.spendice.linkshortener.mappings.GeneradorAlias;
+import io.github.spendice.linkshortener.mappings.Usuario;
 import io.github.spendice.linkshortener.service.InvalidDestinationException.Reason;
 import jakarta.annotation.PostConstruct;
 import jakarta.persistence.EntityManager;
@@ -40,6 +42,15 @@ public class AcortadorService {
 
     private static final String AVISO_REUSO =
             "Este alias puede reutilizarse con otro destino después del vencimiento.";
+
+    /**
+     * Alias personalizado válido (issue #21): de 1 a 50 caracteres
+     * minúsculas, dígitos y guiones, sin restricción de posición del
+     * guion. La entrada se normaliza a minúsculas antes de validar, así
+     * que «Mi-Doc» es un alias válido que se guarda como «mi-doc».
+     */
+    private static final String ALIAS_PERSONALIZADO_VALIDO = "[a-z0-9-]{1,50}";
+    private static final int ALIAS_PERSONALIZADO_MAX = 50;
 
     @Autowired
     EntityManager em;
@@ -104,6 +115,117 @@ public class AcortadorService {
             return Optional.empty();
         }
         return Optional.of(asignacion);
+    }
+
+    /**
+     * Caso de uso de creación de un enlace personal (issue #21): valida
+     * el destino con las mismas reglas del enlace acortado, exige que el
+     * usuario ya haya elegido su namespace y persiste una asignación que
+     * pertenece al usuario (no al texto del namespace), conservando el
+     * historial (ADR 0003).
+     *
+     * <p>El bloqueo pesimista de la fila del usuario serializa las
+     * creaciones del mismo usuario, la misma disciplina que la fila del
+     * generador para los alias de un segmento: dos creaciones
+     * simultáneas del mismo alias personalizado nunca terminan con dos
+     * asignaciones vigentes — la que espera ve la vigente que confirmó
+     * la otra y recibe {@code ALIAS_TAKEN}.</p>
+     */
+    @Transactional
+    public EnlaceCreado crearEnlacePersonal(Long usuarioId, String propuestaAlias,
+                                            String destino) {
+        Usuario usuario = em.find(Usuario.class, usuarioId, LockModeType.PESSIMISTIC_WRITE);
+        if (usuario == null) {
+            throw new IllegalStateException(
+                    "El usuario " + usuarioId + " de la sesión ya no existe");
+        }
+        String namespace = usuario.getNamespace();
+        if (namespace == null) {
+            throw new InvalidNamespaceException(
+                    InvalidNamespaceException.Reason.NAMESPACE_NOT_CHOSEN,
+                    "Elegí tu namespace para crear enlaces personales.");
+        }
+        validarDestino(destino);
+        String alias = normalizarAliasPersonalizado(propuestaAlias);
+        Instant ahora = clock.instant();
+        if (existeAsignacionPersonalVigente(usuario.getId(), alias, ahora)) {
+            throw new InvalidAliasPersonalizadoException(
+                    InvalidAliasPersonalizadoException.Reason.ALIAS_TAKEN,
+                    "Ya tenés un enlace personal vigente con el alias '" + alias
+                            + "'; probá con otro.");
+        }
+        AsignacionPersonal asignacion = new AsignacionPersonal(
+                usuario.getId(), alias, destino, ahora, venceEn(ahora));
+        em.persist(asignacion);
+        return new EnlaceCreado(
+                direccionBase + "/" + namespace + "/" + alias,
+                alias,
+                asignacion.getVenceEn(),
+                AVISO_REUSO);
+    }
+
+    /**
+     * Caso de uso de resolución de un enlace personal (issue #21): el
+     * namespace ubica al usuario dueño y devuelve su asignación vigente
+     * de ese alias personalizado en el instante del servidor, o vacío si
+     * no hay usuario con ese namespace, si el enlace no existe o si ya
+     * venció. La comparación no distingue mayúsculas: ambos segmentos se
+     * normalizan a minúsculas. Al ser una asignación por usuario, otro
+     * usuario puede tener el mismo texto de alias en su namespace.
+     */
+    @Transactional(readOnly = true)
+    public Optional<AsignacionPersonal> resolverEnlacePersonal(String namespace,
+                                                             String propuestaAlias) {
+        List<Usuario> usuarios = em.createQuery(
+                "select u from Usuario u where u.namespace = :namespace", Usuario.class)
+                .setParameter("namespace", namespace.toLowerCase(Locale.ROOT))
+                .setMaxResults(1)
+                .getResultList();
+        if (usuarios.isEmpty()) {
+            return Optional.empty();
+        }
+        return em.createQuery(
+                "select a from AsignacionPersonal a"
+                        + " where a.usuarioId = :usuario"
+                        + " and a.aliasPersonalizado = :alias"
+                        + " and a.venceEn > :instante"
+                        + " order by a.id desc",
+                AsignacionPersonal.class)
+                .setParameter("usuario", usuarios.get(0).getId())
+                .setParameter("alias", propuestaAlias.toLowerCase(Locale.ROOT))
+                .setParameter("instante", clock.instant())
+                .setMaxResults(1)
+                .getResultList()
+                .stream().findFirst();
+    }
+
+    /** El alias personalizado normalizado y verificado contra el formato. */
+    private String normalizarAliasPersonalizado(String propuesta) {
+        String alias = propuesta == null ? null : propuesta.toLowerCase(Locale.ROOT);
+        if (alias == null || !alias.matches(ALIAS_PERSONALIZADO_VALIDO)) {
+            throw new InvalidAliasPersonalizadoException(
+                    InvalidAliasPersonalizadoException.Reason.ALIAS_INVALID,
+                    "El alias personalizado debe tener entre 1 y " + ALIAS_PERSONALIZADO_MAX
+                            + " caracteres a-z, 0-9 y -.");
+        }
+        return alias;
+    }
+
+    /** ¿El usuario ya tiene una asignación vigente de ese alias personalizado? */
+    private boolean existeAsignacionPersonalVigente(Long usuarioId, String alias,
+                                                    Instant instante) {
+        return !em.createQuery(
+                "select a.id from AsignacionPersonal a"
+                        + " where a.usuarioId = :usuario"
+                        + " and a.aliasPersonalizado = :alias"
+                        + " and a.venceEn > :instante",
+                Long.class)
+                .setParameter("usuario", usuarioId)
+                .setParameter("alias", alias)
+                .setParameter("instante", instante)
+                .setMaxResults(1)
+                .getResultList()
+                .isEmpty();
     }
 
     // ---- Reserva de alias (reciclaje y generación) ----

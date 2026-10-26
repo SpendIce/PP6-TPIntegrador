@@ -49,9 +49,35 @@ class RedirectController {
                         .header(HttpHeaders.LOCATION, asignacion.getDestino())
                         .cacheControl(CacheControl.noStore())
                         .<String>build())
-                .orElseGet(() -> ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .orElseGet(RedirectController::noEncontrado);
+    }
+
+    /**
+     * Resolución de enlaces personales (issue #21):
+     * {@code GET /{namespace}/{aliasPersonalizado}} redirige al destino
+     * de la asignación vigente del usuario o responde el mismo 404 que
+     * el alias de un segmento. El patrón acota ambos segmentos a letras,
+     * dígitos y guiones — los alfabetos del namespace y del alias
+     * personalizado — para que los archivos con extensión
+     * ({@code /vendor/qrcode.js}) sigan llegando al manejador de
+     * estáticos; las rutas literales como {@code /api/csrf} ganan por
+     * ser más específicas.
+     */
+    @GetMapping("/{namespace:[a-zA-Z0-9-]+}/{alias:[a-zA-Z0-9-]+}")
+    ResponseEntity<String> resolverPersonal(@PathVariable("namespace") String namespace,
+                                            @PathVariable("alias") String alias) {
+        return service.resolverEnlacePersonal(namespace, alias)
+                .map(asignacion -> ResponseEntity.status(HttpStatus.FOUND)
+                        .header(HttpHeaders.LOCATION, asignacion.getDestino())
                         .cacheControl(CacheControl.noStore())
-                        .contentType(MediaType.TEXT_HTML)
-                        .body(NOT_FOUND_PAGE));
+                        .<String>build())
+                .orElseGet(RedirectController::noEncontrado);
+    }
+
+    private static ResponseEntity<String> noEncontrado() {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .cacheControl(CacheControl.noStore())
+                .contentType(MediaType.TEXT_HTML)
+                .body(NOT_FOUND_PAGE);
     }
 }
