@@ -69,6 +69,22 @@ const TIMEOUT_MS = 15_000;
 const LIMIT_MS = 1_000;
 
 const agent = new http.Agent({ keepAlive: true, maxSockets: CLIENTS });
+
+// Token CSRF del contrato (etapa 2). Se pide una sola vez antes de medir: el
+// costo del GET /api/csrf no entra en la muestra y todos los POST reutilizan
+// la cookie y el encabezado del doble envío.
+let csrfHeaders = {};
+
+async function initCsrf() {
+  const r = await httpRequest('GET', '/api/csrf');
+  const cookies = [].concat(r.headers['set-cookie'] ?? []);
+  const setCookie = cookies.find((c) => c.startsWith('XSRF-TOKEN=')) ?? '';
+  const value = setCookie.split(';')[0];
+  const token = JSON.parse(r.body || '{}').token;
+  if (!token) throw new Error(`GET /api/csrf no entregó token (${r.status}): ${r.body}`);
+  csrfHeaders = { 'x-xsrf-token': token, cookie: value || `XSRF-TOKEN=${token}` };
+}
+
 const createRows = [];
 const resolveRows = [];
 const knownDestinations = new Map(); // alias -> destino registrado
@@ -90,6 +106,7 @@ function httpRequest(method, urlPath, jsonBody) {
         headers: {
           ...(payload ? { 'content-type': 'application/json', 'content-length': Buffer.byteLength(payload) } : {}),
           accept: '*/*',
+          ...(method === 'POST' ? csrfHeaders : {}),
         },
       },
       (res) => {
@@ -247,6 +264,7 @@ function log(msg) {
 
 fs.mkdirSync(OUT_DIR, { recursive: true });
 log(`Base medida: ${BASE.origin} | clients=${CLIENTS} seed=${SEED} requests=${REQUESTS} warmup=${WARMUP}`);
+await initCsrf();
 
 let seedFailures = 0;
 

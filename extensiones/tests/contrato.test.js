@@ -25,6 +25,21 @@ function startStub(handler) {
   });
 }
 
+const CSRF_TOKEN = "tok-stub-1";
+
+function csrfStub(req, res) {
+  if (req.method === "GET" && req.url === "/api/csrf") {
+    res.writeHead(200, {
+      "Content-Type": "application/json",
+      "Cache-Control": "no-store",
+      "Set-Cookie": `XSRF-TOKEN=${CSRF_TOKEN}; Path=/`
+    });
+    res.end(JSON.stringify({ token: CSRF_TOKEN }));
+    return true;
+  }
+  return false;
+}
+
 function createHandler() {
   const requests = [];
   const handler = (req, res) => {
@@ -32,6 +47,9 @@ function createHandler() {
     req.on("data", (chunk) => { body += chunk; });
     req.on("end", () => {
       requests.push({ method: req.method, url: req.url, headers: req.headers, body });
+      if (csrfStub(req, res)) {
+        return;
+      }
       if (req.method === "POST" && req.url === "/api/links") {
         res.writeHead(201, { "Content-Type": "application/json", "Cache-Control": "no-store" });
         res.end(JSON.stringify({
@@ -49,7 +67,7 @@ function createHandler() {
   return { handler, requests };
 }
 
-test("createLink contra un servidor real envia el POST del contrato y devuelve el enlace", async (t) => {
+test("createLink contra un servidor real pide el token CSRF y envia el POST del contrato", async (t) => {
   const { handler, requests } = createHandler();
   const { server, base } = await startStub(handler);
   t.after(() => server.close());
@@ -57,11 +75,14 @@ test("createLink contra un servidor real envia el POST del contrato y devuelve e
   const destination = "https://docs.ejemplo.com/carpeta/archivo?a=1&b=2#seccion";
   const link = await LinkApi.createLink(base, destination);
 
-  assert.equal(requests.length, 1);
-  assert.equal(requests[0].method, "POST");
-  assert.equal(requests[0].url, "/api/links");
-  assert.equal(requests[0].headers["content-type"], "application/json");
-  assert.deepEqual(JSON.parse(requests[0].body), { destination });
+  assert.equal(requests.length, 2);
+  assert.equal(requests[0].method, "GET");
+  assert.equal(requests[0].url, "/api/csrf");
+  assert.equal(requests[1].method, "POST");
+  assert.equal(requests[1].url, "/api/links");
+  assert.equal(requests[1].headers["x-xsrf-token"], CSRF_TOKEN);
+  assert.equal(requests[1].headers["content-type"], "application/json");
+  assert.deepEqual(JSON.parse(requests[1].body), { destination });
 
   assert.equal(link.shortUrl, "http://192.168.1.50:8080/7");
   assert.equal(link.alias, "7");
@@ -71,6 +92,9 @@ test("createLink contra un servidor real envia el POST del contrato y devuelve e
 
 test("createLink contra un servidor real muestra el error 400 del contrato", async (t) => {
   const { server, base } = await startStub((req, res) => {
+    if (csrfStub(req, res)) {
+      return;
+    }
     res.writeHead(400, { "Content-Type": "application/json" });
     res.end(JSON.stringify({ error: "OWN_ORIGIN", message: "El destino pertenece al propio servicio." }));
   });

@@ -19,6 +19,19 @@ function fakeResponse(status, payload, { failJson = false } = {}) {
   };
 }
 
+/*
+ * fetch falso que responde el GET /api/csrf del contrato con el token
+ * indicado y delega el POST en `postResponse` (constante o funcion).
+ */
+function csrfAwareFetch(postResponse, { token = "tok-csrf-1" } = {}) {
+  return async (url, init) => {
+    if (url.endsWith("/api/csrf")) {
+      return fakeResponse(200, { token });
+    }
+    return typeof postResponse === "function" ? postResponse(url, init) : postResponse;
+  };
+}
+
 test("resolveApiBase usa el valor por defecto ante configuracion vacia", () => {
   assert.equal(LinkApi.resolveApiBase(undefined), "http://localhost:8080");
   assert.equal(LinkApi.resolveApiBase(null), "http://localhost:8080");
@@ -62,26 +75,49 @@ test("isShortenableTabUrl solo acepta pestañas http/https", () => {
   }
 });
 
+test("buildCsrfRequest arma el GET /api/csrf del contrato pidiendo la cookie", () => {
+  const { url, init } = LinkApi.buildCsrfRequest("http://192.168.1.50:8080/");
+
+  assert.equal(url, "http://192.168.1.50:8080/api/csrf");
+  assert.equal(init.method, "GET");
+  assert.equal(init.credentials, "include",
+    "la cookie XSRF-TOKEN se guarda aunque el popup sea otro origen");
+});
+
 test("buildCreateLinkRequest arma el POST del contrato sobre /api/links", () => {
   const destination = "https://docs.ejemplo.com/carpeta/archivo?a=1&b=2#seccion";
-  const { url, init } = LinkApi.buildCreateLinkRequest("http://192.168.1.50:8080", destination);
+  const { url, init } = LinkApi.buildCreateLinkRequest(
+    "http://192.168.1.50:8080", destination, "tok-csrf-1");
 
   assert.equal(url, "http://192.168.1.50:8080/api/links");
   assert.equal(init.method, "POST");
   assert.equal(init.headers["Content-Type"], "application/json");
   assert.equal(init.headers.Accept, "application/json");
+  assert.equal(init.headers["X-XSRF-TOKEN"], "tok-csrf-1",
+    "el token CSRF viaja repetido en el encabezado del doble envio");
+  assert.equal(init.credentials, "include",
+    "la cookie XSRF-TOKEN viaja con el POST");
   assert.equal(init.body, JSON.stringify({ destination }));
   assert.equal(JSON.parse(init.body).destination, destination, "el destino viaja verbatim");
 });
 
 test("buildCreateLinkRequest normaliza la base y rechaza destinos vacios", () => {
-  const { url } = LinkApi.buildCreateLinkRequest("192.168.1.50:8080/", "https://x.com");
+  const { url } = LinkApi.buildCreateLinkRequest("192.168.1.50:8080/", "https://x.com", "tok");
   assert.equal(url, "http://192.168.1.50:8080/api/links");
 
   for (const destination of ["", "   ", undefined, null]) {
     assert.throws(
-      () => LinkApi.buildCreateLinkRequest("http://localhost:8080", destination),
+      () => LinkApi.buildCreateLinkRequest("http://localhost:8080", destination, "tok"),
       (e) => e instanceof LinkApi.ApiError && e.code === "INVALID_DESTINATION"
+    );
+  }
+});
+
+test("buildCreateLinkRequest exige el token CSRF del contrato", () => {
+  for (const token of ["", undefined, null]) {
+    assert.throws(
+      () => LinkApi.buildCreateLinkRequest("http://localhost:8080", "https://x.com", token),
+      (e) => e instanceof LinkApi.ApiError && e.code === "CSRF_UNAVAILABLE"
     );
   }
 });
@@ -139,10 +175,10 @@ test("parseCreateLinkResponse reporta estados inesperados con mensaje claro", ()
 
 test("createLink resuelve con el enlace cuando la API responde 201", async () => {
   const calls = [];
-  const fetchImpl = async (url, init) => {
+  const fetchImpl = csrfAwareFetch(async (url, init) => {
     calls.push({ url, init });
     return fakeResponse(201, VALID_LINK);
-  };
+  });
   const link = await LinkApi.createLink("http://192.168.1.50:8080", "https://x.com/a", fetchImpl);
 
   assert.equal(link.shortUrl, VALID_LINK.shortUrl);
@@ -152,8 +188,37 @@ test("createLink resuelve con el enlace cuando la API responde 201", async () =>
   assert.ok(calls[0].init.signal, "la solicitud lleva timeout");
 });
 
+test("createLink obtiene el token CSRF y lo envia en el POST", async () => {
+  const calls = [];
+  const fetchImpl = async (url, init) => {
+    calls.push({ url, init });
+    return url.endsWith("/api/csrf")
+      ? fakeResponse(200, { token: "tok-del-servidor" })
+      : fakeResponse(201, VALID_LINK);
+  };
+  await LinkApi.createLink("http://192.168.1.50:8080", "https://x.com/a", fetchImpl);
+
+  assert.equal(calls.length, 2, "primero el token, despues el POST");
+  assert.equal(calls[0].url, "http://192.168.1.50:8080/api/csrf");
+  assert.equal(calls[0].init.credentials, "include",
+    "el navegador guarda y reenvia la cookie XSRF-TOKEN");
+  assert.equal(calls[1].init.headers["X-XSRF-TOKEN"], "tok-del-servidor");
+  assert.equal(calls[1].init.credentials, "include");
+});
+
+test("createLink reporta CSRF_UNAVAILABLE si el token no llega", async () => {
+  for (const bad of [fakeResponse(403, null), fakeResponse(200, {}), fakeResponse(200, { token: "" })]) {
+    const fetchImpl = async () => bad;
+    await assert.rejects(
+      LinkApi.createLink("http://localhost:8080", "https://x.com", fetchImpl),
+      (e) => e instanceof LinkApi.ApiError && e.code === "CSRF_UNAVAILABLE"
+    );
+  }
+});
+
 test("createLink propaga los errores del contrato sin ocultarlos", async () => {
-  const fetchImpl = async () => fakeResponse(400, { error: "MALFORMED_DESTINATION", message: "La URL de destino no tiene un formato válido." });
+  const fetchImpl = csrfAwareFetch(
+    fakeResponse(400, { error: "MALFORMED_DESTINATION", message: "La URL de destino no tiene un formato válido." }));
   await assert.rejects(
     LinkApi.createLink("http://localhost:8080", "esto no es url", fetchImpl),
     (e) => e instanceof LinkApi.ApiError && e.code === "MALFORMED_DESTINATION" && e.message.includes("formato")
@@ -183,7 +248,7 @@ test("createLink reporta timeout como tal", async () => {
 });
 
 test("createLink trata JSON roto en un 201 como respuesta invalida", async () => {
-  const fetchImpl = async () => fakeResponse(201, null, { failJson: true });
+  const fetchImpl = csrfAwareFetch(fakeResponse(201, null, { failJson: true }));
   await assert.rejects(
     LinkApi.createLink("http://localhost:8080", "https://x.com", fetchImpl),
     (e) => e instanceof LinkApi.ApiError && e.code === "INVALID_RESPONSE"

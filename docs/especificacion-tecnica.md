@@ -2,7 +2,8 @@
 
 Estado: decisiones técnicas fijadas para el issue #2, extendidas con la
 evidencia de vencimiento y reinicio del issue #3, la reutilización de
-alias del issue #5 y las garantías de concurrencia del issue #6. La
+alias del issue #5, las garantías de concurrencia del issue #6 y la capa
+de seguridad con CSRF del issue #18. La
 estructura descrita refleja el refactor al esquema de clase del issue
 #15 (service único con `EntityManager` y HQL sobre las entities de
 `mappings`, [ADR 0006](adr/0006-service-unico-hql-mappings.md)). Cierra
@@ -21,7 +22,12 @@ El contrato REST de creación y resolución está en [openapi.yaml](../openapi.y
   `shortUrl`, `alias`, `expiresAt` y `reuseNotice`. Los rechazos de entrada son
   `400` con `{error, message}`; los códigos de `error` posibles figuran en el
   contrato (`EMPTY_DESTINATION`, `DESTINATION_TOO_LONG`, `MALFORMED_DESTINATION`,
-  `UNSUPPORTED_SCHEME`, `OWN_ORIGIN`, `INVALID_REQUEST`).
+  `UNSUPPORTED_SCHEME`, `OWN_ORIGIN`, `INVALID_REQUEST`). Un token CSRF ausente
+  o inválido se rechaza con `403` y el mismo formato (`CSRF_TOKEN_INVALID`);
+  ver «Seguridad y CSRF».
+- `GET /api/csrf` emite el token CSRF: fija la cookie legible `XSRF-TOKEN` y
+  devuelve el mismo valor en `{"token": "..."}` para los clientes que no pueden
+  leer `Set-Cookie` (las extensiones). Responde `Cache-Control: no-store`.
 - `GET /{alias}` devuelve `302` con `Location` al destino conservado y
   `Cache-Control: no-store` cuando hay asignación vigente; `404` con la página
   «Este enlace no existe o venció» y `Cache-Control: no-store` en caso contrario.
@@ -52,6 +58,48 @@ la respuesta `400` de `openapi.yaml`):
 - Ningún rechazo crea asignación ni consume un alias: la validación ocurre
   antes de la reserva dentro de la transacción de `acortar`.
 
+## Seguridad y CSRF
+
+La capa de seguridad (issue #18, en `config/SecurityConfig`) prepara el login
+de la etapa 2 sin cambiar el flujo anónimo:
+
+- Todo el contrato sigue sin autenticación: `GET /{alias}`, la página 404, la
+  web, los estáticos y las rutas reservadas no piden credenciales.
+- Se usa el firewall por defecto de Spring Security (`DefaultHttpFirewall`), no
+  el estricto: el estricto rechaza con `400` el `;` en la ruta y el doble
+  slash, y la etapa 1 resolvía `/abc;utm=x` y `//abc` como `/abc`. Conservar
+  esa respuesta es parte del criterio; el ruteo sigue acotado por el patrón de
+  alias y las rutas reservadas.
+- Se apaga el escritor de `Cache-Control` por defecto de Spring Security
+  (`headers().cacheControl().disable()`): sin eso, los estáticos quedaban con
+  `no-store`. La resolución, la API y el token siguen declarando `no-store`
+  desde sus controladores.
+- Quedan los encabezados de seguridad por defecto de Spring Security en todas
+  las respuestas: `X-Content-Type-Options: nosniff`,
+  `X-Frame-Options: DENY` y `X-XSS-Protection: 0`.
+- No hay sesión de aplicación (`SessionCreationPolicy.STATELESS`): el servicio
+  no emite cookie de sesión y ningún recurso depende de una.
+- Los métodos que cambian estado exigen CSRF por doble envío con
+  `CookieCsrfTokenRepository.withHttpOnlyFalse()`: el servidor fija la cookie
+  legible `XSRF-TOKEN` y el cliente la repite en el encabezado `X-XSRF-TOKEN`.
+  La comparación es con el valor crudo de la cookie
+  (`CsrfTokenRequestAttributeHandler`), la forma que espera un cliente que lee
+  la cookie.
+- `GET /api/csrf` resuelve el `CsrfToken` del filtro — lo que escribe la
+  cookie — y devuelve el mismo valor en el cuerpo `{"token": "..."}`: las
+  extensiones no pueden leer `Set-Cookie` desde `fetch`, así que toman el
+  valor del cuerpo y piden el reenvío de la cookie con
+  `credentials: "include"`. La web pide el token en el mismo origen antes de
+  cada `POST /api/links`.
+- El rechazo CSRF responde `403` con el formato `{error, message}` del
+  contrato y el código `CSRF_TOKEN_INVALID`, escrito por un
+  `DelegatingAccessDeniedHandler` que solo aplica ese cuerpo a
+  `CsrfException`: los `403` de autorización que agregue el login (#19) no
+  heredan el código CSRF.
+- El doble envío no firma ni guarda tokens: cualquier par cookie/encabezado
+  coincidente se acepta, que es lo que hace segura la comparación sin estado
+  (un sitio cross-site no puede leer la cookie para repetirla).
+
 ## Versiones fijadas
 
 | Componente | Versión | Uso |
@@ -60,6 +108,7 @@ la respuesta `400` de `openapi.yaml`):
 | Gradle | 8.14.5 (wrapper) | Build y gestión de dependencias; el wrapper versionado evita instalar Gradle. |
 | Spring Boot | 3.5.16 | Plugin Gradle `org.springframework.boot`; fija las versiones administradas de Spring, Hibernate, Jackson, Flyway y Testcontainers. |
 | Spring Web / Spring Data JPA (Hibernate 6) | administradas por Boot 3.5.16 | Controllers web y acceso JPA por `EntityManager` + HQL; no se usan repositorios Spring Data (ADR 0006). |
+| Spring Security | administrada por Boot 3.5.16 | Cadena de filtros sin sesión y sin autenticación; CSRF por doble envío (cookie `XSRF-TOKEN` + encabezado `X-XSRF-TOKEN`). |
 | PostgreSQL JDBC | administrada por Boot | Driver. |
 | Flyway (`flyway-core` + `flyway-database-postgresql`) | administrada por Boot | Migraciones versionadas desde el inicio. |
 | Testcontainers (`postgresql`, `junit-jupiter`) + `spring-boot-testcontainers` | administradas por Boot | PostgreSQL real en pruebas de integración (ADR 0004). |
@@ -79,7 +128,8 @@ la respuesta `400` de `openapi.yaml`):
   `spring.sql.init`, con `flyway` deshabilitado y `ddl-auto=none` en el perfil.
 - Pruebas de integración: Testcontainers levanta `postgres:16.4-alpine`
   en tres grupos de contextos. `LinkApiHttpTest`,
-  `ConcurrenciaHttpTest`, `DestinationValidationHttpTest` y
+  `ConcurrenciaHttpTest`, `DestinationValidationHttpTest`,
+  `SeguridadCsrfHttpTest` y
   `RutasReservadasHttpTest` extienden `HttpApiFixture` y comparten un
   único contenedor (patrón singleton con `@ServiceConnection`);
   `RutasReservadasHttpTest` declara sus propias `properties` de
@@ -91,6 +141,13 @@ la respuesta `400` de `openapi.yaml`):
   contextos programáticamente con `SpringApplicationBuilder` contra su
   propio `@Container`, con el datasource pasado por argumentos de
   arranque (sin `@ServiceConnection`). No se usa H2 (ADR 0004).
+
+  Desde el issue #18 todo POST de las suites envía el token CSRF del
+  contrato con el helper compartido `Csrf` (`GET /api/csrf` + cookie y
+  encabezado). El fixture ofrece además `nuevoClienteDispositivo()`, un
+  `HttpClient` con su propio `CookieManager` por "dispositivo", que la
+  regresión anónima ya usa y que es la base de las pruebas de sesión de
+  la etapa 2.
 
 ## Migraciones
 
@@ -261,8 +318,9 @@ caer en silencio a otro valor:
 issue #15 (ADR 0006):
 
 - `controller`: `LinkApiController` (`POST /api/links`),
-  `RedirectController` (`GET /{alias}`), `ApiExceptionHandler` y `dto/`
-  (`CreateLinkRequest`, `ApiErrorResponse`). Controllers pass-through:
+  `RedirectController` (`GET /{alias}`), `CsrfController`
+  (`GET /api/csrf`), `ApiExceptionHandler` y `dto/`
+  (`CreateLinkRequest`, `CsrfTokenResponse`, `ApiErrorResponse`). Controllers pass-through:
   traducen la request, llaman al método del service y devuelven su
   resultado; el `201` serializa el record `EnlaceCreado` directo como
   body.
@@ -279,7 +337,8 @@ issue #15 (ADR 0006):
   persiste con `EntityManager` y HQL, sin repositorios Spring Data ni
   clases de dominio paralelas que traducir. Las tablas y columnas son
   las mismas del esquema versionado.
-- `config`: `ShortenerProperties` (`@ConfigurationProperties`) y una
+- `config`: `ShortenerProperties` (`@ConfigurationProperties`),
+  `SecurityConfig` (cadena de filtros, CSRF, firewall y rechazo CSRF) y una
   `@Configuration` mínima con el bean `Clock`.
 - `resources/static`: web `index.html`, `app.js`, `styles.css`, módulo
   `qr-code.js` y biblioteca vendorizada `vendor/qrcode.js`

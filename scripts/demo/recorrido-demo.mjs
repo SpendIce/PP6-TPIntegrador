@@ -134,14 +134,36 @@ function httpRequest(method, urlPath, rawBody, headers = {}) {
   });
 }
 
-function createLink(destination) {
+// Token CSRF del contrato (etapa 2): se pide una vez con GET /api/csrf y se
+// repite en cookie y encabezado en cada POST. El cliente crudo no guarda
+// cookies, así que la cookie viaja a mano.
+let csrf = null;
+
+async function ensureCsrf() {
+  if (csrf) return csrf;
+  const r = await httpRequest('GET', '/api/csrf', undefined, { Accept: 'application/json' });
+  const cookies = [].concat(r.headers['set-cookie'] ?? []);
+  const setCookie = cookies.find((c) => c.startsWith('XSRF-TOKEN=')) ?? '';
+  const value = setCookie.split(';')[0];
+  const token = r.json?.token ?? value.slice('XSRF-TOKEN='.length);
+  if (!token) throw new Error(`GET /api/csrf no entregó token (${r.status}): ${r.text}`);
+  csrf = {
+    'X-XSRF-TOKEN': token,
+    Cookie: value || `XSRF-TOKEN=${token}`,
+  };
+  return csrf;
+}
+
+async function createLink(destination) {
+  const headers = await ensureCsrf();
   return httpRequest('POST', '/api/links', JSON.stringify({ destination }),
-    { 'Content-Type': 'application/json' })
+    { 'Content-Type': 'application/json', ...headers })
     .then((r) => ({ res: r, body: r.json }));
 }
 
-function createRaw(rawBody, contentType = 'application/json') {
-  return httpRequest('POST', '/api/links', rawBody, { 'Content-Type': contentType })
+async function createRaw(rawBody, contentType = 'application/json') {
+  const headers = await ensureCsrf();
+  return httpRequest('POST', '/api/links', rawBody, { 'Content-Type': contentType, ...headers })
     .then((r) => ({ res: r, body: r.json }));
 }
 

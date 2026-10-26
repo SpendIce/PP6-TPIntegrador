@@ -13,12 +13,28 @@ form.addEventListener("submit", async (event) => {
     errorBox.hidden = true;
     result.hidden = true;
 
+    // El destino se captura antes del primer await: si el usuario edita el
+    // campo mientras llega el token CSRF, se acorta lo que envió al pulsar
+    // «Acortar», no lo que quedó escrito después.
+    const destination = input.value;
+
     let response;
     try {
+        // CSRF (issue #18): el POST exige el token de GET /api/csrf,
+        // repetido en X-XSRF-TOKEN; la cookie viaja sola por ser mismo
+        // origen.
+        const csrfResponse = await fetch("/api/csrf");
+        const csrf = csrfResponse.ok ? await csrfResponse.json() : null;
+        if (!csrf || typeof csrf.token !== "string" || !csrf.token) {
+            throw new Error("sin token csrf");
+        }
         response = await fetch("/api/links", {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ destination: input.value })
+            headers: {
+                "Content-Type": "application/json",
+                "X-XSRF-TOKEN": csrf.token
+            },
+            body: JSON.stringify({ destination })
         });
     } catch (e) {
         showError("No se pudo contactar al servicio.");
