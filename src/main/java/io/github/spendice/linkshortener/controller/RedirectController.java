@@ -15,8 +15,8 @@ import org.springframework.web.bind.annotation.RestController;
  * Resolución pública: {@code GET /{alias}} redirige (302) al destino de
  * la asignación vigente o responde 404 con la página acordada. El patrón
  * solo admite símbolos del alfabeto configurado (placeholder
- * {@code shortener.alias-route-pattern}, con el patrón por defecto en
- * línea como respaldo): las rutas propias (archivos estáticos con
+ * {@code shortener.alias-route-pattern}, cuyo default vive en
+ * {@code application.yml}): las rutas propias (archivos estáticos con
  * extensión, {@code /api/...}) nunca entran aquí como alias.
  */
 @RestController
@@ -42,7 +42,7 @@ class RedirectController {
     @Autowired
     AcortadorService service;
 
-    @GetMapping("/{alias:${shortener.alias-route-pattern:[1-9A-HJ-NP-Za-km-z]{1,32}}}")
+    @GetMapping("/{alias:${shortener.alias-route-pattern}}")
     ResponseEntity<String> resolver(@PathVariable("alias") String alias) {
         return service.resolver(alias)
                 .map(asignacion -> ResponseEntity.status(HttpStatus.FOUND)

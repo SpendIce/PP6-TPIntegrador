@@ -214,14 +214,18 @@ Prefijo `shortener` (`ShortenerProperties`). Cada clave se declara en
 quede hardcodeado (issue #15). Las variables pueden venir del entorno o
 de un `.env` opcional importado con `spring.config.import` (ruta en
 `ENV_FILE`, default `.env`); el entorno real tiene precedencia y la tarea
-`test` desactiva el archivo para que las pruebas usen los defaults:
+`test` desactiva el archivo para que las pruebas usen los defaults. Los
+defaults viven solo en `application.yml`: `ShortenerProperties` no los
+repite y rechaza en el arranque un valor ausente o vacío, en lugar de
+caer en silencio a otro valor:
 
 - `public-base-url` (`PUBLIC_BASE_URL`, default `http://localhost:8080`):
   dirección pública del servicio usada para componer `shortUrl`. No se
   deriva de la solicitud ni se fija a localhost. Para la demo LAN se
   configura la dirección LAN, p. ej. `http://192.168.1.50:8080`.
 - `link-duration` (`Duration`, `LINK_DURATION`, default `PT60M`):
-  duración de las nuevas asignaciones. El experimento de adaptación la
+  duración de las nuevas asignaciones; como mínimo un minuto (un número
+  sin unidad son milisegundos y corta el arranque). El experimento de adaptación la
   cambia sin tocar las asignaciones existentes, cuyo `vence_en` ya está
   persistido. Evidencia ejecutada y análisis de los demás cambios
   representativos en [evidencia-evolucion.md](evidencia-evolucion.md)
@@ -244,8 +248,8 @@ de un `.env` opcional importado con `spring.config.import` (ruta en
   aceptado de la URL de destino; `8192` por defecto.
 - `alias-route-pattern` (`ALIAS_ROUTE_PATTERN`): la expresión regular del
   template `{alias:regex}` del mapping de resolución, inyectada como
-  placeholder `${shortener.alias-route-pattern}` con default inline por
-  si el placeholder no resuelve en la anotación. Acota qué segmentos de
+  placeholder `${shortener.alias-route-pattern}`, sin default propio en
+  la anotación (el único está en `application.yml`). Acota qué segmentos de
   ruta llegan al service como alias (por defecto
   `[1-9A-HJ-NP-Za-km-z]{1,32}`). Adyacencia: al cambiar `ALIAS_ALPHABET`
   hay que revisar `ALIAS_ROUTE_PATTERN`, para que el patrón siga

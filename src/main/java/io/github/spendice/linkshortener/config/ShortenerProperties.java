@@ -11,12 +11,17 @@ import java.util.List;
  * lugar donde viven los valores variables del servicio, cada uno con su
  * variable de entorno en {@code application.yml}.
  *
+ * <p>Los valores por defecto viven solo en {@code application.yml}; este
+ * record no los repite. Un valor ausente o vacío (p. ej.
+ * {@code LINK_DURATION=} en el entorno) es un error de configuración que
+ * corta el arranque, en lugar de caer en silencio a otro valor.</p>
+ *
  * <ul>
  *   <li>{@code public-base-url}: dirección pública del servicio; compone
  *   la {@code shortUrl} de las respuestas. No se deriva de la solicitud
  *   ni queda fijada a localhost en producción.</li>
- *   <li>{@code link-duration}: duración de las nuevas asignaciones
- *   ({@code PT60M} por defecto).</li>
+ *   <li>{@code link-duration}: duración de las nuevas asignaciones; como
+ *   mínimo un minuto.</li>
  *   <li>{@code own-origins}: orígenes propios adicionales a los que se
  *   rechazan destinos ({@code esquema://host[:puerto]}).</li>
  *   <li>{@code reserved-routes}: códigos que el generador nunca emite
@@ -24,8 +29,7 @@ import java.util.List;
  *   <li>{@code alias-alphabet}: alfabeto de los códigos de alias; alimenta
  *   tanto la generación como la validación del código recibido.</li>
  *   <li>{@code max-destination-length}: largo máximo de la URL de
- *   destino (8192 por defecto en {@code application.yml}); un valor no
- *   positivo es un error de configuración.</li>
+ *   destino; un valor no positivo es un error de configuración.</li>
  *   <li>{@code alias-route-pattern}: patrón de la ruta {@code GET /{alias}};
  *   tiene que ser consistente con {@code alias-alphabet}.</li>
  * </ul>
@@ -40,12 +44,12 @@ public record ShortenerProperties(
         int maxDestinationLength,
         String aliasRoutePattern) {
 
-    /** Alfabeto por defecto: 58 símbolos sin los ambiguos 0, O, I ni l. */
-    public static final String ALFABETO_POR_DEFECTO =
-            "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
-
-    /** Patrón por defecto del alias, consistente con el alfabeto por defecto. */
-    public static final String PATRON_RUTA_POR_DEFECTO = "[1-9A-HJ-NP-Za-km-z]{1,32}";
+    /**
+     * Piso de {@code link-duration}. Además de acotar vencimientos
+     * absurdos, detecta el error de escribir un número sin unidad:
+     * Spring lo interpreta en milisegundos ({@code 40} son 40 ms).
+     */
+    static final Duration DURACION_MINIMA = Duration.ofMinutes(1);
 
     public ShortenerProperties {
         if (publicBaseUrl == null || publicBaseUrl.getHost() == null
@@ -54,16 +58,20 @@ public record ShortenerProperties(
                     "shortener.public-base-url debe ser una URL absoluta con esquema y host");
         }
         if (linkDuration == null) {
-            linkDuration = Duration.ofMinutes(60);
-        }
-        if (linkDuration.isNegative() || linkDuration.isZero()) {
             throw new IllegalArgumentException(
-                    "La duración de una asignación debe ser positiva");
+                    "shortener.link-duration es obligatoria (LINK_DURATION, p. ej. PT60M)");
+        }
+        if (linkDuration.compareTo(DURACION_MINIMA) < 0) {
+            throw new IllegalArgumentException(
+                    "shortener.link-duration debe ser de al menos un minuto y se recibió "
+                            + linkDuration + "; un número sin unidad se interpreta en"
+                            + " milisegundos: usar PT40M o 40m para 40 minutos");
         }
         ownOrigins = ownOrigins == null ? List.of() : List.copyOf(ownOrigins);
         reservedRoutes = reservedRoutes == null ? List.of() : List.copyOf(reservedRoutes);
         if (aliasAlphabet == null || aliasAlphabet.isBlank()) {
-            aliasAlphabet = ALFABETO_POR_DEFECTO;
+            throw new IllegalArgumentException(
+                    "shortener.alias-alphabet es obligatorio (ALIAS_ALPHABET)");
         }
         if (aliasAlphabet.chars().distinct().count() != aliasAlphabet.length()) {
             throw new IllegalArgumentException(
@@ -74,7 +82,8 @@ public record ShortenerProperties(
                     "El largo máximo de la URL de destino debe ser positivo");
         }
         if (aliasRoutePattern == null || aliasRoutePattern.isBlank()) {
-            aliasRoutePattern = PATRON_RUTA_POR_DEFECTO;
+            throw new IllegalArgumentException(
+                    "shortener.alias-route-pattern es obligatorio (ALIAS_ROUTE_PATTERN)");
         }
     }
 }

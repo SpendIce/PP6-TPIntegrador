@@ -120,7 +120,7 @@ configuración abajo.
 | Variable | Propiedad | Defecto | Uso |
 | --- | --- | --- | --- |
 | `PUBLIC_BASE_URL` | `shortener.public-base-url` | `http://localhost:8080` | Dirección pública para componer `shortUrl`. Para la demo LAN usar la IP del host, p. ej. `http://192.168.1.50:8080`. |
-| `LINK_DURATION` | `shortener.link-duration` | `PT60M` | Duración de las nuevas asignaciones (ISO-8601). Solo aplica a lo creado desde ese arranque; lo vigente conserva su `vence_en`. |
+| `LINK_DURATION` | `shortener.link-duration` | `PT60M` | Duración de las nuevas asignaciones (ISO-8601 o `40m`), mínimo un minuto. Solo aplica a lo creado desde ese arranque; lo vigente conserva su `vence_en`. Un número sin unidad son milisegundos y corta el arranque. |
 | `OWN_ORIGINS` | `shortener.own-origins` | vacío | Orígenes propios extra (CSV, `esquema://host[:puerto]`) a rechazar como destino; se suman al origen público y a los equivalentes loopback. |
 | `RESERVED_ROUTES` | `shortener.reserved-routes` | `api,error` | Códigos que el generador nunca emite como alias (rutas del propio servicio). |
 | `ALIAS_ALPHABET` | `shortener.alias-alphabet` | `123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz` | Alfabeto de los códigos de alias: 58 símbolos sin `0`, `O`, `I` ni `l`; alimenta la generación y la validación del código recibido. |
@@ -141,6 +141,11 @@ echo 'LINK_DURATION=PT40M' >> .env
 El `.env` se lee en formato properties (sin `export` ni comillas) desde el
 directorio de trabajo; `ENV_FILE` apunta a otra ruta. Una variable de
 entorno real le gana al archivo, y `./gradlew test` no lo lee.
+
+Los defaults de la tabla viven solo en `application.yml`. Una variable
+presente pero vacía no vuelve al default: `LINK_DURATION`,
+`ALIAS_ALPHABET` o `ALIAS_ROUTE_PATTERN` vacías cortan el arranque con
+un mensaje que nombra la clave.
 
 ## Probar las funcionalidades
 
