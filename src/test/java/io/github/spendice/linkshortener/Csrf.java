@@ -47,10 +47,17 @@ final class Csrf {
         return body.get("token").asText();
     }
 
-    /** Cookie y encabezado con el token, en ese orden, sobre el builder. */
-    static HttpRequest.Builder aplicar(HttpRequest.Builder builder, String token) {
-        return builder
-                .header("Cookie", COOKIE + "=" + token)
-                .header(ENCABEZADO, token);
+    /**
+     * Encabezado {@code X-XSRF-TOKEN} y, solo si el cliente no guarda
+     * cookies, también el encabezado {@code Cookie}: con
+     * {@code CookieManager} la cookie ya viaja desde el almacén del
+     * cliente y repetirla a mano la duplicaría.
+     */
+    static HttpRequest.Builder aplicar(HttpClient client, HttpRequest.Builder builder, String token) {
+        builder.header(ENCABEZADO, token);
+        if (client.cookieHandler().isEmpty()) {
+            builder.header("Cookie", COOKIE + "=" + token);
+        }
+        return builder;
     }
 }

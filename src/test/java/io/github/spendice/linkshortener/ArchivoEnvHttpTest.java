@@ -100,7 +100,7 @@ class ArchivoEnvHttpTest {
 
     private String crearEnlace(int port, Instant expiresAtEsperado) throws Exception {
         String csrf = Csrf.obtener(client, "http://localhost:" + port);
-        HttpRequest request = Csrf.aplicar(
+        HttpRequest request = Csrf.aplicar(client,
                         HttpRequest.newBuilder(
                                 URI.create("http://localhost:" + port + "/api/links")), csrf)
                 .header("Content-Type", "application/json")

@@ -102,21 +102,21 @@ abstract class HttpApiFixture {
      * el token con {@code GET /api/csrf} — si guarda cookies, la cookie
      * queda en su propio almacén — y lo repite por encabezado y cookie.
      */
-    HttpResponse<String> postJson(HttpClient dest, String jsonBody) throws Exception {
-        String csrf = Csrf.obtener(dest, baseUrl());
-        HttpRequest request = Csrf.aplicar(
+    HttpResponse<String> postJson(HttpClient cliente, String jsonBody) throws Exception {
+        String csrf = Csrf.obtener(cliente, baseUrl());
+        HttpRequest request = Csrf.aplicar(cliente,
                         HttpRequest.newBuilder(URI.create(baseUrl() + "/api/links")), csrf)
                 .header("Content-Type", "application/json")
                 .timeout(REQUEST_TIMEOUT)
                 .POST(BodyPublishers.ofString(jsonBody))
                 .build();
-        return dest.send(request, BodyHandlers.ofString());
+        return cliente.send(request, BodyHandlers.ofString());
     }
 
     /** POST sin cuerpo ni Content-Type: el contrato lo rechaza. */
     HttpResponse<String> postSinCuerpo() throws Exception {
         String csrf = Csrf.obtener(client, baseUrl());
-        HttpRequest request = Csrf.aplicar(
+        HttpRequest request = Csrf.aplicar(client,
                         HttpRequest.newBuilder(URI.create(baseUrl() + "/api/links")), csrf)
                 .timeout(REQUEST_TIMEOUT)
                 .POST(BodyPublishers.noBody())
@@ -128,10 +128,10 @@ abstract class HttpApiFixture {
         return get(client, path);
     }
 
-    HttpResponse<String> get(HttpClient dest, String path) throws Exception {
+    HttpResponse<String> get(HttpClient cliente, String path) throws Exception {
         HttpRequest request = HttpRequest.newBuilder(URI.create(baseUrl() + path))
                 .GET().timeout(REQUEST_TIMEOUT).build();
-        return dest.send(request, BodyHandlers.ofString());
+        return cliente.send(request, BodyHandlers.ofString());
     }
 
     String baseUrl() {

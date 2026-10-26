@@ -184,7 +184,7 @@ class VencimientoHttpTest {
 
     private HttpResponse<String> postJson(String jsonBody) throws Exception {
         String csrf = Csrf.obtener(client, baseUrl());
-        HttpRequest request = Csrf.aplicar(
+        HttpRequest request = Csrf.aplicar(client,
                         HttpRequest.newBuilder(URI.create(baseUrl() + "/api/links")), csrf)
                 .header("Content-Type", "application/json")
                 .POST(BodyPublishers.ofString(jsonBody))

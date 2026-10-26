@@ -178,7 +178,7 @@ class EvolucionDuracionHttpTest {
 
     private String crearEnlace(int port, String destination, Instant expectedExpiresAt) throws Exception {
         String csrf = Csrf.obtener(client, baseUrl(port));
-        HttpRequest request = Csrf.aplicar(
+        HttpRequest request = Csrf.aplicar(client,
                         HttpRequest.newBuilder(URI.create(baseUrl(port) + "/api/links")), csrf)
                 .header("Content-Type", "application/json")
                 .POST(BodyPublishers.ofString("{\"destination\":\"" + destination + "\"}"))

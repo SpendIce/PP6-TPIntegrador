@@ -19,7 +19,10 @@ form.addEventListener("submit", async (event) => {
         // repetido en X-XSRF-TOKEN; la cookie viaja sola por ser mismo
         // origen.
         const csrfResponse = await fetch("/api/csrf");
-        const csrf = await csrfResponse.json();
+        const csrf = csrfResponse.ok ? await csrfResponse.json() : null;
+        if (!csrf || typeof csrf.token !== "string" || !csrf.token) {
+            throw new Error("sin token csrf");
+        }
         response = await fetch("/api/links", {
             method: "POST",
             headers: {
