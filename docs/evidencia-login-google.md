@@ -66,7 +66,7 @@ Corrida del 2026-10-26 sobre el head del Change, con el oráculo del Project
 
 ```text
 ./gradlew --no-daemon --console=plain test
-BUILD SUCCESSFUL   (88 pruebas, 0 fallos, 17 suites)
+BUILD SUCCESSFUL   (89 pruebas, 0 fallos, 18 suites)
 
 cd src/test/js && node --test    -> pass 5
 cd extensiones && node --test    -> pass 42

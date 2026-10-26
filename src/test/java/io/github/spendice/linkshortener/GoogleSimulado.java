@@ -76,6 +76,8 @@ final class GoogleSimulado {
         // la sesión que guarda el estado del pedido OAuth2.
         URI autorizar = redireccion(dispositivo, baseUrl + "/oauth2/authorization/google");
         assertThat(autorizar.toString()).startsWith(issuerUri() + "/authorize");
+        // El registro pide exactamente los tres alcances del acuerdo.
+        assertThat(autorizar.toString()).contains("scope=openid%20email%20profile");
 
         // El formulario del mock se publica a la misma URL con la query
         // del pedido original, como hace el navegador.
