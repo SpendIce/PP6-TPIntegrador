@@ -2,8 +2,9 @@
 
 Estado: decisiones técnicas fijadas para el issue #2, extendidas con la
 evidencia de vencimiento y reinicio del issue #3, la reutilización de
-alias del issue #5, las garantías de concurrencia del issue #6 y la capa
-de seguridad con CSRF del issue #18. La
+alias del issue #5, las garantías de concurrencia del issue #6, la capa
+de seguridad con CSRF del issue #18 y el inicio de sesión con Google con
+sesión principal persistida del issue #19. La
 estructura descrita refleja el refactor al esquema de clase del issue
 #15 (service único con `EntityManager` y HQL sobre las entities de
 `mappings`, [ADR 0006](adr/0006-service-unico-hql-mappings.md)). Cierra
@@ -31,6 +32,20 @@ El contrato REST de creación y resolución está en [openapi.yaml](../openapi.y
 - `GET /{alias}` devuelve `302` con `Location` al destino conservado y
   `Cache-Control: no-store` cuando hay asignación vigente; `404` con la página
   «Este enlace no existe o venció» y `Cache-Control: no-store` en caso contrario.
+- `GET /api/sesion` devuelve `{"usuario": null}` sin sesión o sin usuario
+  en la sesión, y `{"usuario": {"email", "namespace", "tipo"}}` con sesión
+  iniciada: `email` de la cuenta de Google, `namespace` vacío hasta que el
+  usuario lo elija y `tipo` `principal` (la vinculación por QR sumará
+  `vinculada`). Responde `Cache-Control: no-store`.
+- `POST /api/logout` invalida la sesión del dispositivo que llama y
+  responde `204` sin cuerpo, también cuando no hay sesión. Exige el token
+  CSRF del doble envío, como todo POST.
+- El inicio de sesión no pasa por la API: la web navega a
+  `GET /oauth2/authorization/google` y el proveedor OIDC vuelve por
+  `GET /login/oauth2/code/google`, los caminos por defecto del cliente
+  OAuth2 de Spring Security. La vuelta deja una sesión principal
+  persistida y redirige a la web (`/`); ver «Sesiones y login con
+  Google».
 
 Casos de entrada fijados por el contrato (los ejemplos por código figuran en
 la respuesta `400` de `openapi.yaml`):
@@ -60,11 +75,13 @@ la respuesta `400` de `openapi.yaml`):
 
 ## Seguridad y CSRF
 
-La capa de seguridad (issue #18, en `config/SecurityConfig`) prepara el login
-de la etapa 2 sin cambiar el flujo anónimo:
+La capa de seguridad (issue #18, en `config/SecurityConfig`; el issue #19
+suma el login con Google y las sesiones persistidas) mantiene el flujo
+anónimo de la etapa 1:
 
 - Todo el contrato sigue sin autenticación: `GET /{alias}`, la página 404, la
-  web, los estáticos y las rutas reservadas no piden credenciales.
+  web, los estáticos y las rutas reservadas no piden credenciales, y crear
+  enlaces acortados no exige sesión.
 - Se usa el firewall por defecto de Spring Security (`DefaultHttpFirewall`), no
   el estricto: el estricto rechaza con `400` el `;` en la ruta y el doble
   slash, y la etapa 1 resolvía `/abc;utm=x` y `//abc` como `/abc`. Conservar
@@ -77,8 +94,11 @@ de la etapa 2 sin cambiar el flujo anónimo:
 - Quedan los encabezados de seguridad por defecto de Spring Security en todas
   las respuestas: `X-Content-Type-Options: nosniff`,
   `X-Frame-Options: DENY` y `X-XSS-Protection: 0`.
-- No hay sesión de aplicación (`SessionCreationPolicy.STATELESS`): el servicio
-  no emite cookie de sesión y ningún recurso depende de una.
+- Las sesiones se crean solo cuando hace falta (`IF_REQUIRED`, el default
+  sin política explícita): el flujo anónimo no emite cookie de sesión y
+  ninguna respuesta anónima crea una. La sesión nace al iniciar el login
+  con Google (guarda el estado del pedido OAuth2) y se materializa como
+  sesión principal al volver; ver «Sesiones y login con Google».
 - Los métodos que cambian estado exigen CSRF por doble envío con
   `CookieCsrfTokenRepository.withHttpOnlyFalse()`: el servidor fija la cookie
   legible `XSRF-TOKEN` y el cliente la repite en el encabezado `X-XSRF-TOKEN`.
@@ -98,7 +118,55 @@ de la etapa 2 sin cambiar el flujo anónimo:
   heredan el código CSRF.
 - El doble envío no firma ni guarda tokens: cualquier par cookie/encabezado
   coincidente se acepta, que es lo que hace segura la comparación sin estado
-  (un sitio cross-site no puede leer la cookie para repetirla).
+  (un sitio cross-site no puede leer la cookie para repetirla). El mismo
+  mecanismo protege `POST /api/logout`.
+
+## Sesiones y login con Google
+
+El inicio de sesión (issue #19, [ADR 0007](adr/0007-login-google-y-sesiones-persistidas.md))
+usa el cliente OIDC de Spring Security con Google como único proveedor:
+
+- El registro `google` pide exactamente los alcances `openid email profile`.
+  Las credenciales llegan por `GOOGLE_CLIENT_ID` y `GOOGLE_CLIENT_SECRET`
+  del entorno o del `.env`, sin default: `application.yml` solo tiene el
+  placeholder y un chequeo de arranque corta el servicio nombrando la
+  variable que falta (el binding deja el placeholder sin resolver como
+  literal, así que también se rechaza el valor `${...}`).
+- La vuelta del proveedor es `${PUBLIC_BASE_URL}/login/oauth2/code/google`,
+  el camino por defecto de Spring Security, registrado en Google Cloud
+  (ver `docs/despliegue-funnel-google.md`). En producción los endpoints se
+  resuelven desde `accounts.google.com` por el proveedor conocido de
+  Spring Security; en pruebas se configura el `issuer-uri` del proveedor
+  simulado.
+- El `redirect_uri` se arma con el esquema y el host de la solicitud, y
+  `server.forward-headers-strategy: framework` honra los encabezados
+  `X-Forwarded-Proto`/`X-Forwarded-Host`/`X-Forwarded-Port` que agrega
+  Tailscale Funnel. Sin eso la vuelta saldría `http://` y no coincidiría con
+  la URI HTTPS registrada.
+- Las sesiones se persisten en PostgreSQL con Spring Session JDBC
+  (`spring.session.store-type=jdbc`, esquema propio por Flyway con
+  `initialize-schema: never`). La cookie se llama `SESSION`; al ser una
+  sesión por cookie, la protección CSRF del doble envío cubre también el
+  logout. Las sesiones sobreviven a los reinicios del servicio sobre la
+  misma base.
+- Al completarse el login, el success handler materializa la sesión
+  principal: `CuentaService.usuarioDeLogin` crea el usuario en su primer
+  login identificado por el `sub` de Google (el email se guarda y se
+  actualiza si cambió) o reutiliza el existente, y la sesión registra los
+  atributos `usuarioId` y `sesionTipo=principal`, el índice
+  `principal_name` con el id del usuario y la inactividad máxima
+  configurada (`cuenta.main-session-idle-timeout`, `P30D` por defecto).
+  La migración de id de sesión de la protección contra fijación ocurre
+  antes del handler, así que los atributos quedan en la sesión final.
+- `GET /api/sesion` lee `usuarioId` de la sesión con
+  `getSession(false)`: consultar sin sesión no crea una. `POST
+  /api/logout` usa el logout de Spring Security en esa ruta: invalida la
+  sesión persistida del dispositivo, borra la cookie `SESSION` y responde
+  `204` aunque no haya sesión.
+- La web muestra «Entrar con Google» (navega a
+  `/oauth2/authorization/google`) cuando `GET /api/sesion` devuelve
+  `usuario: null`, y el email con «Cerrar sesión» cuando hay usuario;
+  ese botón obtiene el token CSRF y envía `POST /api/logout`.
 
 ## Versiones fijadas
 
@@ -108,11 +176,13 @@ de la etapa 2 sin cambiar el flujo anónimo:
 | Gradle | 8.14.5 (wrapper) | Build y gestión de dependencias; el wrapper versionado evita instalar Gradle. |
 | Spring Boot | 3.5.16 | Plugin Gradle `org.springframework.boot`; fija las versiones administradas de Spring, Hibernate, Jackson, Flyway y Testcontainers. |
 | Spring Web / Spring Data JPA (Hibernate 6) | administradas por Boot 3.5.16 | Controllers web y acceso JPA por `EntityManager` + HQL; no se usan repositorios Spring Data (ADR 0006). |
-| Spring Security | administrada por Boot 3.5.16 | Cadena de filtros sin sesión y sin autenticación; CSRF por doble envío (cookie `XSRF-TOKEN` + encabezado `X-XSRF-TOKEN`). |
+| Spring Security + OAuth2 Client | administrada por Boot 3.5.16 | Cadena de filtros; CSRF por doble envío (cookie `XSRF-TOKEN` + encabezado `X-XSRF-TOKEN`); `spring-boot-starter-oauth2-client` para el login OIDC con Google. |
+| Spring Session JDBC (`spring-session-jdbc`) | administrada por Boot | Sesiones HTTP persistidas en `spring_session`/`spring_session_attributes` sobre el mismo PostgreSQL (ADR 0007). |
 | PostgreSQL JDBC | administrada por Boot | Driver. |
 | Flyway (`flyway-core` + `flyway-database-postgresql`) | administrada por Boot | Migraciones versionadas desde el inicio. |
 | Testcontainers (`postgresql`, `junit-jupiter`) + `spring-boot-testcontainers` | administradas por Boot | PostgreSQL real en pruebas de integración (ADR 0004). |
 | PostgreSQL (Docker) | `postgres:16.4-alpine` | Servicio de desarrollo (docker-compose) e imagen de Testcontainers. |
+| mock-oauth2-server (Docker) | `ghcr.io/navikt/mock-oauth2-server:6.1.2` | Proveedor OIDC de pruebas en `src/test`: sirve la danza de autorización real con su formulario de login interactivo (ADR 0007). |
 | JUnit 5 / AssertJ | administradas por Boot | Pruebas. |
 
 ## Ejecución de la base de datos
@@ -141,6 +211,19 @@ de la etapa 2 sin cambiar el flujo anónimo:
   contextos programáticamente con `SpringApplicationBuilder` contra su
   propio `@Container`, con el datasource pasado por argumentos de
   arranque (sin `@ServiceConnection`). No se usa H2 (ADR 0004).
+
+  Desde el issue #19, las pruebas del login agregan un segundo
+  contenedor con el proveedor OIDC simulado
+  (`ghcr.io/navikt/mock-oauth2-server:6.1.2`): el helper `GoogleSimulado`
+  recorre la danza real del código de autorización
+  (`/oauth2/authorize`, formulario de login interactivo, callback) y
+  `HttpApiFixture` comparte el contenedor entre las suites que lo usan
+  (`SesionPrincipalHttpTest`; `SesionReinicioHttpTest` levanta el suyo
+  junto al PostgreSQL propio para los reinicios de contexto). Todas las
+  suites que arrancan la aplicación completa declaran credenciales de
+  Google de relleno (`GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET` en
+  `properties` o argumentos de arranque): el arranque las exige aunque
+  ninguna solicitud las use.
 
   Desde el issue #18 todo POST de las suites envía el token CSRF del
   contrato con el helper compartido `Csrf` (`GET /api/csrf` + cookie y
@@ -174,6 +257,24 @@ La migración `V2__indice_vencimiento_asignacion.sql` agrega
 `ix_asignacion_vence_en` sobre `asignacion (vence_en)`: la búsqueda de
 candidatos a reciclaje filtra por el vencimiento de la asignación actual
 de cada alias. Solo crea el índice, sin tocar los datos existentes.
+
+La migración `V3__usuario_y_sesiones.sql` (issue #19) agrega:
+
+- `usuario (id BIGINT GENERATED BY DEFAULT AS IDENTITY PK, google_sub
+  VARCHAR(255) UNIQUE NOT NULL, email VARCHAR(255) NOT NULL, namespace
+  VARCHAR(30))`: la identidad del usuario la fija el `sub` de Google
+  (único y requerido); el email se guarda en cada login y `namespace`
+  queda `NULL` hasta que el usuario lo elija en un Change posterior.
+- `spring_session` y `spring_session_attributes`, con el esquema que
+  documenta Spring Session JDBC, con `session_id`/`principal_name`/
+  `expiry_time`/`last_access_time`/`max_inactive_interval` y la tabla de
+  atributos serializados, más los índices de expiración y de principal.
+  El esquema lo mantiene la migración propia, no el inicializador de
+  Spring Session (`initialize-schema: never`).
+
+El perfil `hsqldb` traduce ambas tablas a mano en
+`db/hsqldb/schema.sql` (mismos nombres y columnas; `BYTEA` se vuelve
+`LONGVARBINARY`), como manda el ADR 0005.
 
 ## Coordinación transaccional
 
@@ -294,8 +395,9 @@ caer en silencio a otro valor:
   propio usa host y puerto efectivo (80/443 por defecto según esquema),
   ignorando el esquema.
 - `reserved-routes` (lista, `RESERVED_ROUTES`): códigos que el generador
-  salta siempre. Por defecto `api` y `error`, los segmentos de rutas del
-  propio servicio.
+  salta siempre. Por defecto `api`, `error`, `login` y `oauth2`, los
+  segmentos de rutas del propio servicio (las dos últimas las usa el
+  cliente OAuth2 de Spring Security).
 - `alias-alphabet` (`ALIAS_ALPHABET`): símbolos del espacio de códigos;
   por defecto el alfabeto de 58 acordado
   (`123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz`, sin `0`,
@@ -312,6 +414,21 @@ caer en silencio a otro valor:
   hay que revisar `ALIAS_ROUTE_PATTERN`, para que el patrón siga
   aceptando exactamente los códigos que el alfabeto puede emitir.
 
+Las credenciales del proveedor OIDC y el tiempo de sesión siguen la
+misma regla del entorno/`.env` pero sin default en el primer caso:
+
+- `spring.security.oauth2.client.registration.google.client-id`
+  (`GOOGLE_CLIENT_ID`, sin default) y `client-secret`
+  (`GOOGLE_CLIENT_SECRET`, sin default): identifican la aplicación ante
+  Google. `application.yml` declara solo el placeholder; el arranque las
+  exige y corta nombrando la variable ausente (`SecurityConfig`), así el
+  placeholder literal nunca llega a usarse como credencial.
+- `cuenta.main-session-idle-timeout` (`Duration`, `MAIN_SESSION_IDLE_TIMEOUT`,
+  default `P30D`, `CuentaProperties`): inactividad máxima de la sesión
+  principal; se aplica al materializar la sesión en el login y queda
+  persistida en `spring_session.max_inactive_interval`. Valores no
+  positivos o nulos cortan el arranque.
+
 ## Estructura de paquetes
 
 `io.github.spendice.linkshortener`, reorganizado al esquema de clase del
@@ -319,26 +436,33 @@ issue #15 (ADR 0006):
 
 - `controller`: `LinkApiController` (`POST /api/links`),
   `RedirectController` (`GET /{alias}`), `CsrfController`
-  (`GET /api/csrf`), `ApiExceptionHandler` y `dto/`
-  (`CreateLinkRequest`, `CsrfTokenResponse`, `ApiErrorResponse`). Controllers pass-through:
+  (`GET /api/csrf`), `SesionController` (`GET /api/sesion`,
+  `POST /api/logout`), `ApiExceptionHandler` y `dto/`
+  (`CreateLinkRequest`, `CsrfTokenResponse`, `ApiErrorResponse`,
+  `SesionActualResponse`, `UsuarioSesion`). Controllers pass-through:
   traducen la request, llaman al método del service y devuelven su
   resultado; el `201` serializa el record `EnlaceCreado` directo como
   body.
-- `service`: `AcortadorService`, el único `@Service`: los casos de uso
-  `acortar` y `resolver` como métodos públicos y todas las reglas de
-  negocio como helpers privados del mismo archivo (validación de
+- `service`: `AcortadorService` con los casos de uso `acortar` y
+  `resolver` como métodos públicos y todas las reglas de negocio como
+  helpers privados del mismo archivo (validación de
   destino, cálculo de vencimiento, enumeración de códigos, elección del
-  reciclable, orígenes propios). La inyección es `@Autowired` en campos,
-  incluido el `EntityManager`. También viven acá el record de resultado
+  reciclable, orígenes propios), y `CuentaService` (ADR 0008) con los
+  casos de uso de la cuenta: `usuarioDeLogin` (alta por `sub` o reúso y
+  refresco del email) y `usuarioDeSesion` (usuario de la sesión actual).
+  La inyección es `@Autowired` en campos, incluido el `EntityManager`.
+  También viven acá el record de resultado
   `EnlaceCreado` e `InvalidDestinationException`, cuyo `Reason` es el
   contrato de errores de la API.
-- `mappings`: entities JPA públicas `Alias`, `Asignacion` y
-  `GeneradorAlias`, el modelo del servicio. El service las consulta y
+- `mappings`: entities JPA públicas `Alias`, `Asignacion`,
+  `GeneradorAlias` y `Usuario`, el modelo del servicio. El service las consulta y
   persiste con `EntityManager` y HQL, sin repositorios Spring Data ni
   clases de dominio paralelas que traducir. Las tablas y columnas son
   las mismas del esquema versionado.
-- `config`: `ShortenerProperties` (`@ConfigurationProperties`),
-  `SecurityConfig` (cadena de filtros, CSRF, firewall y rechazo CSRF) y una
+- `config`: `ShortenerProperties` y `CuentaProperties`
+  (`@ConfigurationProperties`),
+  `SecurityConfig` (cadena de filtros, CSRF, firewall, rechazo CSRF,
+  login OIDC y validación de las credenciales de Google) y una
   `@Configuration` mínima con el bean `Clock`.
 - `resources/static`: web `index.html`, `app.js`, `styles.css`, módulo
   `qr-code.js` y biblioteca vendorizada `vendor/qrcode.js`
@@ -450,9 +574,26 @@ resolución durante una reasignación lee una única asignación completa
 otra asignación sin idempotencia. El contrato de clientes no cambió:
 misma API, mismos códigos de estado y errores.
 
+El inicio de sesión con Google (issue #19) se verifica en
+`SesionPrincipalHttpTest`, `SesionReinicioHttpTest`,
+`ArranqueOidcGoogleTest` y la regresión anónima de
+`SeguridadCsrfHttpTest`, contra PostgreSQL real y el proveedor OIDC
+simulado por `mock-oauth2-server` en Testcontainers: danza completa del
+código de autorización, alta del usuario por `sub` en el primer login y
+reúso en el segundo, email persistido, sesión actual con `email`,
+`namespace` vacío y `tipo` `principal`, logout que invalida solo la
+sesión del dispositivo que la pide, inactividad máxima persistida en
+`spring_session`, continuidad de la sesión tras reiniciar el servicio
+sobre la misma base, arranque cortado con mensaje claro cuando faltan
+`GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET` y creación de enlaces anónima
+intacta.
+
 No implementa esta especificación: alias personalizados, consola de
 gestión, estadísticas de visitas ni purga del historial (analizados en
-[evidencia-evolucion.md](evidencia-evolucion.md)). Los complementos
+[evidencia-evolucion.md](evidencia-evolucion.md)). Tampoco las piezas de
+la etapa 2 que dependen del login: elección de namespace, sesiones
+vinculadas por QR, período de gracia, enlaces personales del usuario ni
+otros proveedores de identidad. Los complementos
 Chrome y Firefox se entregan en `extensiones/` (issue #8) y el QR de la
 web se resuelve en el cliente (ver «QR del enlace»). El contrato OpenAPI
 ya contempla el aviso de reutilización (`reuseNotice`) para que la web lo

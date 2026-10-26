@@ -129,11 +129,13 @@ recorre con `bash scripts/wizard-funnel-google.sh`.
 | `PUBLIC_BASE_URL` | `shortener.public-base-url` | `http://localhost:8080` | Dirección pública para componer `shortUrl`. Para la demo LAN usar la IP del host, p. ej. `http://192.168.1.50:8080`. |
 | `LINK_DURATION` | `shortener.link-duration` | `PT60M` | Duración de las nuevas asignaciones (ISO-8601 o `40m`), mínimo un minuto. Solo aplica a lo creado desde ese arranque; lo vigente conserva su `vence_en`. Un número sin unidad son milisegundos y corta el arranque. |
 | `OWN_ORIGINS` | `shortener.own-origins` | vacío | Orígenes propios extra (CSV, `esquema://host[:puerto]`) a rechazar como destino; se suman al origen público y a los equivalentes loopback. |
-| `RESERVED_ROUTES` | `shortener.reserved-routes` | `api,error` | Códigos que el generador nunca emite como alias (rutas del propio servicio). |
+| `RESERVED_ROUTES` | `shortener.reserved-routes` | `api,error,login,oauth2` | Códigos que el generador nunca emite como alias (rutas del propio servicio). |
 | `ALIAS_ALPHABET` | `shortener.alias-alphabet` | `123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz` | Alfabeto de los códigos de alias: 58 símbolos sin `0`, `O`, `I` ni `l`; alimenta la generación y la validación del código recibido. |
 | `MAX_DESTINATION_LENGTH` | `shortener.max-destination-length` | `8192` | Largo máximo aceptado de la URL de destino. |
 | `ALIAS_ROUTE_PATTERN` | `shortener.alias-route-pattern` | `[1-9A-HJ-NP-Za-km-z]{1,32}` | Expresión regular de la ruta `GET /{alias}`. Al cambiar `ALIAS_ALPHABET` hay que revisarlo: debe seguir aceptando exactamente los códigos que el alfabeto puede emitir. |
 | `SERVER_PORT` | `server.port` | `8080` | Puerto HTTP. |
+| `GOOGLE_CLIENT_ID` `GOOGLE_CLIENT_SECRET` | `spring.security.oauth2.client.registration.google.*` | sin default | Credenciales OIDC de la app en Google Cloud; su ausencia corta el arranque nombrando la variable. Registro y URI de vuelta en `docs/despliegue-funnel-google.md`. |
+| `MAIN_SESSION_IDLE_TIMEOUT` | `cuenta.main-session-idle-timeout` | `P30D` | Inactividad máxima de la sesión principal persistida (ISO-8601); se aplica al iniciar sesión con Google. |
 | `DB_HOST` `DB_PORT` `DB_NAME` `DB_USER` `DB_PASSWORD` | `spring.datasource.*` | `localhost` `5432` `acortador` | Conexión a PostgreSQL. |
 
 Las variables se pueden pasar en el entorno del proceso o declarar en un

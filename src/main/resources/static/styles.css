@@ -25,6 +25,31 @@ h1 {
     font-size: 1.5rem;
 }
 
+/* --- Sesión con Google (issue #19) --- */
+
+#cuenta {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 0.75rem;
+    min-height: 2.4rem;
+    margin-bottom: 0.75rem;
+}
+
+#cuenta .button-link,
+#cuenta button {
+    margin-top: 0;
+    padding: 0.45rem 1rem;
+    font-size: 0.9rem;
+    white-space: nowrap;
+}
+
+#cuenta-usuario {
+    color: #6a737d;
+    font-size: 0.9rem;
+    overflow-wrap: anywhere;
+}
+
 .field-row {
     display: flex;
     gap: 0.5rem;
@@ -91,6 +116,12 @@ button:hover {
     margin-top: 0.4rem;
     color: #6a737d;
     font-size: 0.85rem;
+}
+
+/* El atributo `hidden` del HTML tiene que ganarle a cualquier `display`
+   de clase: la web lo usa para alternar el acceso y el usuario. */
+[hidden] {
+    display: none !important;
 }
 
 .button-link {

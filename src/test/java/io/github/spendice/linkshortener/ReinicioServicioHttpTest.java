@@ -57,7 +57,7 @@ class ReinicioServicioHttpTest {
         // limpieza puede fallar sin consecuencias porque la base ya está
         // vacía.
         try (Connection connection = DriverManager.getConnection(
-                POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
+                TestHost.jdbcUrl(POSTGRES), POSTGRES.getUsername(), POSTGRES.getPassword());
              Statement statement = connection.createStatement()) {
             statement.execute("TRUNCATE TABLE alias, asignacion RESTART IDENTITY");
             statement.execute("UPDATE generador_alias SET proximo_indice = 0");
@@ -158,10 +158,14 @@ class ReinicioServicioHttpTest {
                 .sources(ClockTestConfiguration.class)
                 .run(
                         "--server.port=0",
-                        "--spring.datasource.url=" + POSTGRES.getJdbcUrl(),
+                        "--spring.datasource.url=" + TestHost.jdbcUrl(POSTGRES),
                         "--spring.datasource.username=" + POSTGRES.getUsername(),
                         "--spring.datasource.password=" + POSTGRES.getPassword(),
-                        "--shortener.public-base-url=http://192.168.50.10:8080");
+                        "--shortener.public-base-url=http://192.168.50.10:8080",
+                        "--spring.security.oauth2.client.registration.google.client-id="
+                                + GoogleSimulado.CLIENT_ID,
+                        "--spring.security.oauth2.client.registration.google.client-secret="
+                                + GoogleSimulado.CLIENT_SECRET);
     }
 
     private int port(ConfigurableApplicationContext context) {

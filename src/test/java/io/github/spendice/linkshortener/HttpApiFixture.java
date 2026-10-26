@@ -6,8 +6,9 @@ import org.junit.jupiter.api.BeforeEach;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
-import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
 import org.testcontainers.containers.PostgreSQLContainer;
 
 import java.net.CookieManager;
@@ -52,12 +53,43 @@ abstract class HttpApiFixture {
      * datasource: un ciclo de vida por clase reiniciaría la base con otro
      * puerto mientras el contexto sigue apuntando al primero.
      */
-    @ServiceConnection
     static final PostgreSQLContainer<?> POSTGRES =
             new PostgreSQLContainer<>("postgres:16.4-alpine");
 
     static {
         POSTGRES.start();
+    }
+
+    /**
+     * `@ServiceConnection` arma la URL con `localhost`, y en el sandbox de
+     * stinter el puerto mapeado vive en el host: la conexión se rechaza y el
+     * contexto no carga. El datasource se declara con el host de
+     * {@link TestHost}, que es `localhost` en el host y el gateway del bridge
+     * dentro de un contenedor.
+     */
+    @DynamicPropertySource
+    static void datasource(DynamicPropertyRegistry registry) {
+        registry.add("spring.datasource.url", () -> TestHost.jdbcUrl(POSTGRES));
+        registry.add("spring.datasource.username", POSTGRES::getUsername);
+        registry.add("spring.datasource.password", POSTGRES::getPassword);
+    }
+
+    /**
+     * Google se reemplaza por el proveedor OIDC simulado (ADR 0007): el
+     * contexto descubre sus endpoints desde el issuer del contenedor, lo
+     * mismo que en producción hace con {@code accounts.google.com}, así
+     * que el contenedor arranca antes de que se cree el contexto. Las
+     * suites del fixture lo comparten aunque no inicien sesión, como
+     * comparten el PostgreSQL.
+     */
+    @DynamicPropertySource
+    static void googleSimulado(DynamicPropertyRegistry registry) {
+        registry.add("spring.security.oauth2.client.provider.google.issuer-uri",
+                GoogleSimulado::issuerUri);
+        registry.add("spring.security.oauth2.client.registration.google.client-id",
+                () -> GoogleSimulado.CLIENT_ID);
+        registry.add("spring.security.oauth2.client.registration.google.client-secret",
+                () -> GoogleSimulado.CLIENT_SECRET);
     }
 
     protected final HttpClient client = HttpClient.newBuilder()
@@ -88,8 +120,10 @@ abstract class HttpApiFixture {
     void espacioDeCodigosVacio() {
         // Un alias vencido es candidato a reciclaje en cualquier
         // creación: el espacio vacío mantiene aislados los escenarios de
-        // todas las suites que comparten el contenedor.
-        db.execute("TRUNCATE TABLE alias, asignacion RESTART IDENTITY");
+        // todas las suites que comparten el contenedor. Usuarios y
+        // sesiones persistidas (issue #19) también se limpian.
+        db.execute("TRUNCATE TABLE alias, asignacion, usuario,"
+                + " spring_session, spring_session_attributes RESTART IDENTITY");
         db.update("UPDATE generador_alias SET proximo_indice = 0");
     }
 

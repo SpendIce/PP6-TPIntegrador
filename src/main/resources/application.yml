@@ -20,16 +20,43 @@ spring:
   jackson:
     deserialization:
       fail_on_unknown_properties: true
+  security:
+    oauth2:
+      client:
+        registration:
+          google:
+            # Sin default: el arranque corta si no están en el entorno o
+            # en el .env (ver .env.example y docs/despliegue-funnel-google.md).
+            client-id: ${GOOGLE_CLIENT_ID}
+            client-secret: ${GOOGLE_CLIENT_SECRET}
+            scope: openid, email, profile
+  session:
+    # Spring Session JDBC sobre las tablas de db/migration: el esquema lo
+    # versiona Flyway (y schema.sql en el perfil hsqldb), por eso la
+    # inicialización automática queda apagada.
+    store-type: jdbc
+    jdbc:
+      initialize-schema: never
+      table-name: spring_session
 server:
   port: ${SERVER_PORT:8080}
   shutdown: graceful
+  # Detrás de Tailscale Funnel (ADR 0007) el proxy termina TLS y manda
+  # X-Forwarded-Proto/Host: sin esto Google recibiría un redirect_uri http://
+  # que no coincide con la URI HTTPS registrada.
+  forward-headers-strategy: framework
 
 shortener:
   public-base-url: ${PUBLIC_BASE_URL:http://localhost:8080}
   link-duration: ${LINK_DURATION:PT60M}
   own-origins: ${OWN_ORIGINS:}
-  reserved-routes: ${RESERVED_ROUTES:api,error}
+  reserved-routes: ${RESERVED_ROUTES:api,error,login,oauth2}
   alias-alphabet: ${ALIAS_ALPHABET:123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz}
   max-destination-length: ${MAX_DESTINATION_LENGTH:8192}
   # Si cambia ALIAS_ALPHABET hay que revisar este patrón: deben ser consistentes.
   alias-route-pattern: ${ALIAS_ROUTE_PATTERN:[1-9A-HJ-NP-Za-km-z]{1,32}}
+
+cuenta:
+  # Inactividad máxima que se graba en cada sesión principal al iniciar
+  # sesión con Google (issue #19).
+  main-session-idle-timeout: ${MAIN_SESSION_IDLE_TIMEOUT:P30D}

@@ -25,6 +25,8 @@ import static org.assertj.core.api.Assertions.assertThat;
                 "spring.datasource.driver-class-name=org.hsqldb.jdbc.JDBCDriver",
                 "spring.datasource.username=sa",
                 "spring.datasource.password=",
+                "spring.security.oauth2.client.registration.google.client-id=" + GoogleSimulado.CLIENT_ID,
+                "spring.security.oauth2.client.registration.google.client-secret=" + GoogleSimulado.CLIENT_SECRET,
         })
 @ActiveProfiles("hsqldb")
 class HsqldbArranqueTest {

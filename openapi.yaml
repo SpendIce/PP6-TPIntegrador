@@ -3,14 +3,17 @@ info:
   title: Acortador de enlaces — API pública
   version: "0.1.0"
   description: >
-    Contrato de la primera entrega del acortador de enlaces (issues #2, #3
-    y #5). La API permite crear una asignación a partir de una URL de
-    destino y resolver el enlace acortado hacia ese destino mientras la
-    asignación esté vigente. Cada asignación dura exactamente 60 minutos
-    desde su creación, tiene identidad propia y no se deduplica por
-    destino. El alias emitido puede ser un código reciclado de una
-    asignación vencida: el mismo enlace o QR puede conducir a un destino
-    nuevo después del vencimiento.
+    Contrato del acortador de enlaces. La API permite crear una asignación
+    a partir de una URL de destino y resolver el enlace acortado hacia ese
+    destino mientras la asignación esté vigente. Cada asignación dura
+    exactamente 60 minutos desde su creación, tiene identidad propia y no
+    se deduplica por destino. El alias emitido puede ser un código
+    reciclado de una asignación vencida: el mismo enlace o QR puede
+    conducir a un destino nuevo después del vencimiento. La etapa 2 suma
+    el inicio de sesión con Google (issue #19): `GET
+    /oauth2/authorization/google` inicia el flujo OIDC que vuelve por
+    `/login/oauth2/code/google` y deja una sesión principal persistida;
+    `GET /api/sesion` la consulta y `POST /api/logout` la cierra.
 servers:
   - url: /
     description: Mismo origen que sirve la web; la dirección pública del servicio es configurable por despliegue.
@@ -170,6 +173,83 @@ paths:
                   value:
                     error: CSRF_TOKEN_INVALID
                     message: "La solicitud no trae un token CSRF válido; se obtiene con GET /api/csrf."
+  /api/sesion:
+    get:
+      summary: Consultar la sesión actual
+      description: >
+        Devuelve el usuario de la sesión del dispositivo que consulta,
+        identificado por la cookie `SESSION`. Sin sesión válida el
+        usuario es `null`: el contrato no distingue «sin sesión» de
+        «sesión sin usuario». El inicio de sesión con Google no pasa por
+        esta API: la web navega a `/oauth2/authorization/google` y el
+        proveedor vuelve por `/login/oauth2/code/google`, que deja una
+        sesión principal persistida (sobrevive a los reinicios del
+        servicio y vence tras la inactividad máxima configurada, 30 días
+        por defecto). `tipo` identifica cómo se abrió la sesión: hoy solo
+        existe `principal` (login directo con Google); la vinculación por
+        QR sumará `vinculada`.
+      operationId: sesionActual
+      responses:
+        '200':
+          description: >
+            Estado de la sesión actual. `usuario` es `null` cuando no hay
+            sesión o la sesión no tiene usuario.
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+                example: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SesionActual'
+              examples:
+                sinSesion:
+                  summary: Sin sesión o sin usuario
+                  value:
+                    usuario: null
+                conSesion:
+                  summary: Sesión principal iniciada
+                  value:
+                    usuario:
+                      email: "juan@ejemplo.com"
+                      namespace: ""
+                      tipo: "principal"
+  /api/logout:
+    post:
+      summary: Cerrar sesión
+      description: >
+        Invalida la sesión del dispositivo actual: la cookie `SESSION`
+        deja de identificar una sesión y el servidor la elimina de las
+        persistidas. Sin sesión, responde igual. La solicitud exige el
+        token CSRF del doble envío: la cookie `XSRF-TOKEN` y el encabezado
+        `X-XSRF-TOKEN` con el mismo valor que la cookie de la solicitud.
+      operationId: cerrarSesion
+      parameters:
+        - name: X-XSRF-TOKEN
+          in: header
+          required: true
+          description: >
+            Valor de la cookie `XSRF-TOKEN` de la misma solicitud.
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Sesión cerrada (o inexistente); no devuelve cuerpo.
+        '403':
+          description: >
+            Token CSRF ausente o inválido: falta el encabezado
+            `X-XSRF-TOKEN`, falta la cookie `XSRF-TOKEN` o sus valores no
+            coinciden entre sí.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+              examples:
+                csrfInvalido:
+                  value:
+                    error: CSRF_TOKEN_INVALID
+                    message: "La solicitud no trae un token CSRF válido; se obtiene con GET /api/csrf."
   /{alias}:
     get:
       summary: Resolver un enlace acortado
@@ -323,6 +403,46 @@ components:
             cuando la solicitud no la trae) y se repite en el encabezado
             `X-XSRF-TOKEN` de los POST.
           example: "f1d2d2f9-4e5a-4b6c-8d7e-9f0a1b2c3d4e"
+    SesionActual:
+      type: object
+      required:
+        - usuario
+      properties:
+        usuario:
+          # En OpenAPI 3.0.3 `nullable` solo amplía el `type` del mismo
+          # Schema Object: con un `$ref` o un `allOf` el validador sigue
+          # exigiendo el objeto. Por eso el usuario va inline.
+          nullable: true
+          type: object
+          description: >
+            Usuario de la sesión actual; `null` cuando no hay sesión o la
+            sesión no tiene usuario.
+          required:
+            - email
+            - namespace
+            - tipo
+          properties:
+            email:
+              type: string
+              format: email
+              description: Email de la cuenta de Google del usuario.
+              example: "juan@ejemplo.com"
+            namespace:
+              type: string
+              description: >
+                Namespace público del usuario; vacío hasta que lo elija (la
+                elección es un Change posterior).
+              example: ""
+            tipo:
+              type: string
+              description: >
+                Tipo de la sesión actual: `principal` es la abierta con login
+                directo de Google; `vinculada` se reserva para la vinculación
+                por QR.
+              enum:
+                - principal
+                - vinculada
+              example: "principal"
     ApiError:
       type: object
       required:
