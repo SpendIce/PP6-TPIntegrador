@@ -439,10 +439,10 @@ components:
                 Tipo de la sesión actual: `principal` es la abierta con login
                 directo de Google; `vinculada` se reserva para la vinculación
                 por QR.
-          enum:
-            - principal
-            - vinculada
-          example: "principal"
+              enum:
+                - principal
+                - vinculada
+              example: "principal"
     ApiError:
       type: object
       required:

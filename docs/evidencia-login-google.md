@@ -60,13 +60,13 @@ spec. La decisión de arquitectura está en
 
 ## Ejecutado
 
-Corrida del 2026-10-26 sobre `2f594dbe`, con el oráculo del Project
+Corrida del 2026-10-26 sobre el head del Change, con el oráculo del Project
 (`./gradlew --no-daemon --console=plain test`): PostgreSQL y
 `mock-oauth2-server` en Testcontainers sobre Docker real.
 
 ```text
 ./gradlew --no-daemon --console=plain test
-BUILD SUCCESSFUL   (87 pruebas, 0 fallos, 16 suites)
+BUILD SUCCESSFUL   (88 pruebas, 0 fallos, 17 suites)
 
 cd src/test/js && node --test    -> pass 5
 cd extensiones && node --test    -> pass 42
