@@ -16,3 +16,5 @@ La motivación es pedagógica: que el comportamiento completo del sistema se pue
 - Como parte del mismo pedido (nada hardcodeado), todo valor variable queda declarado en el bloque `shortener:` de la configuración, cada clave con su variable de entorno: `public-base-url`, `link-duration`, `own-origins`, `reserved-routes`, `alias-alphabet`, `max-destination-length` y `alias-route-pattern` (ver «Configuración de despliegue» en la [especificación técnica](../especificacion-tecnica.md)).
 
 Pedido: esquema de clase mostrado por el docente e issue #15 (2026-10-23).
+
+El 2026-10-26, en la etapa 2, se agregó un segundo service para usuarios, namespaces y vinculación: ver el [ADR 0008](0008-segundo-service-cuentas.md).
