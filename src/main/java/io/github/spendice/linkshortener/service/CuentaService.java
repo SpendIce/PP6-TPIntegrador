@@ -3,6 +3,7 @@ package io.github.spendice.linkshortener.service;
 import io.github.spendice.linkshortener.mappings.Usuario;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceException;
+import org.hibernate.exception.ConstraintViolationException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
@@ -67,8 +68,12 @@ public class CuentaService {
         try {
             return transacciones.execute(status -> crearOActualizar(googleSub, email));
         } catch (DataIntegrityViolationException | PersistenceException carrera) {
-            // Otro dispositivo creó el usuario entre la lectura y el insert:
-            // se relee el que ganó y se completa el login igual.
+            // Sólo la violación de uq_usuario_google_sub es la carrera de alta
+            // simultánea: cualquier otro fallo de persistencia tiene que
+            // abortar el callback, no reintentarse como si fuera una colisión.
+            if (!esCarreraDeAlta(carrera)) {
+                throw carrera;
+            }
             return transacciones.execute(status -> {
                 Usuario ganador = buscarPorSub(googleSub);
                 if (ganador == null) {
@@ -77,6 +82,21 @@ public class CuentaService {
                 return actualizarEmail(ganador, email);
             });
         }
+    }
+
+    /** ¿La excepción es la violación única de {@code google_sub}? */
+    private static boolean esCarreraDeAlta(Throwable error) {
+        for (Throwable actual = error; actual != null; actual = actual.getCause()) {
+            if (actual instanceof ConstraintViolationException violacion
+                    && "uq_usuario_google_sub".equals(violacion.getConstraintName())) {
+                return true;
+            }
+            String mensaje = actual.getMessage();
+            if (mensaje != null && mensaje.contains("uq_usuario_google_sub")) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private Usuario crearOActualizar(String googleSub, String email) {
