@@ -18,3 +18,7 @@ node_modules/
 # de la orquestación, no del producto: nunca se commitean.
 .stinter/
 .atl/
+
+# Worktrees y estado local de stinter
+.sandcastle/
+.opencode/
