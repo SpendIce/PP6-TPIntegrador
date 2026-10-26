@@ -120,7 +120,7 @@ configuración abajo.
 | Variable | Propiedad | Defecto | Uso |
 | --- | --- | --- | --- |
 | `PUBLIC_BASE_URL` | `shortener.public-base-url` | `http://localhost:8080` | Dirección pública para componer `shortUrl`. Para la demo LAN usar la IP del host, p. ej. `http://192.168.1.50:8080`. |
-| `LINK_DURATION` | `shortener.link-duration` | `PT60M` | Duración de las nuevas asignaciones (ISO-8601). Solo aplica a lo creado desde ese arranque; lo vigente conserva su `vence_en`. |
+| `LINK_DURATION` | `shortener.link-duration` | `PT60M` | Duración de las nuevas asignaciones (ISO-8601 o `40m`), mínimo un minuto. Solo aplica a lo creado desde ese arranque; lo vigente conserva su `vence_en`. Un número sin unidad son milisegundos y corta el arranque. |
 | `OWN_ORIGINS` | `shortener.own-origins` | vacío | Orígenes propios extra (CSV, `esquema://host[:puerto]`) a rechazar como destino; se suman al origen público y a los equivalentes loopback. |
 | `RESERVED_ROUTES` | `shortener.reserved-routes` | `api,error` | Códigos que el generador nunca emite como alias (rutas del propio servicio). |
 | `ALIAS_ALPHABET` | `shortener.alias-alphabet` | `123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz` | Alfabeto de los códigos de alias: 58 símbolos sin `0`, `O`, `I` ni `l`; alimenta la generación y la validación del código recibido. |
@@ -128,6 +128,24 @@ configuración abajo.
 | `ALIAS_ROUTE_PATTERN` | `shortener.alias-route-pattern` | `[1-9A-HJ-NP-Za-km-z]{1,32}` | Expresión regular de la ruta `GET /{alias}`. Al cambiar `ALIAS_ALPHABET` hay que revisarlo: debe seguir aceptando exactamente los códigos que el alfabeto puede emitir. |
 | `SERVER_PORT` | `server.port` | `8080` | Puerto HTTP. |
 | `DB_HOST` `DB_PORT` `DB_NAME` `DB_USER` `DB_PASSWORD` | `spring.datasource.*` | `localhost` `5432` `acortador` | Conexión a PostgreSQL. |
+
+Las variables se pueden pasar en el entorno del proceso o declarar en un
+archivo `.env` en la raíz (ignorado por git; plantilla en `.env.example`):
+
+```bash
+cp .env.example .env
+echo 'LINK_DURATION=PT40M' >> .env
+./gradlew bootRun   # las asignaciones nuevas vencen a los 40 minutos
+```
+
+El `.env` se lee en formato properties (sin `export` ni comillas) desde el
+directorio de trabajo; `ENV_FILE` apunta a otra ruta. Una variable de
+entorno real le gana al archivo, y `./gradlew test` no lo lee.
+
+Los defaults de la tabla viven solo en `application.yml`. Una variable
+presente pero vacía no vuelve al default: `LINK_DURATION`,
+`ALIAS_ALPHABET` o `ALIAS_ROUTE_PATTERN` vacías cortan el arranque con
+un mensaje que nombra la clave.
 
 ## Probar las funcionalidades
 

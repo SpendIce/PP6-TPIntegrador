@@ -14,7 +14,8 @@ tabla «Cambios representativos» de
 La duración no está fija en código: es configuración de despliegue.
 
 - `application.yml`: `shortener.link-duration: ${LINK_DURATION:PT60M}`.
-- `ShortenerProperties.linkDuration` (defecto `Duration.ofMinutes(60)`).
+- `ShortenerProperties.linkDuration`, sin default propio (el único está
+  en `application.yml`) y con piso de un minuto.
 - `AcortadorService.acortar` aplica la duración **una vez al crear**
   (helper `venceEn`) y persiste el resultado:
   `vence_en = creada_en + duración`, en la fila de cada asignación.

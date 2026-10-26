@@ -1,6 +1,12 @@
 spring:
   application:
     name: link-shortener
+  config:
+    # Carga el .env del directorio de trabajo (formato properties, opcional).
+    # Una variable de entorno real del proceso le gana a la del archivo.
+    # ENV_FILE cambia la ruta; la tarea test de Gradle lo apunta a un
+    # archivo inexistente para que las pruebas no dependan del .env local.
+    import: optional:file:${ENV_FILE:.env}[.properties]
   datasource:
     url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:acortador}
     username: ${DB_USER:acortador}
