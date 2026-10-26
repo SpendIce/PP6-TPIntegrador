@@ -64,7 +64,19 @@ La capa de seguridad (issue #18, en `config/SecurityConfig`) prepara el login
 de la etapa 2 sin cambiar el flujo anónimo:
 
 - Todo el contrato sigue sin autenticación: `GET /{alias}`, la página 404, la
-  web, los estáticos y las rutas reservadas responden igual que antes.
+  web, los estáticos y las rutas reservadas no piden credenciales.
+- El firewall estricto de Spring Security permite el `;` en la ruta
+  (`setAllowSemicolon(true)`), así `/abc;utm=x` sigue resolviendo como `/abc`.
+  El doble slash y las rutas no normalizadas sí cambian: responden `400` del
+  firewall en vez del `404` anterior. Es un desvío aceptado: un path no
+  normalizado no es una dirección del contrato.
+- Se apaga el escritor de `Cache-Control` por defecto de Spring Security
+  (`headers().cacheControl().disable()`): sin eso, los estáticos quedaban con
+  `no-store`. La resolución, la API y el token siguen declarando `no-store`
+  desde sus controladores.
+- Quedan los encabezados de seguridad por defecto de Spring Security en todas
+  las respuestas: `X-Content-Type-Options: nosniff`,
+  `X-Frame-Options: DENY` y `X-XSS-Protection: 0`.
 - No hay sesión de aplicación (`SessionCreationPolicy.STATELESS`): el servicio
   no emite cookie de sesión y ningún recurso depende de una.
 - Los métodos que cambian estado exigen CSRF por doble envío con
@@ -80,9 +92,13 @@ de la etapa 2 sin cambiar el flujo anónimo:
   `credentials: "include"`. La web pide el token en el mismo origen antes de
   cada `POST /api/links`.
 - El rechazo CSRF responde `403` con el formato `{error, message}` del
-  contrato y el código `CSRF_TOKEN_INVALID` (implementado como
-  `AccessDeniedHandler` que escribe el mismo `ApiErrorResponse` del resto de
-  la API).
+  contrato y el código `CSRF_TOKEN_INVALID`, escrito por un
+  `DelegatingAccessDeniedHandler` que solo aplica ese cuerpo a
+  `CsrfException`: los `403` de autorización que agregue el login (#19) no
+  heredan el código CSRF.
+- El doble envío no firma ni guarda tokens: cualquier par cookie/encabezado
+  coincidente se acepta, que es lo que hace segura la comparación sin estado
+  (un sitio cross-site no puede leer la cookie para repetirla).
 
 ## Versiones fijadas
 
@@ -302,8 +318,9 @@ caer en silencio a otro valor:
 issue #15 (ADR 0006):
 
 - `controller`: `LinkApiController` (`POST /api/links`),
-  `RedirectController` (`GET /{alias}`), `ApiExceptionHandler` y `dto/`
-  (`CreateLinkRequest`, `ApiErrorResponse`). Controllers pass-through:
+  `RedirectController` (`GET /{alias}`), `CsrfController`
+  (`GET /api/csrf`), `ApiExceptionHandler` y `dto/`
+  (`CreateLinkRequest`, `CsrfTokenResponse`, `ApiErrorResponse`). Controllers pass-through:
   traducen la request, llaman al método del service y devuelven su
   resultado; el `201` serializa el record `EnlaceCreado` directo como
   body.
@@ -320,7 +337,8 @@ issue #15 (ADR 0006):
   persiste con `EntityManager` y HQL, sin repositorios Spring Data ni
   clases de dominio paralelas que traducir. Las tablas y columnas son
   las mismas del esquema versionado.
-- `config`: `ShortenerProperties` (`@ConfigurationProperties`) y una
+- `config`: `ShortenerProperties` (`@ConfigurationProperties`),
+  `SecurityConfig` (cadena de filtros, CSRF, firewall y rechazo CSRF) y una
   `@Configuration` mínima con el bean `Clock`.
 - `resources/static`: web `index.html`, `app.js`, `styles.css`, módulo
   `qr-code.js` y biblioteca vendorizada `vendor/qrcode.js`

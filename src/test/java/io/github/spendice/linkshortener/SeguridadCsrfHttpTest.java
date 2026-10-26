@@ -100,6 +100,25 @@ class SeguridadCsrfHttpTest extends HttpApiFixture {
     }
 
     @Test
+    void laRutaConPuntoYComaSigueResolviendo() throws Exception {
+        // La etapa 1 resolvía `/zz9;x=1` como `/zz9`; el firewall de Spring
+        // Security lo permite con setAllowSemicolon(true).
+        HttpResponse<String> conMatriz = get(client, "/zz9;x=1");
+
+        assertThat(conMatriz.statusCode()).isEqualTo(404);
+        assertThat(conMatriz.body()).contains("Este enlace no existe o venció");
+    }
+
+    @Test
+    void elPathNoNormalizadoLoRechazaElFirewall() throws Exception {
+        // Desvío aceptado y documentado: el doble slash responde 400 del
+        // firewall en vez del 404 de la etapa 1.
+        HttpResponse<String> dobleSlash = get(client, "//zz9");
+
+        assertThat(dobleSlash.statusCode()).isEqualTo(400);
+    }
+
+    @Test
     void losGetPublicosNoPidenAutenticacion() throws Exception {
         HttpClient dispositivo = nuevoClienteDispositivo();
 

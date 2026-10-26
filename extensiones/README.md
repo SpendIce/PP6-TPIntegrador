@@ -146,11 +146,13 @@ cd extensiones
 node --test          # también: npm test
 ```
 
-38 pruebas, cero dependencias (Node >= 20, verificado con Node 26):
+42 pruebas, cero dependencias (Node >= 20, verificado con Node 26):
 
 - `tests/api.test.js`: normalización de la dirección de API, construcción
-  del POST del contrato, parseo de 201/400/estados inesperados, errores de
-  red y timeout con `fetch` inyectado, formato de vencimiento.
+  del `GET /api/csrf` y del POST con cookie y encabezado `X-XSRF-TOKEN`,
+  parseo de 201/400/estados inesperados, `CSRF_UNAVAILABLE` cuando la API
+  no entrega token, errores de red y timeout con `fetch` inyectado, formato
+  de vencimiento.
 - `tests/contrato.test.js`: integración con un servidor `node:http` que
   responde como la API y `fetch` real: valida método, ruta, headers y body.
 - `tests/qr.test.mjs`: carga las copias de `vendor/qrcode.js` y
@@ -169,6 +171,11 @@ node --test          # también: npm test
 
 `popup.js` (pegado con `tabs`/`storage`/`downloads`) no es testeable en
 node: su verificación es el procedimiento manual siguiente.
+
+El tramo que `node --test` no puede cubrir —que el navegador guarde la cookie
+`XSRF-TOKEN` de un `fetch` cross-origin y la reenvíe en el POST— se verifica a
+mano en Chrome y Firefox con [`docs/verificacion-cookies-extensiones.md`](../docs/verificacion-cookies-extensiones.md)
+(issue #26), antes de dar por cerrado el login de las extensiones.
 
 ## Verificación manual (procedimiento, ambos navegadores)
 

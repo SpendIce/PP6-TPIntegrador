@@ -6,14 +6,21 @@ import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.MediaType;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.access.AccessDeniedHandler;
+import org.springframework.security.web.access.AccessDeniedHandlerImpl;
+import org.springframework.security.web.access.DelegatingAccessDeniedHandler;
 import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
+import org.springframework.security.web.csrf.CsrfException;
 import org.springframework.security.web.csrf.CsrfTokenRequestAttributeHandler;
+import org.springframework.security.web.firewall.HttpFirewall;
+import org.springframework.security.web.firewall.StrictHttpFirewall;
 
 import java.nio.charset.StandardCharsets;
+import java.util.LinkedHashMap;
 
 /**
  * Seguridad HTTP del servicio (issue #18): todo el contrato sigue siendo
@@ -32,7 +39,7 @@ import java.nio.charset.StandardCharsets;
 class SecurityConfig {
 
     @Bean
-    SecurityFilterChain filterChain(HttpSecurity http, ObjectMapper json) throws Exception {
+    SecurityFilterChain filterChain(HttpSecurity http, AccessDeniedHandler accessDeniedHandler) throws Exception {
         return http
                 .sessionManagement(session -> session
                         .sessionCreationPolicy(SessionCreationPolicy.STATELESS))
@@ -48,15 +55,40 @@ class SecurityConfig {
                 // estáticos respondan como antes de este Change.
                 .headers(headers -> headers.cacheControl(cache -> cache.disable()))
                 .exceptionHandling(handling -> handling
-                        .accessDeniedHandler(csrfRechazado(json)))
+                        .accessDeniedHandler(accessDeniedHandler))
                 .build();
+    }
+
+    /**
+     * El firewall estricto de Spring Security rechaza el `;` en la ruta, y la
+     * etapa 1 resolvía `/abc;utm=x` como `/abc` (Tomcat descarta la matriz).
+     * Se permite el punto y coma para no romper direcciones ya compartidas con
+     * parámetros de matriz; el doble slash sigue rechazado (400) en vez del
+     * 404 anterior: es un desvío aceptado y documentado en la especificación
+     * técnica, porque un path no normalizado no es una dirección del contrato.
+     */
+    @Bean
+    HttpFirewall httpFirewall() {
+        StrictHttpFirewall firewall = new StrictHttpFirewall();
+        firewall.setAllowSemicolon(true);
+        return firewall;
     }
 
     /**
      * Rechazo uniforme con el formato {@code {error, message}} del
      * contrato: un POST sin token CSRF válido responde 403 con el código
-     * {@code CSRF_TOKEN_INVALID} de {@code openapi.yaml}.
+     * {@code CSRF_TOKEN_INVALID} de {@code openapi.yaml}. Sólo los rechazos
+     * CSRF llevan ese código; un 403 de autorización futuro (#19) usa el
+     * cuerpo por defecto para no mentir sobre la causa.
      */
+    @Bean
+    AccessDeniedHandler accessDeniedHandler(ObjectMapper json) {
+        LinkedHashMap<Class<? extends AccessDeniedException>, AccessDeniedHandler> porTipo =
+                new LinkedHashMap<>();
+        porTipo.put(CsrfException.class, csrfRechazado(json));
+        return new DelegatingAccessDeniedHandler(porTipo, new AccessDeniedHandlerImpl());
+    }
+
     private AccessDeniedHandler csrfRechazado(ObjectMapper json) {
         return (request, response, exception) -> {
             response.setStatus(HttpServletResponse.SC_FORBIDDEN);

@@ -167,9 +167,19 @@ formulario (sin QR ni resultado).
 
 ### API: crear enlaces (`POST /api/links`)
 
+Desde la etapa 2 el POST exige el token CSRF del doble envío. Se obtiene una
+vez y se repite en la cookie y el encabezado de cada solicitud:
+
+```bash
+TOKEN=$(curl -s http://localhost:8080/api/csrf | sed -E 's/.*"token":"([^"]+)".*/\1/')
+```
+
+Sin ese par, el POST responde `403` con `{"error":"CSRF_TOKEN_INVALID", ...}`.
+
 ```bash
 curl -i -X POST http://localhost:8080/api/links \
   -H 'Content-Type: application/json' \
+  -H "X-XSRF-TOKEN: $TOKEN" -H "Cookie: XSRF-TOKEN=$TOKEN" \
   -d '{"destination":"https://ejemplo.com/docs/archivo?a=1&b=2#seccion"}'
 ```
 
@@ -194,32 +204,40 @@ asignación ni consume alias. Un ejemplo de cada código:
 ```bash
 # EMPTY_DESTINATION
 curl -s -X POST http://localhost:8080/api/links \
-  -H 'Content-Type: application/json' -d '{"destination":""}'
+  -H 'Content-Type: application/json' \
+  -H "X-XSRF-TOKEN: $TOKEN" -H "Cookie: XSRF-TOKEN=$TOKEN" -d '{"destination":""}'
 
 # DESTINATION_TOO_LONG (8193 caracteres = 14 de prefijo + 8179; con 8192 se acepta)
 curl -s -X POST http://localhost:8080/api/links \
   -H 'Content-Type: application/json' \
+  -H "X-XSRF-TOKEN: $TOKEN" -H "Cookie: XSRF-TOKEN=$TOKEN" \
   -d "{\"destination\":\"https://e.com/$(printf 'a%.0s' {1..8179})\"}"
 
 # MALFORMED_DESTINATION (espacio sin codificar; también % inválido o Unicode en crudo)
 curl -s -X POST http://localhost:8080/api/links \
-  -H 'Content-Type: application/json' -d '{"destination":"http://ejem plo.com"}'
+  -H 'Content-Type: application/json' \
+  -H "X-XSRF-TOKEN: $TOKEN" -H "Cookie: XSRF-TOKEN=$TOKEN" -d '{"destination":"http://ejem plo.com"}'
 curl -s -X POST http://localhost:8080/api/links \
-  -H 'Content-Type: application/json' -d '{"destination":"https://e.com/%zz"}'
+  -H 'Content-Type: application/json' \
+  -H "X-XSRF-TOKEN: $TOKEN" -H "Cookie: XSRF-TOKEN=$TOKEN" -d '{"destination":"https://e.com/%zz"}'
 curl -s -X POST http://localhost:8080/api/links \
-  -H 'Content-Type: application/json' -d '{"destination":"https://ejemplo.com/josé"}'
+  -H 'Content-Type: application/json' \
+  -H "X-XSRF-TOKEN: $TOKEN" -H "Cookie: XSRF-TOKEN=$TOKEN" -d '{"destination":"https://ejemplo.com/josé"}'
 
 # UNSUPPORTED_SCHEME (solo http/https)
 curl -s -X POST http://localhost:8080/api/links \
-  -H 'Content-Type: application/json' -d '{"destination":"ftp://ejemplo.com/x"}'
+  -H 'Content-Type: application/json' \
+  -H "X-XSRF-TOKEN: $TOKEN" -H "Cookie: XSRF-TOKEN=$TOKEN" -d '{"destination":"ftp://ejemplo.com/x"}'
 
 # OWN_ORIGIN (el propio servicio y equivalentes loopback del mismo puerto)
 curl -s -X POST http://localhost:8080/api/links \
-  -H 'Content-Type: application/json' -d '{"destination":"http://localhost:8080/x"}'
+  -H 'Content-Type: application/json' \
+  -H "X-XSRF-TOKEN: $TOKEN" -H "Cookie: XSRF-TOKEN=$TOKEN" -d '{"destination":"http://localhost:8080/x"}'
 
 # INVALID_REQUEST (JSON inválido, cuerpo ausente o propiedades desconocidas)
 curl -s -X POST http://localhost:8080/api/links \
-  -H 'Content-Type: application/json' -d '{"destino":"https://ejemplo.com"}'
+  -H 'Content-Type: application/json' \
+  -H "X-XSRF-TOKEN: $TOKEN" -H "Cookie: XSRF-TOKEN=$TOKEN" -d '{"destino":"https://ejemplo.com"}'
 ```
 
 ### API: resolver enlaces (`GET /{alias}`)
@@ -246,7 +264,8 @@ LINK_DURATION=PT1M ./gradlew bootRun
 ```bash
 # 1. Crear, anotar el "alias" de la respuesta y resolverlo (302)
 curl -s -X POST http://localhost:8080/api/links \
-  -H 'Content-Type: application/json' -d '{"destination":"https://destino-viejo.com/"}'
+  -H 'Content-Type: application/json' \
+  -H "X-XSRF-TOKEN: $TOKEN" -H "Cookie: XSRF-TOKEN=$TOKEN" -d '{"destination":"https://destino-viejo.com/"}'
 ALIAS=1   # <- el "alias" devuelto arriba
 curl -i "http://localhost:8080/$ALIAS"        # 302 al destino
 
@@ -257,7 +276,8 @@ curl -i "http://localhost:8080/$ALIAS"        # 404 con la página acordada
 # 3. Crear otro enlace: el alias vencido se recicla y el enlace
 #    anterior (o su QR) ahora conduce al destino nuevo
 curl -s -X POST http://localhost:8080/api/links \
-  -H 'Content-Type: application/json' -d '{"destination":"https://destino-nuevo.com/"}'
+  -H 'Content-Type: application/json' \
+  -H "X-XSRF-TOKEN: $TOKEN" -H "Cookie: XSRF-TOKEN=$TOKEN" -d '{"destination":"https://destino-nuevo.com/"}'
 curl -i "http://localhost:8080/$ALIAS"        # 302 a destino-nuevo
 ```
 
