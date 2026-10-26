@@ -70,6 +70,23 @@ cd src/test/js && node --test    -> pass 5
 cd extensiones && node --test    -> pass 42
 ```
 
+## Verificación puntual del flujo OIDC (arnés descartado)
+
+Como la suite Docker no podía correr acá, se verificó además el flujo
+completo una vez con un arnés JUnit temporario (borrado tras correr,
+sin tocar las suites de la entrega): `mock-oauth2-server:6.1.2` como
+biblioteca embebida en la misma JVM + HSQLDB en memoria (conexión ancla
+para emular «la misma base» entre reinicios), recorriendo los mismos
+pasos que `GoogleSimulado`: descubrimiento por `issuer-uri`, redirect a
+`/authorize`, formulario interactivo (`username`+`claims`), vuelta con
+código, canje y validación del id_token, `GET /api/sesion` con el
+contrato autenticado y **la sesión siguió válida tras cerrar el
+contexto y levantar otro sobre la misma base**. Resultado: `BUILD
+SUCCESSFUL` (1 prueba, ~30 s). Confirma que el wiring de
+`SecurityConfig`, Spring Session JDBC y `CuentaService` funciona de
+punta a punta; el oráculo de entrega sigue siendo la suite
+Testcontainers de la sección anterior.
+
 ## Limitación del entorno (no del cambio)
 
 El sandbox de esta ejecución no tiene daemon ni CLI de Docker
