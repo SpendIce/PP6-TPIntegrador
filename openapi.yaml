@@ -15,6 +15,33 @@ servers:
   - url: /
     description: Mismo origen que sirve la web; la dirección pública del servicio es configurable por despliegue.
 paths:
+  /api/csrf:
+    get:
+      summary: Obtener el token CSRF
+      description: >
+        Emite el token CSRF del doble envío que exige
+        `POST /api/links`: fija la cookie `XSRF-TOKEN` (legible por el
+        cliente) y devuelve el mismo valor en el cuerpo, para los
+        clientes que no pueden leer `Set-Cookie` (las extensiones). No
+        crea sesión ni exige autenticación: cualquier cliente lo obtiene
+        antes de su primer POST y lo reutiliza o renueva con otro GET.
+      operationId: obtenerTokenCsrf
+      responses:
+        '200':
+          description: Token emitido; la cookie `XSRF-TOKEN` viaja en `Set-Cookie` con el mismo valor.
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+                example: no-store
+            Set-Cookie:
+              description: "XSRF-TOKEN=<token>; Path=/ — cookie legible (no HttpOnly)."
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CsrfToken'
   /api/links:
     post:
       summary: Crear un enlace acortado
@@ -26,8 +53,19 @@ paths:
         ni autenticación del destino para aceptarlo. El alias reservado es
         preferentemente uno cuya asignación anterior venció (los más
         cortos primero) o, sin vencidos reutilizables, el siguiente código
-        nunca usado de la menor longitud disponible.
+        nunca usado de la menor longitud disponible. La solicitud exige el
+        token CSRF del doble envío: la cookie `XSRF-TOKEN` y el encabezado
+        `X-XSRF-TOKEN` con el mismo valor emitido por `GET /api/csrf`.
       operationId: crearEnlace
+      parameters:
+        - name: X-XSRF-TOKEN
+          in: header
+          required: true
+          description: >
+            Token CSRF emitido por `GET /api/csrf`, repetido con el mismo
+            valor que la cookie `XSRF-TOKEN` de la solicitud.
+          schema:
+            type: string
       requestBody:
         required: true
         content:
@@ -108,6 +146,22 @@ paths:
                   value:
                     error: INVALID_REQUEST
                     message: "El cuerpo de la solicitud no es un JSON válido del contrato."
+        '403':
+          description: >
+            Token CSRF ausente o inválido: falta el encabezado
+            `X-XSRF-TOKEN`, falta la cookie `XSRF-TOKEN` o sus valores no
+            coinciden con un token emitido por `GET /api/csrf`. Ningún
+            rechazo crea una asignación ni consume un alias.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+              examples:
+                csrfInvalido:
+                  summary: Sin cookie, sin encabezado o valores que no coinciden
+                  value:
+                    error: CSRF_TOKEN_INVALID
+                    message: "La solicitud no trae un token CSRF válido; se obtiene con GET /api/csrf."
   /{alias}:
     get:
       summary: Resolver un enlace acortado
@@ -249,6 +303,18 @@ components:
             Aviso al usuario de que el alias puede reutilizarse con otro
             destino después del vencimiento.
           example: "Este alias puede reutilizarse con otro destino después del vencimiento."
+    CsrfToken:
+      type: object
+      required:
+        - token
+      properties:
+        token:
+          type: string
+          description: >
+            Valor del token CSRF; coincide con la cookie `XSRF-TOKEN`
+            fijada en la misma respuesta y se repite en el encabezado
+            `X-XSRF-TOKEN` de los POST.
+          example: "f1d2d2f9-4e5a-4b6c-8d7e-9f0a1b2c3d4e"
     ApiError:
       type: object
       required:
@@ -265,6 +331,7 @@ components:
             - UNSUPPORTED_SCHEME
             - OWN_ORIGIN
             - INVALID_REQUEST
+            - CSRF_TOKEN_INVALID
         message:
           type: string
           description: Descripción legible del problema para mostrar al usuario.
