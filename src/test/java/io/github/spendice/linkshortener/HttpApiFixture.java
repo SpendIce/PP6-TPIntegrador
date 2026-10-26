@@ -10,6 +10,8 @@ import org.springframework.boot.testcontainers.service.connection.ServiceConnect
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.testcontainers.containers.PostgreSQLContainer;
 
+import java.net.CookieManager;
+import java.net.CookiePolicy;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -62,6 +64,19 @@ abstract class HttpApiFixture {
             .followRedirects(HttpClient.Redirect.NEVER)
             .build();
 
+    /**
+     * Un "dispositivo" del contrato: cliente con su propio almacén de
+     * cookies, independiente del compartido de la suite. Es la base de
+     * las pruebas de sesión de la etapa 2; la regresión anónima ya lo
+     * usa para recorrer el flujo CSRF con cookies reales.
+     */
+    protected HttpClient nuevoClienteDispositivo() {
+        return HttpClient.newBuilder()
+                .followRedirects(HttpClient.Redirect.NEVER)
+                .cookieHandler(new CookieManager(null, CookiePolicy.ACCEPT_ALL))
+                .build();
+    }
+
     @LocalServerPort
     int port;
     @Autowired
@@ -79,17 +94,30 @@ abstract class HttpApiFixture {
     }
 
     HttpResponse<String> postJson(String jsonBody) throws Exception {
-        HttpRequest request = HttpRequest.newBuilder(URI.create(baseUrl() + "/api/links"))
+        return postJson(client, jsonBody);
+    }
+
+    /**
+     * POST del contrato con su token CSRF (issue #18): el cliente obtiene
+     * el token con {@code GET /api/csrf} — si guarda cookies, la cookie
+     * queda en su propio almacén — y lo repite por encabezado y cookie.
+     */
+    HttpResponse<String> postJson(HttpClient dest, String jsonBody) throws Exception {
+        String csrf = Csrf.obtener(dest, baseUrl());
+        HttpRequest request = Csrf.aplicar(
+                        HttpRequest.newBuilder(URI.create(baseUrl() + "/api/links")), csrf)
                 .header("Content-Type", "application/json")
                 .timeout(REQUEST_TIMEOUT)
                 .POST(BodyPublishers.ofString(jsonBody))
                 .build();
-        return client.send(request, BodyHandlers.ofString());
+        return dest.send(request, BodyHandlers.ofString());
     }
 
     /** POST sin cuerpo ni Content-Type: el contrato lo rechaza. */
     HttpResponse<String> postSinCuerpo() throws Exception {
-        HttpRequest request = HttpRequest.newBuilder(URI.create(baseUrl() + "/api/links"))
+        String csrf = Csrf.obtener(client, baseUrl());
+        HttpRequest request = Csrf.aplicar(
+                        HttpRequest.newBuilder(URI.create(baseUrl() + "/api/links")), csrf)
                 .timeout(REQUEST_TIMEOUT)
                 .POST(BodyPublishers.noBody())
                 .build();
@@ -97,9 +125,13 @@ abstract class HttpApiFixture {
     }
 
     HttpResponse<String> get(String path) throws Exception {
+        return get(client, path);
+    }
+
+    HttpResponse<String> get(HttpClient dest, String path) throws Exception {
         HttpRequest request = HttpRequest.newBuilder(URI.create(baseUrl() + path))
                 .GET().timeout(REQUEST_TIMEOUT).build();
-        return client.send(request, BodyHandlers.ofString());
+        return dest.send(request, BodyHandlers.ofString());
     }
 
     String baseUrl() {
