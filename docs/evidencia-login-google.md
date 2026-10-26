@@ -66,7 +66,7 @@ Corrida del 2026-10-26 sobre `2f594dbe`, con el oráculo del Project
 
 ```text
 ./gradlew --no-daemon --console=plain test
-BUILD SUCCESSFUL   (83 pruebas, 0 fallos, 15 suites)
+BUILD SUCCESSFUL   (87 pruebas, 0 fallos, 16 suites)
 
 cd src/test/js && node --test    -> pass 5
 cd extensiones && node --test    -> pass 42

@@ -31,5 +31,15 @@ public record CuentaProperties(Duration mainSessionIdleTimeout) {
                     "cuenta.main-session-idle-timeout debe ser positiva y se recibió "
                             + mainSessionIdleTimeout);
         }
+        // La sesión guarda la inactividad en segundos enteros: un valor que
+        // trunque a 0 vence al instante y uno que desborde un int pierde el
+        // vencimiento. Se rechaza en el arranque en vez de corromper la sesión.
+        long segundos = mainSessionIdleTimeout.getSeconds();
+        if (segundos < 1 || segundos > Integer.MAX_VALUE) {
+            throw new IllegalArgumentException(
+                    "cuenta.main-session-idle-timeout debe durar entre 1 segundo y "
+                            + Integer.MAX_VALUE + " segundos y se recibió "
+                            + mainSessionIdleTimeout);
+        }
     }
 }

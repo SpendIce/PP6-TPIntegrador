@@ -409,8 +409,11 @@ components:
         - usuario
       properties:
         usuario:
-          $ref: '#/components/schemas/UsuarioSesion'
+          # `nullable` junto a `$ref` se ignora en OpenAPI 3.0.3 (Reference
+          # Object): el `allOf` lo vuelve un Schema Object que admite null.
           nullable: true
+          allOf:
+            - $ref: '#/components/schemas/UsuarioSesion'
           description: >
             Usuario de la sesión actual; `null` cuando no hay sesión o la
             sesión no tiene usuario.

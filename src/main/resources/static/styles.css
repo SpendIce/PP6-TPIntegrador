@@ -118,6 +118,12 @@ button:hover {
     font-size: 0.85rem;
 }
 
+/* El atributo `hidden` del HTML tiene que ganarle a cualquier `display`
+   de clase: la web lo usa para alternar el acceso y el usuario. */
+[hidden] {
+    display: none !important;
+}
+
 .button-link {
     display: inline-block;
     margin-top: 0.5rem;

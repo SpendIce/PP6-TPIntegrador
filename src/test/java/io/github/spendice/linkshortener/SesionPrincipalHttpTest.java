@@ -32,8 +32,31 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 class SesionPrincipalHttpTest extends HttpApiFixture {
 
+    private final HttpClient clienteEnvio = HttpClient.newBuilder()
+            .followRedirects(HttpClient.Redirect.NEVER)
+            .build();
+
     private static final String SUB_JUAN = "google-sub-juan";
     private static final String EMAIL_JUAN = "juan@ejemplo.com";
+
+    @Test
+    void elRedirectUriRespetaLosEncabezadosDelProxy() throws Exception {
+        // Detrás de Tailscale Funnel el proxy termina TLS: el redirect_uri
+        // tiene que salir https con el host público, o Google lo rechaza por
+        // no coincidir con la URI registrada.
+        HttpRequest pedido = HttpRequest.newBuilder(
+                        URI.create(baseUrl() + "/oauth2/authorization/google"))
+                .header("X-Forwarded-Proto", "https")
+                .header("X-Forwarded-Host", "demo.example.ts.net")
+                .header("X-Forwarded-Port", "443")
+                .GET().build();
+
+        HttpResponse<String> respuesta = clienteEnvio.send(pedido, BodyHandlers.ofString());
+
+        assertThat(respuesta.statusCode()).isEqualTo(302);
+        String destino = respuesta.headers().firstValue("location").orElse("");
+        assertThat(destino).contains("redirect_uri=https://demo.example.ts.net/login/oauth2/code/google");
+    }
 
     @Test
     void sinSesionRespondeQueNoHayUsuario() throws Exception {

@@ -41,6 +41,10 @@ spring:
 server:
   port: ${SERVER_PORT:8080}
   shutdown: graceful
+  # Detrás de Tailscale Funnel (ADR 0007) el proxy termina TLS y manda
+  # X-Forwarded-Proto/Host: sin esto Google recibiría un redirect_uri http://
+  # que no coincide con la URI HTTPS registrada.
+  forward-headers-strategy: framework
 
 shortener:
   public-base-url: ${PUBLIC_BASE_URL:http://localhost:8080}

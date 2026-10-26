@@ -3,9 +3,12 @@ package io.github.spendice.linkshortener.service;
 import io.github.spendice.linkshortener.mappings.Usuario;
 import jakarta.persistence.EntityManager;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
+import java.util.List;
 import java.util.Optional;
 
 /**
@@ -42,25 +45,61 @@ public class CuentaService {
     @Autowired
     EntityManager em;
 
+    @Autowired
+    TransactionTemplate transacciones;
+
     /**
      * Caso de uso del login: devuelve el usuario de la identidad de
      * Google recibida, creándolo en su primer login. El {@code sub} es la
      * identidad única; el email se conserva actualizado si Google lo
      * cambió desde el login anterior. La unicidad la garantiza la
      * restricción {@code uq_usuario_google_sub} del esquema.
+     *
+     * <p>Dos dispositivos que completan el primer login a la vez corren
+     * esta carrera: los dos no encuentran usuario y los dos insertan. El
+     * perdedor recibe la violación de la restricción única y relee el
+     * usuario que ganó, en vez de devolver un error del callback. La
+     * creación va en su propia transacción para que el rollback del
+     * perdedor no arrastre la lectura.</p>
      */
-    @Transactional
     public Usuario usuarioDeLogin(String googleSub, String email) {
-        Usuario usuario = em.createQuery(
-                "select u from Usuario u where u.googleSub = :sub", Usuario.class)
-                .setParameter("sub", googleSub)
-                .getResultStream()
-                .findFirst()
-                .orElse(null);
+        try {
+            return transacciones.execute(status -> crearOActualizar(googleSub, email));
+        } catch (DataIntegrityViolationException carrera) {
+            // Otro dispositivo creó el usuario entre la lectura y el insert:
+            // se relee el que ganó y se completa el login igual.
+            return transacciones.execute(status -> {
+                Usuario ganador = buscarPorSub(googleSub);
+                if (ganador == null) {
+                    throw carrera;
+                }
+                return actualizarEmail(ganador, email);
+            });
+        }
+    }
+
+    private Usuario crearOActualizar(String googleSub, String email) {
+        Usuario usuario = buscarPorSub(googleSub);
         if (usuario == null) {
             usuario = new Usuario(googleSub, email);
             em.persist(usuario);
-        } else if (email != null && !email.equals(usuario.getEmail())) {
+            em.flush();
+            return usuario;
+        }
+        return actualizarEmail(usuario, email);
+    }
+
+    private Usuario buscarPorSub(String googleSub) {
+        List<Usuario> encontrados = em.createQuery(
+                        "select u from Usuario u where u.googleSub = :sub", Usuario.class)
+                .setParameter("sub", googleSub)
+                .setMaxResults(1)
+                .getResultList();
+        return encontrados.isEmpty() ? null : encontrados.get(0);
+    }
+
+    private Usuario actualizarEmail(Usuario usuario, String email) {
+        if (email != null && !email.equals(usuario.getEmail())) {
             usuario.setEmail(email);
         }
         return usuario;

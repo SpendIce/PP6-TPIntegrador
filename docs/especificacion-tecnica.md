@@ -138,6 +138,11 @@ usa el cliente OIDC de Spring Security con Google como único proveedor:
   resuelven desde `accounts.google.com` por el proveedor conocido de
   Spring Security; en pruebas se configura el `issuer-uri` del proveedor
   simulado.
+- El `redirect_uri` se arma con el esquema y el host de la solicitud, y
+  `server.forward-headers-strategy: framework` honra los encabezados
+  `X-Forwarded-Proto`/`X-Forwarded-Host`/`X-Forwarded-Port` que agrega
+  Tailscale Funnel. Sin eso la vuelta saldría `http://` y no coincidiría con
+  la URI HTTPS registrada.
 - Las sesiones se persisten en PostgreSQL con Spring Session JDBC
   (`spring.session.store-type=jdbc`, esquema propio por Flyway con
   `initialize-schema: never`). La cookie se llama `SESSION`; al ser una
