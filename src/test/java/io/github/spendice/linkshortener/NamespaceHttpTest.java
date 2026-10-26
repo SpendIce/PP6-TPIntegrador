@@ -126,6 +126,32 @@ class NamespaceHttpTest extends HttpApiFixture {
     }
 
     @Test
+    void aceptaLosLimitesDeTresYTreintaCaracteres() throws Exception {
+        HttpClient juan = sesionDe(SUB_JUAN, EMAIL_JUAN);
+        HttpClient pedro = sesionDe(SUB_PEDRO, EMAIL_PEDRO);
+
+        assertThat(elegir(juan, "abc").statusCode()).isEqualTo(200);
+        String treinta = "a".repeat(29) + "b";
+        assertThat(treinta).hasSize(30);
+        assertThat(elegir(pedro, treinta).statusCode()).isEqualTo(200);
+        assertThat(db.queryForObject(
+                "SELECT namespace FROM usuario WHERE google_sub = ?", String.class, SUB_PEDRO))
+                .isEqualTo(treinta);
+    }
+
+    @Test
+    void laSugerenciaSeAdaptaAlFormatoDelNamespace() throws Exception {
+        // Parte local demasiado corta: cae al valor por defecto.
+        assertThat(sugerenciaDe("ab@ejemplo.com")).isEqualTo("usuario");
+        // Truncado a 30 sin dejar un guion final.
+        assertThat(sugerenciaDe("a".repeat(40) + "@ejemplo.com"))
+                .hasSize(30)
+                .doesNotEndWith("-");
+        // Separadores repetidos y finales se colapsan.
+        assertThat(sugerenciaDe("juan...perez--@ejemplo.com")).isEqualTo("juan-perez");
+    }
+
+    @Test
     void sinSesionResponde401ConElFormatoDeError() throws Exception {
         HttpClient dispositivo = nuevoClienteDispositivo();
 
@@ -177,6 +203,13 @@ class NamespaceHttpTest extends HttpApiFixture {
         HttpClient dispositivo = nuevoClienteDispositivo();
         GoogleSimulado.login(dispositivo, baseUrl(), sub, email);
         return dispositivo;
+    }
+
+    /** Sugerencia que la web recibe para el email indicado. */
+    private String sugerenciaDe(String email) throws Exception {
+        HttpClient dispositivo = sesionDe("google-sub-sugerencia-" + email, email);
+        return json.readTree(get(dispositivo, "/api/namespace/sugerencia").body())
+                .get("sugerencia").asText();
     }
 
     private HttpResponse<String> elegir(HttpClient dispositivo, String namespace)

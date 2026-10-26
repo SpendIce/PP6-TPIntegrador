@@ -600,6 +600,7 @@ components:
           required:
             - email
             - namespace
+            - sugerencia
             - tipo
           properties:
             email:
