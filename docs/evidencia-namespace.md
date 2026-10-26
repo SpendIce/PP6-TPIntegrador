@@ -55,7 +55,7 @@ Corrida del 2026-10-26 con el oráculo del Project:
 
 ```text
 ./gradlew --no-daemon --console=plain test
-BUILD SUCCESSFUL   (99 pruebas, 0 fallos, 19 suites)
+BUILD SUCCESSFUL   (103 pruebas, 0 fallos, 20 suites)
 
 cd src/test/js && node --test    -> pass 5
 cd extensiones && node --test    -> pass 42
