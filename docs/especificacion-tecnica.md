@@ -211,7 +211,7 @@ usa el cliente OIDC de Spring Security con Google como único proveedor:
   contenedor con el proveedor OIDC simulado
   (`ghcr.io/navikt/mock-oauth2-server:6.1.2`): el helper `GoogleSimulado`
   recorre la danza real del código de autorización
-  (`/oauth2/authorize` → formulario de login interactivo → callback) y
+  (`/oauth2/authorize`, formulario de login interactivo, callback) y
   `HttpApiFixture` comparte el contenedor entre las suites que lo usan
   (`SesionPrincipalHttpTest`; `SesionReinicioHttpTest` levanta el suyo
   junto al PostgreSQL propio para los reinicios de contexto). Todas las

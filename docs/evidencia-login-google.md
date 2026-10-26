@@ -75,8 +75,8 @@ cd extensiones && node --test    -> pass 42
 El sandbox de esta ejecución no tiene daemon ni CLI de Docker
 (`docker: command not found`, sin `/var/run/docker.sock` ni alternativa
 Podman/TCP), contra lo previsto en la spec («el container tiene el
-socket del daemon montado»). Las suites de Testcontainers —las nuevas
-de sesión y las preexistentes de la etapa 1— fallan en
+socket del daemon montado»). Las suites de Testcontainers (las nuevas
+de sesión y las preexistentes de la etapa 1) fallan en
 `initializationError` dentro de `DockerClientProviderStrategy`, antes
 de ejecutar una sola prueba:
 
