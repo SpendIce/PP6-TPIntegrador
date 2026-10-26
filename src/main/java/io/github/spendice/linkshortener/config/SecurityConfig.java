@@ -13,6 +13,8 @@ import org.springframework.security.web.access.AccessDeniedHandler;
 import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
 import org.springframework.security.web.csrf.CsrfTokenRequestAttributeHandler;
 
+import java.nio.charset.StandardCharsets;
+
 /**
  * Seguridad HTTP del servicio (issue #18): todo el contrato sigue siendo
  * anónimo — {@code GET /{alias}}, la página 404, la web, los estáticos y
@@ -51,6 +53,7 @@ class SecurityConfig {
     private AccessDeniedHandler csrfRechazado(ObjectMapper json) {
         return (request, response, exception) -> {
             response.setStatus(HttpServletResponse.SC_FORBIDDEN);
+            response.setCharacterEncoding(StandardCharsets.UTF_8.name());
             response.setContentType(MediaType.APPLICATION_JSON_VALUE);
             json.writeValue(response.getWriter(), new ApiErrorResponse(
                     "CSRF_TOKEN_INVALID",
