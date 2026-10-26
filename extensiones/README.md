@@ -210,3 +210,11 @@ mano en Chrome y Firefox con [`docs/verificacion-cookies-extensiones.md`](../doc
   solicitud simplemente no tiene timeout: degrada sin romperse (la
   `REQUEST_TIMEOUT` no se produciría y una API colgada dejaría el popup
   esperando).
+
+## Antes de implementar el login (issue #26)
+
+La etapa 2 reutiliza la cookie de sesión de la web del mismo navegador para que
+el popup cree enlaces personales. Antes de implementarlo hay que comprobar en
+Chrome y Firefox que la cookie llega al popup y que un `POST` autenticado con
+CSRF funciona. El recorrido manual y la tabla de resultados están en
+[`docs/verificacion-cookies-extensiones.md`](../docs/verificacion-cookies-extensiones.md).
