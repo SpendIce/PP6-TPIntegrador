@@ -8,6 +8,15 @@
 </head>
 <body>
 <main>
+    <!-- Sesión (issue #19): app.js muestra el acceso con Google o el
+         usuario con sesión principal y su cierre. -->
+    <div id="cuenta">
+        <a id="cuenta-entrar" class="button-link" href="/oauth2/authorization/google" hidden>
+            Entrar con Google
+        </a>
+        <span id="cuenta-usuario" hidden></span>
+        <button id="cuenta-salir" type="button" hidden>Cerrar sesión</button>
+    </div>
     <h1>Acortador de enlaces</h1>
     <form id="shorten-form" novalidate>
         <label for="destination">Dirección a acortar</label>

@@ -161,7 +161,11 @@ class ReinicioServicioHttpTest {
                         "--spring.datasource.url=" + POSTGRES.getJdbcUrl(),
                         "--spring.datasource.username=" + POSTGRES.getUsername(),
                         "--spring.datasource.password=" + POSTGRES.getPassword(),
-                        "--shortener.public-base-url=http://192.168.50.10:8080");
+                        "--shortener.public-base-url=http://192.168.50.10:8080",
+                        "--spring.security.oauth2.client.registration.google.client-id="
+                                + GoogleSimulado.CLIENT_ID,
+                        "--spring.security.oauth2.client.registration.google.client-secret="
+                                + GoogleSimulado.CLIENT_SECRET);
     }
 
     private int port(ConfigurableApplicationContext context) {

@@ -55,7 +55,9 @@ import static org.assertj.core.api.Assertions.assertThat;
         classes = {LinkShortenerApplication.class, ClockTestConfiguration.class},
         properties = {
                 "shortener.public-base-url=http://192.168.50.10:8080",
-                "shortener.reserved-routes=api, error"
+                "shortener.reserved-routes=api, error",
+                "spring.security.oauth2.client.registration.google.client-id=" + GoogleSimulado.CLIENT_ID,
+                "spring.security.oauth2.client.registration.google.client-secret=" + GoogleSimulado.CLIENT_SECRET
         })
 @Testcontainers
 class ReciclajeAliasHttpTest {

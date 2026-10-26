@@ -7,6 +7,46 @@ const expiresAt = document.getElementById("expires-at");
 const reuseNotice = document.getElementById("reuse-notice");
 const qrImage = document.getElementById("qr-image");
 const qrDownload = document.getElementById("qr-download");
+const cuentaEntrar = document.getElementById("cuenta-entrar");
+const cuentaUsuario = document.getElementById("cuenta-usuario");
+const cuentaSalir = document.getElementById("cuenta-salir");
+
+// Sesión actual (issue #19): sin sesión se ofrece el acceso con Google;
+// con sesión principal se muestra el email del usuario y el cierre.
+(async () => {
+    try {
+        const respuesta = await fetch("/api/sesion", {
+            headers: { "Accept": "application/json" }
+        });
+        if (!respuesta.ok) return;
+        const sesion = await respuesta.json();
+        if (!sesion.usuario) {
+            cuentaEntrar.hidden = false;
+            return;
+        }
+        cuentaUsuario.textContent = sesion.usuario.email;
+        cuentaUsuario.hidden = false;
+        cuentaSalir.hidden = false;
+    } catch (error) {
+        console.warn("No se pudo consultar la sesión actual", error);
+    }
+})();
+
+cuentaSalir.addEventListener("click", async () => {
+    try {
+        // El logout exige CSRF igual que el POST de enlaces (issue #18).
+        const csrfResponse = await fetch("/api/csrf");
+        const csrf = csrfResponse.ok ? await csrfResponse.json() : null;
+        if (csrf && csrf.token) {
+            await fetch("/api/logout", {
+                method: "POST",
+                headers: { "X-XSRF-TOKEN": csrf.token }
+            });
+        }
+    } finally {
+        location.reload();
+    }
+});
 
 form.addEventListener("submit", async (event) => {
     event.preventDefault();
