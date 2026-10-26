@@ -62,4 +62,13 @@ public class Usuario {
     public String getNamespace() {
         return namespace;
     }
+
+    /**
+     * Asigna el namespace ya normalizado (minúsculas y formato válido).
+     * La unicidad sin distinguir mayúsculas la garantiza la restricción
+     * {@code uq_usuario_namespace} sobre ese mismo valor normalizado.
+     */
+    public void setNamespace(String namespace) {
+        this.namespace = namespace;
+    }
 }
