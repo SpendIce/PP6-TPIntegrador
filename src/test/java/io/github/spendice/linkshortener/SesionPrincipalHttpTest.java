@@ -4,14 +4,18 @@ import com.fasterxml.jackson.databind.JsonNode;
 import org.junit.jupiter.api.Test;
 
 import java.net.CookieManager;
+import java.net.HttpCookie;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpRequest.BodyPublishers;
 import java.net.http.HttpResponse;
 import java.net.http.HttpResponse.BodyHandlers;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.Base64;
 import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -60,7 +64,7 @@ class SesionPrincipalHttpTest extends HttpApiFixture {
         assertThat(vuelta.headers().firstValue("Location").orElse("")).endsWith("/");
         assertThat(cookieDeSesion(dispositivo)).isNotNull();
 
-        List<java.util.Map<String, Object>> usuarios = db.queryForList("SELECT * FROM usuario");
+        List<Map<String, Object>> usuarios = db.queryForList("SELECT * FROM usuario");
         assertThat(usuarios).hasSize(1);
         assertThat(usuarios.get(0).get("google_sub")).isEqualTo(SUB_JUAN);
         assertThat(usuarios.get(0).get("email")).isEqualTo(EMAIL_JUAN);
@@ -117,13 +121,7 @@ class SesionPrincipalHttpTest extends HttpApiFixture {
         String otraSession = cookieDeSesion(otroDispositivo);
         assertThat(otraSession).isNotEqualTo(sessionId);
 
-        String csrf = Csrf.obtener(dispositivo, baseUrl());
-        HttpRequest logout = Csrf.aplicar(dispositivo,
-                        HttpRequest.newBuilder(URI.create(baseUrl() + "/api/logout")), csrf)
-                .timeout(Duration.ofSeconds(15))
-                .POST(BodyPublishers.noBody())
-                .build();
-        HttpResponse<String> respuesta = dispositivo.send(logout, BodyHandlers.ofString());
+        HttpResponse<String> respuesta = postLogout(dispositivo);
         assertThat(respuesta.statusCode()).isEqualTo(204);
         assertThat(respuesta.body()).isEmpty();
 
@@ -145,13 +143,7 @@ class SesionPrincipalHttpTest extends HttpApiFixture {
     void cerrarSesionSinSesionResponde204() throws Exception {
         HttpClient dispositivo = nuevoClienteDispositivo();
 
-        String csrf = Csrf.obtener(dispositivo, baseUrl());
-        HttpRequest logout = Csrf.aplicar(dispositivo,
-                        HttpRequest.newBuilder(URI.create(baseUrl() + "/api/logout")), csrf)
-                .timeout(Duration.ofSeconds(15))
-                .POST(BodyPublishers.noBody())
-                .build();
-        HttpResponse<String> respuesta = dispositivo.send(logout, BodyHandlers.ofString());
+        HttpResponse<String> respuesta = postLogout(dispositivo);
 
         assertThat(respuesta.statusCode()).isEqualTo(204);
     }
@@ -185,6 +177,21 @@ class SesionPrincipalHttpTest extends HttpApiFixture {
     }
 
     /**
+     * POST del cierre con su token CSRF (issue #19): mismo doble envío
+     * que el POST de enlaces (cookie {@code XSRF-TOKEN} + encabezado
+     * {@code X-XSRF-TOKEN}).
+     */
+    private HttpResponse<String> postLogout(HttpClient dispositivo) throws Exception {
+        String csrf = Csrf.obtener(dispositivo, baseUrl());
+        HttpRequest logout = Csrf.aplicar(dispositivo,
+                        HttpRequest.newBuilder(URI.create(baseUrl() + "/api/logout")), csrf)
+                .timeout(Duration.ofSeconds(15))
+                .POST(BodyPublishers.noBody())
+                .build();
+        return dispositivo.send(logout, BodyHandlers.ofString());
+    }
+
+    /**
      * El contrato autenticado de {@code GET /api/sesion}: email, namespace
      * vacío hasta que el usuario lo elija y tipo {@code principal}.
      */
@@ -208,10 +215,9 @@ class SesionPrincipalHttpTest extends HttpApiFixture {
         return almacen.getCookieStore().getCookies().stream()
                 .filter(cookie -> cookie.getName().equals("SESSION"))
                 .findFirst()
-                .map(java.net.HttpCookie::getValue)
+                .map(HttpCookie::getValue)
                 .map(valor -> new String(
-                        java.util.Base64.getUrlDecoder().decode(valor),
-                        java.nio.charset.StandardCharsets.UTF_8))
+                        Base64.getUrlDecoder().decode(valor), StandardCharsets.UTF_8))
                 .orElse(null);
     }
 }

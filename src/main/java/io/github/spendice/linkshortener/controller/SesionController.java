@@ -32,10 +32,16 @@ class SesionController {
                 .map(u -> new UsuarioSesion(
                         u.getEmail(),
                         u.getNamespace() == null ? "" : u.getNamespace(),
-                        (String) sesion.getAttribute(CuentaService.ATRIBUTO_SESION_TIPO)))
+                        tipoDe(sesion)))
                 .orElse(null);
         return ResponseEntity.ok()
                 .cacheControl(CacheControl.noStore())
                 .body(new SesionActualResponse(usuario));
+    }
+
+    /** Solo el login directo abre sesiones hoy: el tipo es principal. */
+    private String tipoDe(HttpSession sesion) {
+        String tipo = (String) sesion.getAttribute(CuentaService.ATRIBUTO_SESION_TIPO);
+        return tipo == null ? CuentaService.TIPO_PRINCIPAL : tipo;
     }
 }
