@@ -65,11 +65,11 @@ de la etapa 2 sin cambiar el flujo anónimo:
 
 - Todo el contrato sigue sin autenticación: `GET /{alias}`, la página 404, la
   web, los estáticos y las rutas reservadas no piden credenciales.
-- El firewall estricto de Spring Security permite el `;` en la ruta
-  (`setAllowSemicolon(true)`), así `/abc;utm=x` sigue resolviendo como `/abc`.
-  El doble slash y las rutas no normalizadas sí cambian: responden `400` del
-  firewall en vez del `404` anterior. Es un desvío aceptado: un path no
-  normalizado no es una dirección del contrato.
+- Se usa el firewall por defecto de Spring Security (`DefaultHttpFirewall`), no
+  el estricto: el estricto rechaza con `400` el `;` en la ruta y el doble
+  slash, y la etapa 1 resolvía `/abc;utm=x` y `//abc` como `/abc`. Conservar
+  esa respuesta es parte del criterio; el ruteo sigue acotado por el patrón de
+  alias y las rutas reservadas.
 - Se apaga el escritor de `Cache-Control` por defecto de Spring Security
   (`headers().cacheControl().disable()`): sin eso, los estáticos quedaban con
   `no-store`. La resolución, la API y el token siguen declarando `no-store`

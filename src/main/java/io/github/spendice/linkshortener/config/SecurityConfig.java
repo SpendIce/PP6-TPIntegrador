@@ -17,7 +17,7 @@ import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
 import org.springframework.security.web.csrf.CsrfException;
 import org.springframework.security.web.csrf.CsrfTokenRequestAttributeHandler;
 import org.springframework.security.web.firewall.HttpFirewall;
-import org.springframework.security.web.firewall.StrictHttpFirewall;
+import org.springframework.security.web.firewall.DefaultHttpFirewall;
 
 import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
@@ -60,18 +60,15 @@ class SecurityConfig {
     }
 
     /**
-     * El firewall estricto de Spring Security rechaza el `;` en la ruta, y la
-     * etapa 1 resolvía `/abc;utm=x` como `/abc` (Tomcat descarta la matriz).
-     * Se permite el punto y coma para no romper direcciones ya compartidas con
-     * parámetros de matriz; el doble slash sigue rechazado (400) en vez del
-     * 404 anterior: es un desvío aceptado y documentado en la especificación
-     * técnica, porque un path no normalizado no es una dirección del contrato.
+     * La etapa 1 resolvía `/abc;utm=x` como `/abc` y `//abc` como `/abc`. El
+     * firewall estricto de Spring Security rechaza las dos con 400 y cambiaría
+     * respuestas que el criterio pide conservar, así que se usa el firewall
+     * por defecto: no bloquea rutas por su forma, y el ruteo queda acotado por
+     * el patrón de alias y las rutas reservadas.
      */
     @Bean
     HttpFirewall httpFirewall() {
-        StrictHttpFirewall firewall = new StrictHttpFirewall();
-        firewall.setAllowSemicolon(true);
-        return firewall;
+        return new DefaultHttpFirewall();
     }
 
     /**

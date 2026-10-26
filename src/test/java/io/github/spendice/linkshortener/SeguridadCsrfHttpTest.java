@@ -110,12 +110,14 @@ class SeguridadCsrfHttpTest extends HttpApiFixture {
     }
 
     @Test
-    void elPathNoNormalizadoLoRechazaElFirewall() throws Exception {
-        // Desvío aceptado y documentado: el doble slash responde 400 del
-        // firewall en vez del 404 de la etapa 1.
+    void elDobleSlashSigueResolviendoComoLaEtapa1() throws Exception {
+        // Con el firewall por defecto, `//zz9` deja de ser un 400 y vuelve a
+        // ser un 404 como en la etapa 1. El cuerpo es el 404 por defecto de
+        // Spring MVC porque el path no normalizado no matchea el controller de
+        // alias; lo que el criterio pide conservar es el estado.
         HttpResponse<String> dobleSlash = get(client, "//zz9");
 
-        assertThat(dobleSlash.statusCode()).isEqualTo(400);
+        assertThat(dobleSlash.statusCode()).isEqualTo(404);
     }
 
     @Test
