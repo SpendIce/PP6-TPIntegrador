@@ -291,7 +291,7 @@ restricción también impone la unicidad sin distinguir mayúsculas. En
 PostgreSQL los múltiples `NULL` de los usuarios que todavía no eligieron
 no colisionan.
 
-El perfil `hsqldb` traduce ambas tablas a mano en
+El perfil `hsqldb` traduce esas tablas a mano en
 `db/hsqldb/schema.sql` (mismos nombres y columnas; `BYTEA` se vuelve
 `LONGVARBINARY`), como manda el ADR 0005. La restricción del namespace se
 agrega con un `ALTER` tolerado por `continue-on-error`, para que aplique
