@@ -58,56 +58,20 @@ spec. La decisión de arquitectura está en
   relleno (`GoogleSimulado.CLIENT_ID`/`CLIENT_SECRET`): el arranque las
   exige aunque la solicitud nunca llegue a Google.
 
-## Ejecutado en este entorno
+## Ejecutado
+
+Corrida del 2026-10-26 sobre `2f594dbe`, con el oráculo del Project
+(`./gradlew --no-daemon --console=plain test`): PostgreSQL y
+`mock-oauth2-server` en Testcontainers sobre Docker real.
 
 ```text
-./gradlew --no-daemon --console=plain test \
-  --tests ArranqueOidcGoogleTest --tests HsqldbArranqueTest \
-  --tests ShortenerPropertiesTest
-BUILD SUCCESSFUL   (16 pruebas)
+./gradlew --no-daemon --console=plain test
+BUILD SUCCESSFUL   (83 pruebas, 0 fallos, 15 suites)
 
 cd src/test/js && node --test    -> pass 5
 cd extensiones && node --test    -> pass 42
 ```
 
-## Verificación puntual del flujo OIDC (arnés descartado)
-
-Como la suite Docker no podía correr acá, se verificó además el flujo
-completo una vez con un arnés JUnit temporario (borrado tras correr,
-sin tocar las suites de la entrega): `mock-oauth2-server:6.1.2` como
-biblioteca embebida en la misma JVM + HSQLDB en memoria (conexión ancla
-para emular «la misma base» entre reinicios), recorriendo los mismos
-pasos que `GoogleSimulado`: descubrimiento por `issuer-uri`, redirect a
-`/authorize`, formulario interactivo (`username`+`claims`), vuelta con
-código, canje y validación del id_token, `GET /api/sesion` con el
-contrato autenticado y **la sesión siguió válida tras cerrar el
-contexto y levantar otro sobre la misma base**. Resultado: `BUILD
-SUCCESSFUL` (1 prueba, ~30 s). Confirma que el wiring de
-`SecurityConfig`, Spring Session JDBC y `CuentaService` funciona de
-punta a punta; el oráculo de entrega sigue siendo la suite
-Testcontainers de la sección anterior.
-
-## Limitación del entorno (no del cambio)
-
-El sandbox de esta ejecución no tiene daemon ni CLI de Docker
-(`docker: command not found`, sin `/var/run/docker.sock` ni alternativa
-Podman/TCP), contra lo previsto en la spec («el container tiene el
-socket del daemon montado»). Las suites de Testcontainers (las nuevas
-de sesión y las preexistentes de la etapa 1) fallan en
-`initializationError` dentro de `DockerClientProviderStrategy`, antes
-de ejecutar una sola prueba:
-
-```text
-./gradlew --no-daemon --console=plain test
-28 tests completed, 12 failed
-ArchivoEnvHttpTest/ConcurrenciaHttpTest/DestinationValidationHttpTest/
-EvolucionDuracionHttpTest/LinkApiHttpTest/ReciclajeAliasHttpTest/
-ReinicioServicioHttpTest/RutasReservadasHttpTest/SeguridadCsrfHttpTest/
-SesionPrincipalHttpTest/SesionReinicioHttpTest/VencimientoHttpTest
-  > initializationError: DockerClientProviderStrategy (sin daemon)
-```
-
-No se desactivó ni adaptó ninguna prueba: quedan escritas para correr
-sobre PostgreSQL real y `mock-oauth2-server:6.1.2` en cuanto el entorno
-tenga Docker, que es la condición de aceptación de la spec. Las que no
-necesitan Docker pasan en verde (arriba).
+Cubre las suites nuevas de sesión y las 12 suites HTTP preexistentes de
+la etapa 1, todas contra PostgreSQL real. Ninguna prueba se desactivó ni
+se adaptó al entorno.
