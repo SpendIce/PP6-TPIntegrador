@@ -2,6 +2,7 @@ package io.github.spendice.linkshortener.service;
 
 import io.github.spendice.linkshortener.mappings.Usuario;
 import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
@@ -65,7 +66,7 @@ public class CuentaService {
     public Usuario usuarioDeLogin(String googleSub, String email) {
         try {
             return transacciones.execute(status -> crearOActualizar(googleSub, email));
-        } catch (DataIntegrityViolationException carrera) {
+        } catch (DataIntegrityViolationException | PersistenceException carrera) {
             // Otro dispositivo creó el usuario entre la lectura y el insert:
             // se relee el que ganó y se completa el login igual.
             return transacciones.execute(status -> {

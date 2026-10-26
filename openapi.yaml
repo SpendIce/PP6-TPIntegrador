@@ -409,38 +409,36 @@ components:
         - usuario
       properties:
         usuario:
-          # `nullable` junto a `$ref` se ignora en OpenAPI 3.0.3 (Reference
-          # Object): el `allOf` lo vuelve un Schema Object que admite null.
+          # En OpenAPI 3.0.3 `nullable` solo amplía el `type` del mismo
+          # Schema Object: con un `$ref` o un `allOf` el validador sigue
+          # exigiendo el objeto. Por eso el usuario va inline.
           nullable: true
-          allOf:
-            - $ref: '#/components/schemas/UsuarioSesion'
+          type: object
           description: >
             Usuario de la sesión actual; `null` cuando no hay sesión o la
             sesión no tiene usuario.
-    UsuarioSesion:
-      type: object
-      required:
-        - email
-        - namespace
-        - tipo
-      properties:
-        email:
-          type: string
-          format: email
-          description: Email de la cuenta de Google del usuario.
-          example: "juan@ejemplo.com"
-        namespace:
-          type: string
-          description: >
-            Namespace público del usuario; vacío hasta que lo elija (la
-            elección es un Change posterior).
-          example: ""
-        tipo:
-          type: string
-          description: >
-            Tipo de la sesión actual: `principal` es la abierta con login
-            directo de Google; `vinculada` se reserva para la vinculación
-            por QR.
+          required:
+            - email
+            - namespace
+            - tipo
+          properties:
+            email:
+              type: string
+              format: email
+              description: Email de la cuenta de Google del usuario.
+              example: "juan@ejemplo.com"
+            namespace:
+              type: string
+              description: >
+                Namespace público del usuario; vacío hasta que lo elija (la
+                elección es un Change posterior).
+              example: ""
+            tipo:
+              type: string
+              description: >
+                Tipo de la sesión actual: `principal` es la abierta con login
+                directo de Google; `vinculada` se reserva para la vinculación
+                por QR.
           enum:
             - principal
             - vinculada

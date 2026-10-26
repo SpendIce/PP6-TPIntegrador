@@ -33,18 +33,27 @@ const cuentaSalir = document.getElementById("cuenta-salir");
 })();
 
 cuentaSalir.addEventListener("click", async () => {
+    // El logout exige CSRF igual que el POST de enlaces (issue #18). Si no
+    // se pudo cerrar, la sesión sigue viva: se muestra el error y no se
+    // recarga como si hubiera funcionado.
     try {
-        // El logout exige CSRF igual que el POST de enlaces (issue #18).
         const csrfResponse = await fetch("/api/csrf");
         const csrf = csrfResponse.ok ? await csrfResponse.json() : null;
-        if (csrf && csrf.token) {
-            await fetch("/api/logout", {
-                method: "POST",
-                headers: { "X-XSRF-TOKEN": csrf.token }
-            });
+        if (!csrf || !csrf.token) {
+            showError("No se pudo cerrar la sesión: falta el token CSRF.");
+            return;
         }
-    } finally {
+        const cierre = await fetch("/api/logout", {
+            method: "POST",
+            headers: { "X-XSRF-TOKEN": csrf.token }
+        });
+        if (!cierre.ok) {
+            showError("No se pudo cerrar la sesión. Probá de nuevo.");
+            return;
+        }
         location.reload();
+    } catch (error) {
+        showError("No se pudo cerrar la sesión. Probá de nuevo.");
     }
 });
 
