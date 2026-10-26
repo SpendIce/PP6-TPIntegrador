@@ -165,16 +165,13 @@ public class CuentaService {
      */
     public Usuario elegirNamespace(Long usuarioId, String propuesta) {
         String namespace = normalizarNamespace(propuesta);
-        validarFormatoNamespace(namespace);
-        validarNamespaceReservado(namespace);
         try {
             return transacciones.execute(status -> asignarNamespace(usuarioId, namespace));
         } catch (DataIntegrityViolationException | PersistenceException carrera) {
             if (!esCarreraDeNamespace(carrera)) {
                 throw carrera;
             }
-            throw new InvalidNamespaceException(Reason.NAMESPACE_TAKEN,
-                    "El namespace '" + namespace + "' ya está tomado; probá con otro.");
+            throw namespaceTomado(namespace);
         }
     }
 
@@ -186,6 +183,9 @@ public class CuentaService {
         }
         String actual = usuario.getNamespace();
         if (actual != null) {
+            // El usuario ya eligió: repetir el mismo nombre es idempotente y
+            // cualquier otro se rechaza antes de validar su formato, porque
+            // por esta vía no hay cambio de namespace.
             if (actual.equalsIgnoreCase(namespace)) {
                 return usuario;
             }
@@ -193,9 +193,10 @@ public class CuentaService {
                     "Ya elegiste el namespace '" + actual
                             + "'; cambiarlo llega en otro ticket.");
         }
-        if (namespaceTomado(namespace)) {
-            throw new InvalidNamespaceException(Reason.NAMESPACE_TAKEN,
-                    "El namespace '" + namespace + "' ya está tomado; probá con otro.");
+        validarFormatoNamespace(namespace);
+        validarNamespaceReservado(namespace);
+        if (estaTomado(namespace)) {
+            throw namespaceTomado(namespace);
         }
         usuario.setNamespace(namespace);
         // El flush dentro de la transacción hace saltar la restricción
@@ -204,7 +205,7 @@ public class CuentaService {
         return usuario;
     }
 
-    private boolean namespaceTomado(String namespace) {
+    private boolean estaTomado(String namespace) {
         return !em.createQuery(
                         "select u.id from Usuario u where lower(u.namespace) = :namespace",
                         Long.class)
@@ -214,15 +215,22 @@ public class CuentaService {
                 .isEmpty();
     }
 
+    private static InvalidNamespaceException namespaceTomado(String namespace) {
+        return new InvalidNamespaceException(Reason.NAMESPACE_TAKEN,
+                "El namespace '" + namespace + "' ya está tomado; probá con otro.");
+    }
+
     /** ¿La excepción es la violación única de {@code uq_usuario_namespace}? */
     private static boolean esCarreraDeNamespace(Throwable error) {
         for (Throwable actual = error; actual != null; actual = actual.getCause()) {
             if (actual instanceof ConstraintViolationException violacion
-                    && "uq_usuario_namespace".equals(violacion.getConstraintName())) {
+                    && "uq_usuario_namespace".equalsIgnoreCase(violacion.getConstraintName())) {
                 return true;
             }
             String mensaje = actual.getMessage();
-            if (mensaje != null && mensaje.contains("uq_usuario_namespace")) {
+            // HSQLDB devuelve el nombre del constraint en mayúsculas.
+            if (mensaje != null
+                    && mensaje.toLowerCase(Locale.ROOT).contains("uq_usuario_namespace")) {
                 return true;
             }
         }

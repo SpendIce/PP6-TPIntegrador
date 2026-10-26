@@ -297,37 +297,6 @@ El perfil `hsqldb` traduce ambas tablas a mano en
 agrega con un `ALTER` tolerado por `continue-on-error`, para que aplique
 tanto a bases nuevas como a las que ya existían.
 
-## Elección del namespace (issue #20)
-
-El namespace es un campo del usuario y cada usuario tiene a lo sumo uno.
-La elección aplica estas reglas, en este orden:
-
-1. Se normaliza la propuesta a minúsculas (`Juan` se guarda como `juan`).
-2. Se valida el formato: de 3 a 30 caracteres `a-z`, `0-9` y `-`, sin
-   guion inicial ni final; si no cumple, `NAMESPACE_INVALID`.
-3. Se compara con `cuenta.namespace-reserved-names`; si coincide,
-   `NAMESPACE_RESERVED`. La comparación es sin distinguir mayúsculas.
-4. Un usuario que ya tiene namespace solo puede repetir el mismo
-   (respuesta idempotente); otro nombre responde
-   `NAMESPACE_ALREADY_CHOSEN`.
-5. Se consulta si otro usuario ya lo tiene, sin distinguir mayúsculas; si
-   existe, `NAMESPACE_TAKEN`.
-
-La elección corre en una transacción propia con la fila del usuario
-bloqueada por `PESSIMISTIC_WRITE`. La unicidad definitiva la impone
-`uq_usuario_namespace`: si dos usuarios piden el mismo nombre a la vez,
-ambos pueden pasar la consulta previa, pero solo uno confirma; el otro
-recibe la violación de la restricción y el service la traduce a
-`NAMESPACE_TAKEN`. Nunca terminan ambos con el nombre. Un rechazo no
-modifica el usuario.
-
-La sugerencia de `GET /api/namespace/sugerencia` (y del campo
-`sugerencia` de `GET /api/sesion`) sale de la parte local del email: se
-pasa a minúsculas, cada carácter fuera de `a-z0-9` se vuelve `-`, se
-colapsan los guiones repetidos, se recortan los de los extremos y se
-limita a 30 caracteres. Si la parte local no alcanza el mínimo, se
-sugiere `usuario`. No se reserva automáticamente.
-
 ## Coordinación transaccional
 
 La creación ejecuta una única transacción (`@Transactional` de

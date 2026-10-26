@@ -601,7 +601,6 @@ components:
             - email
             - namespace
             - tipo
-            - sugerencia
           properties:
             email:
               type: string

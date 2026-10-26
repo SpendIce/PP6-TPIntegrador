@@ -3,13 +3,8 @@ package io.github.spendice.linkshortener;
 import com.fasterxml.jackson.databind.JsonNode;
 import org.junit.jupiter.api.Test;
 
-import java.net.URI;
 import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpRequest.BodyPublishers;
 import java.net.http.HttpResponse;
-import java.net.http.HttpResponse.BodyHandlers;
-import java.time.Duration;
 import java.util.List;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CyclicBarrier;
@@ -80,7 +75,7 @@ class NamespaceHttpTest extends HttpApiFixture {
                 "");
 
         for (String invalido : invalidos) {
-            assertNamespaceError(elegir(juan, invalido), 400, "NAMESPACE_INVALID");
+            assertError(elegir(juan, invalido), 400, "NAMESPACE_INVALID");
         }
         // Ningún rechazo guardó nada: el usuario sigue sin namespace.
         assertThat(db.queryForObject(
@@ -93,7 +88,7 @@ class NamespaceHttpTest extends HttpApiFixture {
         HttpClient juan = sesionDe(SUB_JUAN, EMAIL_JUAN);
 
         for (String reservado : List.of("api", "LOGIN", "logout", "vincular", "oauth2", "error")) {
-            assertNamespaceError(elegir(juan, reservado), 400, "NAMESPACE_RESERVED");
+            assertError(elegir(juan, reservado), 400, "NAMESPACE_RESERVED");
         }
     }
 
@@ -103,7 +98,7 @@ class NamespaceHttpTest extends HttpApiFixture {
         HttpClient pedro = sesionDe(SUB_PEDRO, EMAIL_PEDRO);
         assertThat(elegir(juan, "juan").statusCode()).isEqualTo(200);
 
-        assertNamespaceError(elegir(pedro, "JUAN"), 409, "NAMESPACE_TAKEN");
+        assertError(elegir(pedro, "JUAN"), 409, "NAMESPACE_TAKEN");
 
         // El rechazo no le quita a Pedro la posibilidad de escribir otro.
         HttpResponse<String> alternativa = elegir(pedro, "pedro");
@@ -117,7 +112,11 @@ class NamespaceHttpTest extends HttpApiFixture {
         HttpClient juan = sesionDe(SUB_JUAN, EMAIL_JUAN);
         assertThat(elegir(juan, "juan").statusCode()).isEqualTo(200);
 
-        assertNamespaceError(elegir(juan, "juanito"), 409, "NAMESPACE_ALREADY_CHOSEN");
+        assertError(elegir(juan, "juanito"), 409, "NAMESPACE_ALREADY_CHOSEN");
+        // El rechazo por "ya elegido" gana sobre el formato o la reserva:
+        // por esta vía no hay cambio de namespace, cualquiera sea el nombre.
+        assertError(elegir(juan, "ab"), 409, "NAMESPACE_ALREADY_CHOSEN");
+        assertError(elegir(juan, "api"), 409, "NAMESPACE_ALREADY_CHOSEN");
 
         // Repetir el mismo nombre es idempotente y no se interpreta como cambio.
         assertThat(elegir(juan, "JUAN").statusCode()).isEqualTo(200);
@@ -131,10 +130,10 @@ class NamespaceHttpTest extends HttpApiFixture {
         HttpClient dispositivo = nuevoClienteDispositivo();
 
         HttpResponse<String> alta = elegir(dispositivo, "juan");
-        assertNamespaceError(alta, 401, "NOT_AUTHENTICATED");
+        assertError(alta, 401, "NOT_AUTHENTICATED");
 
         HttpResponse<String> sugerencia = get(dispositivo, "/api/namespace/sugerencia");
-        assertNamespaceError(sugerencia, 401, "NOT_AUTHENTICATED");
+        assertError(sugerencia, 401, "NOT_AUTHENTICATED");
     }
 
     @Test
@@ -164,7 +163,7 @@ class NamespaceHttpTest extends HttpApiFixture {
                     .containsExactlyInAnyOrder(200, 409);
             HttpResponse<String> rechazo = respuestas.stream()
                     .filter(r -> r.statusCode() == 409).findFirst().orElseThrow();
-            assertNamespaceError(rechazo, 409, "NAMESPACE_TAKEN");
+            assertError(rechazo, 409, "NAMESPACE_TAKEN");
             assertThat(db.queryForObject(
                     "SELECT COUNT(*) FROM usuario WHERE namespace = ?",
                     Long.class, "mismo-nombre")).isEqualTo(1);
@@ -182,21 +181,7 @@ class NamespaceHttpTest extends HttpApiFixture {
 
     private HttpResponse<String> elegir(HttpClient dispositivo, String namespace)
             throws Exception {
-        String csrf = Csrf.obtener(dispositivo, baseUrl());
-        HttpRequest request = Csrf.aplicar(dispositivo,
-                        HttpRequest.newBuilder(URI.create(baseUrl() + "/api/namespace")), csrf)
-                .header("Content-Type", "application/json")
-                .timeout(Duration.ofSeconds(15))
-                .POST(BodyPublishers.ofString("{\"namespace\":\"" + namespace + "\"}"))
-                .build();
-        return dispositivo.send(request, BodyHandlers.ofString());
-    }
-
-    private void assertNamespaceError(HttpResponse<String> response, int status, String code)
-            throws Exception {
-        assertThat(response.statusCode()).isEqualTo(status);
-        JsonNode body = json.readTree(response.body());
-        assertThat(body.get("error").asText()).isEqualTo(code);
-        assertThat(body.get("message").asText()).isNotBlank();
+        return postJson(dispositivo, "/api/namespace",
+                "{\"namespace\":\"" + namespace + "\"}");
     }
 }
