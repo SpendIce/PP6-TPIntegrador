@@ -52,10 +52,16 @@ class SeguridadCsrfHttpTest extends HttpApiFixture {
     }
 
     @Test
-    void postConTokenInventadoDevuelve403() throws Exception {
+    void postConEncabezadoInventadoDevuelve403() throws Exception {
+        // El doble envío acepta cualquier par cookie+encabezado que
+        // coincida: el token no está firmado y el servidor no guarda
+        // estado. Lo que un sitio atacante no puede hacer es leer la
+        // cookie del servicio para repetirla en el encabezado, así que el
+        // ataque real es una cookie emitida con un encabezado inventado.
+        String csrf = Csrf.obtener(client, baseUrl());
         HttpRequest request = HttpRequest.newBuilder(URI.create(baseUrl() + "/api/links"))
                 .header("Content-Type", "application/json")
-                .header("Cookie", Csrf.COOKIE + "=token-inventado")
+                .header("Cookie", Csrf.COOKIE + "=" + csrf)
                 .header(Csrf.ENCABEZADO, "token-inventado")
                 .POST(BodyPublishers.ofString("{\"destination\":\"https://ejemplo.com/a\"}"))
                 .build();
