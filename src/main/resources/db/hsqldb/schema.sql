@@ -1,4 +1,4 @@
--- Esquema del perfil hsqldb: equivalente a db/migration/V1 a V5 en
+-- Esquema del perfil hsqldb: equivalente a db/migration/V1 a V6 en
 -- dialecto HSQLDB (VARCHAR(8192) en lugar de TEXT, TIMESTAMP en lugar de
 -- TIMESTAMPTZ, LONGVARBINARY en lugar de BYTEA).
 -- El perfil corre sin Flyway, por eso este script lo aplica
@@ -72,6 +72,18 @@ CREATE TABLE IF NOT EXISTS asignacion_personal (
 
 CREATE INDEX IF NOT EXISTS ix_asignacion_personal_usuario_alias
     ON asignacion_personal (usuario_id, alias_personalizado);
+
+-- Codigos de vinculacion por QR (V6): un solo uso, vencen a los 60
+-- segundos; el usuario_id es el que aprobo desde su sesion principal.
+CREATE TABLE IF NOT EXISTS codigo_vinculacion (
+    codigo     VARCHAR(64) PRIMARY KEY,
+    estado     VARCHAR(16) NOT NULL,
+    creada_en  TIMESTAMP   NOT NULL,
+    vence_en   TIMESTAMP   NOT NULL,
+    usuario_id BIGINT,
+    CONSTRAINT fk_codigo_vinculacion_usuario
+        FOREIGN KEY (usuario_id) REFERENCES usuario (id)
+);
 
 -- Spring Session JDBC (V3): LONGVARBINARY en lugar de BYTEA.
 CREATE TABLE IF NOT EXISTS spring_session (
