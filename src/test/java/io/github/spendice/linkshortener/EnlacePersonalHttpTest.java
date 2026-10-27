@@ -396,5 +396,11 @@ class EnlacePersonalHttpTest extends HttpApiFixture {
                 OffsetDateTime.ofInstant(ahora.minus(Duration.ofMinutes(10)), ZoneOffset.UTC),
                 OffsetDateTime.ofInstant(ahora.plus(Duration.ofMinutes(50)), ZoneOffset.UTC));
         db.update("UPDATE alias SET asignacion_actual_id = ? WHERE codigo = ?", id, codigo);
+        // Un alias existente cuenta como ya emitido: el generador nunca
+        // lo vuelve a entregar (la misma invariante del seed de
+        // ConcurrenciaHttpTest).
+        db.update("UPDATE generador_alias SET proximo_indice ="
+                        + " GREATEST(proximo_indice, ?)",
+                CodigosDeAlias.indiceDe(codigo) + 1);
     }
 }

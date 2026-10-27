@@ -13,11 +13,14 @@ import org.springframework.web.bind.annotation.RestController;
 
 /**
  * Resolución pública: {@code GET /{alias}} redirige (302) al destino de
- * la asignación vigente o responde 404 con la página acordada. El patrón
- * solo admite símbolos del alfabeto configurado (placeholder
+ * la asignación vigente o responde 404 con la página acordada, y
+ * {@code GET /{namespace}/{aliasPersonalizado}} hace lo mismo con el
+ * enlace personal del usuario (issue #21). El patrón de un segmento solo
+ * admite símbolos del alfabeto configurado (placeholder
  * {@code shortener.alias-route-pattern}, cuyo default vive en
- * {@code application.yml}): las rutas propias (archivos estáticos con
- * extensión, {@code /api/...}) nunca entran aquí como alias.
+ * {@code application.yml}) y el de dos letras, dígitos y guiones: las
+ * rutas propias (archivos estáticos con extensión, {@code /api/...})
+ * nunca entran aquí como alias.
  */
 @RestController
 class RedirectController {
@@ -63,10 +66,11 @@ class RedirectController {
      * estáticos; las rutas literales como {@code /api/csrf} ganan por
      * ser más específicas.
      */
-    @GetMapping("/{namespace:[a-zA-Z0-9-]+}/{alias:[a-zA-Z0-9-]+}")
-    ResponseEntity<String> resolverPersonal(@PathVariable("namespace") String namespace,
-                                            @PathVariable("alias") String alias) {
-        return service.resolverEnlacePersonal(namespace, alias)
+    @GetMapping("/{namespace:[a-zA-Z0-9-]+}/{aliasPersonalizado:[a-zA-Z0-9-]+}")
+    ResponseEntity<String> resolverPersonal(
+            @PathVariable("namespace") String namespace,
+            @PathVariable("aliasPersonalizado") String aliasPersonalizado) {
+        return service.resolverEnlacePersonal(namespace, aliasPersonalizado)
                 .map(asignacion -> ResponseEntity.status(HttpStatus.FOUND)
                         .header(HttpHeaders.LOCATION, asignacion.getDestino())
                         .cacheControl(CacheControl.noStore())

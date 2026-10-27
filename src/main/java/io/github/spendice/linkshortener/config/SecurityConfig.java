@@ -51,8 +51,9 @@ import java.util.LinkedHashMap;
  * crea o reutiliza el usuario por su {@code sub} de Google y graba en la
  * sesión su id, el tipo {@code principal} y la inactividad máxima
  * configurada. Los flujos anónimos no crean sesión
- * ({@code IF_REQUIRED}): el POST de enlaces y el token CSRF no la
- * necesitan. El cierre es {@code POST /api/logout}, que invalida la
+ * ({@code IF_REQUIRED}): el POST de enlaces acortados y el token CSRF no
+ * la necesitan (el alias personalizado del POST sí exige la sesión del
+ * usuario, issue #21). El cierre es {@code POST /api/logout}, que invalida la
  * sesión del dispositivo y borra la cookie.</p>
  *
  * <p>Los métodos que cambian estado exigen CSRF por doble envío: el token

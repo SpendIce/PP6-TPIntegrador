@@ -492,7 +492,7 @@ paths:
             normaliza a minúsculas.
           schema:
             type: string
-            pattern: '^[a-z0-9-]{1,30}$'
+            pattern: '^[a-zA-Z0-9-]{3,30}$'
         - name: aliasPersonalizado
           in: path
           required: true
@@ -501,7 +501,7 @@ paths:
             normaliza a minúsculas.
           schema:
             type: string
-            pattern: '^[a-z0-9-]{1,50}$'
+            pattern: '^[a-zA-Z0-9-]{1,50}$'
       responses:
         '302':
           description: Asignación vigente; redirección al destino registrado.

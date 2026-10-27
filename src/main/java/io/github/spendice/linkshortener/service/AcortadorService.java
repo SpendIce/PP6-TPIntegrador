@@ -26,8 +26,11 @@ import java.util.Optional;
 import java.util.Set;
 
 /**
- * Servicio único del acortador: concentra los dos casos de uso como
- * métodos públicos y todas las reglas de negocio como helpers privados
+ * Servicio único del acortador: concentra los casos de uso como métodos
+ * públicos — creación y resolución de enlaces acortados ({@link #acortar}
+ * y {@link #resolver}) y de enlaces personales
+ * ({@link #crearEnlacePersonal} y {@link #resolverEnlacePersonal},
+ * issue #21) — y todas las reglas de negocio como helpers privados
  * del mismo archivo (esquema de clase). Persiste con {@code EntityManager}
  * y HQL directo sobre los mappings.
  *
@@ -35,7 +38,8 @@ import java.util.Set;
  * referencia actual forman una unidad atómica en {@link #acortar}
  * (ADR 0002); las asignaciones persistidas no se modifican ni se
  * eliminan: reutilizar un alias agrega una nueva asignación y mueve la
- * referencia actual (ADR 0003).</p>
+ * referencia actual (ADR 0003). Las asignaciones personales siguen la
+ * misma política de historial, serializadas por la fila del usuario.</p>
  */
 @Service
 public class AcortadorService {
