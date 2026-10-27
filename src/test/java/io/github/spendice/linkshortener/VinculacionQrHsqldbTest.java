@@ -24,10 +24,13 @@ import static org.assertj.core.api.Assertions.assertThat;
  * consulta pendiente que no abre sesión, el consumo que materializa la
  * sesión vinculada con su inactividad configurada y el tipo informado por
  * {@code /api/sesion}, el código de un solo uso y el vencimiento moviendo
- * el {@link MutableClock}. La aprobación llega por una fila sembrada
- * (estado {@code APROBADA} + usuario), porque la danza OIDC necesita el
- * proveedor de Testcontainers; el camino aprobado por la sesión principal
- * lo cubre {@code VinculacionQrHttpTest} sobre PostgreSQL.
+ * el {@link MutableClock}, el dispositivo con sesión que consume sin
+ * degradarla y el reintento tras un fallo de persistencia de la sesión
+ * (el consumo corre en la transacción del pedido). La aprobación llega
+ * por una fila sembrada (estado {@code APROBADA} + usuario), porque la
+ * danza OIDC necesita el proveedor de Testcontainers; el camino aprobado
+ * por la sesión principal lo cubre {@code VinculacionQrHttpTest} sobre
+ * PostgreSQL.
  */
 @SpringBootTest(
         webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
@@ -124,6 +127,71 @@ class VinculacionQrHsqldbTest {
         assertThat(json.readTree(Dispositivos.get(Dispositivos.nuevo(), baseUrl(),
                         "/api/vinculacion/" + segundoCodigo).body())
                 .get("estado").asText()).isEqualTo("pendiente");
+    }
+
+    @Test
+    void unDispositivoConSesionConsumeElCodigoPeroNoDegradaSuSesion() throws Exception {
+        // La computadora ya quedó con su sesión vinculada de Juan.
+        HttpClient vinculada = Dispositivos.nuevo();
+        String primerCodigo = pedirCodigo(vinculada);
+        aprobarSembrado(primerCodigo, sembrarUsuario("google-sub-juan", "juan@ejemplo.com"));
+        Dispositivos.get(vinculada, baseUrl(), "/api/vinculacion/" + primerCodigo);
+        String sesionId = Dispositivos.cookieDeSesion(vinculada);
+        assertThat(sesionId).isNotNull();
+
+        // El mismo dispositivo presenta otro código aprobado por Ana: el
+        // código es de un solo uso y se consume, pero su sesión no se
+        // toca —abrir otra la degradaría— y la respuesta es vencida.
+        String segundoCodigo = pedirCodigo(Dispositivos.nuevo());
+        aprobarSembrado(segundoCodigo, sembrarUsuario("google-sub-ana", "ana@ejemplo.com"));
+
+        HttpResponse<String> consulta =
+                Dispositivos.get(vinculada, baseUrl(), "/api/vinculacion/" + segundoCodigo);
+        assertThat(consulta.statusCode()).isEqualTo(200);
+        assertThat(json.readTree(consulta.body()).get("estado").asText()).isEqualTo("vencida");
+        assertThat(Dispositivos.cookieDeSesion(vinculada)).isEqualTo(sesionId);
+        assertThat(db.queryForObject(
+                "SELECT estado FROM codigo_vinculacion WHERE codigo = ?",
+                String.class, segundoCodigo)).isEqualTo("CONSUMIDA");
+
+        // La sesión sigue siendo la vinculada de Juan, no la de Ana.
+        JsonNode usuario = json.readTree(
+                Dispositivos.get(vinculada, baseUrl(), "/api/sesion").body()).get("usuario");
+        assertThat(usuario.get("email").asText()).isEqualTo("juan@ejemplo.com");
+        assertThat(usuario.get("tipo").asText()).isEqualTo("vinculada");
+    }
+
+    @Test
+    void unFalloAlPersistirLaSesionPermiteReintentarElConsumo() throws Exception {
+        HttpClient computadora = Dispositivos.nuevo();
+        String codigo = pedirCodigo(computadora);
+        aprobarSembrado(codigo, sembrarUsuario("google-sub-juan", "juan@ejemplo.com"));
+
+        // El alta de los atributos falla al cerrar la respuesta: el
+        // consumo, que corre en la misma transacción del pedido, revierte
+        // y el código sigue APROBADA en vez de quedar CONSUMIDA.
+        db.execute("SET TABLE spring_session_attributes READONLY TRUE");
+        try {
+            HttpResponse<String> fallo =
+                    Dispositivos.get(computadora, baseUrl(), "/api/vinculacion/" + codigo);
+            assertThat(fallo.statusCode()).isBetween(500, 599);
+            assertThat(Dispositivos.cookieDeSesion(computadora)).isNull();
+            assertThat(db.queryForObject(
+                    "SELECT estado FROM codigo_vinculacion WHERE codigo = ?",
+                    String.class, codigo)).isEqualTo("APROBADA");
+        } finally {
+            db.execute("SET TABLE spring_session_attributes READONLY FALSE");
+        }
+
+        HttpResponse<String> reintento =
+                Dispositivos.get(computadora, baseUrl(), "/api/vinculacion/" + codigo);
+        assertThat(reintento.statusCode()).isEqualTo(200);
+        assertThat(json.readTree(reintento.body()).get("estado").asText())
+                .isEqualTo("aprobada");
+        assertThat(Dispositivos.cookieDeSesion(computadora)).isNotNull();
+        assertThat(db.queryForObject(
+                "SELECT estado FROM codigo_vinculacion WHERE codigo = ?",
+                String.class, codigo)).isEqualTo("CONSUMIDA");
     }
 
     @Test

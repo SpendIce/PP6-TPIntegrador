@@ -132,11 +132,11 @@ class VinculacionController {
     }
 
     /**
-     * Completa la sesión vinculada del dispositivo que esperaba. Sus
-     * atributos y el consumo del código ya quedaron registrados en la
-     * misma transacción; aquí rota el id al otorgar acceso y persiste el
-     * {@code SecurityContext} para que las rutas con sesión ({@code
-     * /vincular/**}) la reconozcan.
+     * Completa la sesión vinculada del dispositivo que esperaba. Corre
+     * dentro de la misma transacción del pedido que el consumo y el
+     * guardado que Spring Session hace al cerrar la respuesta: aquí rota
+     * el id al otorgar acceso y registra el {@code SecurityContext} para
+     * que las rutas con sesión ({@code /vincular/**}) la reconozcan.
      */
     private void finalizarSesionVinculada(HttpServletRequest request, HttpSession sesion,
                                           Usuario usuario) {

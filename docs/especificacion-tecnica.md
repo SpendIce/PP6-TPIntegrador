@@ -263,14 +263,21 @@ desde la sesión principal del celular, al estilo de WhatsApp:
   mismo módulo `QrPng` del enlace acortado (ver «QR del enlace»), y la
   web lo renueva unos segundos antes de que venza.
 - **La consulta del estado** (`GET /api/vinculacion/{codigo}`, cada 2
-  segundos) corre `CuentaService.consumirVinculacion` en una transacción
-  con la fila bloqueada (`PESSIMISTIC_WRITE`): un código `APROBADA` crea
-  los atributos de la sesión vinculada y se marca `CONSUMIDA` dentro de
-  la misma transacción. Si falla esa persistencia, también revierte el
-  consumo, y la próxima consulta puede reintentar; dos dispositivos que
-  esperan el mismo código no se reparten la aprobación. Las consultas
-  con código pendiente, vencido o inexistente usan `getSession(false)` y
-  no crean una cookie de sesión.
+  segundos) corre dentro de una transacción que abre el filtro de
+  `TransaccionVinculacionConfig` para `/api/vinculacion` y
+  `/api/vinculacion/*`, antes de `SessionRepositoryFilter`, y confirma
+  al cerrarse el pedido. `CuentaService.consumirVinculacion` bloquea la
+  fila (`PESSIMISTIC_WRITE`) y un código `APROBADA` se marca `CONSUMIDA`
+  en esa transacción; los atributos de la sesión vinculada los graba
+  Spring Session al cerrar la respuesta, en la misma transacción, así
+  que si esa persistencia falla también revierte el consumo y la próxima
+  consulta puede reintentar. Dos dispositivos que esperan el mismo
+  código no se reparten la aprobación. Las consultas con código
+  pendiente, vencido o inexistente usan `getSession(false)` y no crean
+  una cookie de sesión. Si el dispositivo que consulta ya trae una
+  sesión con usuario, el código se consume igual —es de un solo uso—
+  pero no se abre otra sesión: la suya no se degrada a vinculada y la
+  respuesta es `vencida`.
   El vencimiento se evalúa en el instante del servidor, como las
   asignaciones: un código aprobado pero ya vencido responde `vencida` y
   no abre nada; usado, vencido e inexistente nunca abren sesión.
@@ -327,17 +334,26 @@ desde la sesión principal del celular, al estilo de WhatsApp:
   `spring.sql.init`, con `flyway` deshabilitado y `ddl-auto=none` en el perfil.
 - Pruebas de integración: Testcontainers levanta `postgres:16.4-alpine`
   en tres grupos de contextos. `LinkApiHttpTest`,
-  `ConcurrenciaHttpTest`, `DestinationValidationHttpTest`,
-  `SeguridadCsrfHttpTest` y
-  `RutasReservadasHttpTest` extienden `HttpApiFixture` y comparten un
-  único contenedor (patrón singleton con `@ServiceConnection`);
+  `ConcurrenciaHttpTest`, `CuentaServiceConcurrenciaTest`,
+  `DestinationValidationHttpTest`, `EnlacePersonalHttpTest`,
+  `NamespaceHttpTest`, `NamespaceReservadosConfiguradosHttpTest`,
+  `SeguridadCsrfHttpTest`, `SesionInactividadConfiguradaHttpTest`,
+  `SesionPrincipalHttpTest`, `RutasReservadasHttpTest` y
+  `VinculacionQrHttpTest` extienden `HttpApiFixture` y comparten un
+  único contenedor (patrón singleton que arranca al cargar la clase del
+  fixture; el datasource se registra por `@DynamicPropertySource` con el
+  host de `TestHost`, sin `@Container` ni `@ServiceConnection`);
   `RutasReservadasHttpTest` declara sus propias `properties` de
   `@SpringBootTest`, así que corre en un contexto Spring cacheado
-  distinto pero contra el mismo contenedor. `VencimientoHttpTest`,
-  `ReciclajeAliasHttpTest` y `VinculacionQrHttpTest` agregan
-  `ClockTestConfiguration` (reloj mutable) y declaran su propio
-  `@Container` con `@ServiceConnection`.
-  `EvolucionDuracionHttpTest` y `ReinicioServicioHttpTest` levantan los
+  distinto pero contra el mismo contenedor. `VencimientoHttpTest` y
+  `ReciclajeAliasHttpTest` agregan `ClockTestConfiguration` (reloj
+  mutable) en sus `classes` y declaran su propio `@Container` con el
+  datasource manual de `TestHost`; `VinculacionQrHttpTest` agrega el
+  reloj con `@Import(ClockTestConfiguration.class)` sobre el contexto y
+  el contenedor del fixture, así que el resto de las suites sigue contra
+  el reloj real.
+  `EvolucionDuracionHttpTest`, `ReinicioServicioHttpTest`,
+  `SesionReinicioHttpTest` y `ArchivoEnvHttpTest` levantan los
   contextos programáticamente con `SpringApplicationBuilder` contra su
   propio `@Container`, con el datasource pasado por argumentos de
   arranque (sin `@ServiceConnection`). No se usa H2 (ADR 0004).
@@ -850,6 +866,12 @@ abre ninguna sesión, la aprobación rechazada desde una sesión vinculada
 (`NOT_PRINCIPAL_SESSION`) y sin sesión (`NOT_AUTHENTICATED`), la página
 `/vincular/{codigo}` que redirige al login y vuelve tras completarlo, y
 el namespace o el email que muestra la confirmación.
+`VinculacionQrHsqldbTest` recorre el mismo recorrido sobre el perfil
+`hsqldb` en memoria, sin Docker, con la aprobación sembrada en la fila:
+incluye el consumo desde un dispositivo que ya trae sesión (la consume
+sin degradarla) y el reintento tras un fallo al grabar
+`spring_session_attributes`, que en ambas bases deja el código
+`APROBADA` porque corre en la transacción del pedido.
 
 No implementa esta especificación: consola de
 gestión, estadísticas de visitas ni purga del historial (analizados en

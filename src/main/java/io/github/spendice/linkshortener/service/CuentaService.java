@@ -444,12 +444,19 @@ public class CuentaService {
     /**
      * Consulta del dispositivo que espera: responde el estado efectivo y,
      * cuando es {@code APROBADA}, consume el código (de un solo uso) y
-     * materializa la sesión vinculada del usuario que aprobó. La sesión
-     * se registra en la misma transacción:
-     * si falla la persistencia de sus atributos, el consumo también
-     * revierte. La siguiente consulta con el mismo código responde
-     * {@code VENCIDA}. El bloqueo pesimista garantiza que solo una
-     * consulta consume la aprobación.
+     * materializa la sesión vinculada del usuario que aprobó. La consulta
+     * corre dentro de la transacción que abre el filtro del pedido
+     * ({@code TransaccionVinculacionConfig}), así que el consumo confirma
+     * junto con los atributos que Spring Session graba al cerrar la
+     * respuesta: si esa persistencia falla, el consumo también revierte
+     * y la próxima consulta puede reintentar. La consulta siguiente con
+     * el mismo código responde {@code VENCIDA}. El bloqueo pesimista
+     * garantiza que solo una consulta consume la aprobación.
+     *
+     * <p>Si el dispositivo que consulta ya trae una sesión con usuario,
+     * el código se consume igual —es de un solo uso— pero no se abre
+     * otra sesión y la respuesta es {@code VENCIDA}: la sesión existente
+     * no se degrada a {@code vinculada}.</p>
      */
     public ResultadoVinculacion consumirVinculacion(String codigo, HttpServletRequest request,
                                                      HttpSession sesion,
@@ -464,10 +471,13 @@ public class CuentaService {
             if (estado != EstadoVinculacion.APROBADA) {
                 return new ResultadoVinculacion(estado, null);
             }
+            vinculacion.setEstado(CodigoVinculacion.Estado.CONSUMIDA);
+            if (sesion != null && sesion.getAttribute(ATRIBUTO_USUARIO_ID) != null) {
+                return new ResultadoVinculacion(EstadoVinculacion.VENCIDA, null);
+            }
             Usuario aprobador = em.find(Usuario.class, vinculacion.getUsuarioId());
             HttpSession sesionVinculada = sesion == null ? request.getSession() : sesion;
             registrarSesion(sesionVinculada, aprobador, TIPO_VINCULADA, inactividadMaxima);
-            vinculacion.setEstado(CodigoVinculacion.Estado.CONSUMIDA);
             return new ResultadoVinculacion(EstadoVinculacion.APROBADA, aprobador);
         });
     }
