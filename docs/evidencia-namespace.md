@@ -10,13 +10,16 @@ en `openapi.yaml` y «Elección del namespace» de
 
 - `POST /api/namespace`: elige el namespace del usuario de la sesión.
   Normaliza a minúsculas, valida de 3 a 30 caracteres `a-z`, `0-9` y `-`
-  sin guion inicial ni final, rechaza nombres reservados y nombres ya
-  tomados sin distinguir mayúsculas, y no permite que un usuario que ya
-  eligió cambie de nombre por esta vía (solo repetir el mismo).
+  sin guion inicial ni final, y rechaza nombres reservados y nombres ya
+  tomados sin distinguir mayúsculas. Si el usuario ya eligió, el mismo
+  endpoint cambia el nombre: el anterior queda registrado en gracia
+  (`cuenta.namespace-grace-period`, `NAMESPACE_GRACE_PERIOD`), reservado
+  mientras dure y recuperable por su dueño hasta el fin de gracia; los
+  enlaces personales no se modifican.
   Respuestas de rechazo con `{error, message}` y código propio:
   `NAMESPACE_INVALID` y `NAMESPACE_RESERVED` (`400`), `NAMESPACE_TAKEN`
-  y `NAMESPACE_ALREADY_CHOSEN` (`409`); sin sesión, `NOT_AUTHENTICATED`
-  (`401`). Exige CSRF como todo POST.
+  (`409`, cubre tomados y en gracia ajenos); sin sesión,
+  `NOT_AUTHENTICATED` (`401`). Exige CSRF como todo POST.
 - `GET /api/namespace/sugerencia`: sugiere un nombre derivado de la
   parte local del email y adaptado al formato; no lo reserva.
 - `GET /api/sesion` devuelve el namespace elegido y, mientras no exista,
@@ -44,8 +47,12 @@ el nombre, igual que la reserva de alias de `ConcurrenciaHttpTest`.
 - `NamespaceHttpTest` (extiende `HttpApiFixture`, PostgreSQL real y
   `mock-oauth2-server` en Testcontainers): sugerencia desde el email,
   formato inválido, reservados sin distinguir mayúsculas, tomado sin
-  distinguir mayúsculas, repetición idempotente, usuario que ya eligió,
-  `401` sin sesión y carrera simultánea de dos usuarios.
+  distinguir mayúsculas, repetición idempotente, cambio con gracia y
+  recuperación del nombre anterior, `401` sin sesión y carrera
+  simultánea de dos usuarios.
+- `CambioNamespaceHttpTest`: el solapamiento real de dos cambios se
+  fuerza con `InspeccionNombreNamespace` y el perdedor recibe
+  `NAMESPACE_TAKEN` (`409`).
 - `CuentaPropertiesTest`: normalización y obligatoriedad de la lista de
   nombres reservados.
 
