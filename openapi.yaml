@@ -462,6 +462,54 @@ paths:
                   value:
                     error: CSRF_TOKEN_INVALID
                     message: "La solicitud no trae un token CSRF válido; se obtiene con GET /api/csrf."
+  /api/sesiones-vinculadas/cerrar:
+    post:
+      summary: Cerrar todas las sesiones vinculadas
+      description: >
+        Desde una sesión principal, invalida todas las sesiones vinculadas
+        del usuario autenticado. La sesión principal que realiza la solicitud
+        y las sesiones de otros usuarios permanecen activas. Una sesión
+        vinculada no puede ejecutar esta operación y recibe
+        `SESSION_NOT_PRIMARY`. Exige el token CSRF del doble envío.
+      operationId: cerrarSesionesVinculadas
+      parameters:
+        - name: X-XSRF-TOKEN
+          in: header
+          required: true
+          description: Valor de la cookie `XSRF-TOKEN` de la misma solicitud.
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Sesiones vinculadas cerradas; no devuelve cuerpo.
+        '401':
+          description: No hay sesión con usuario autenticado.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+              examples:
+                sinSesion:
+                  value:
+                    error: NOT_AUTHENTICATED
+                    message: "Iniciá sesión con Google para cerrar las sesiones vinculadas."
+        '403':
+          description: >
+            La sesión actual es vinculada (`SESSION_NOT_PRIMARY`) o el token
+            CSRF es ausente o inválido (`CSRF_TOKEN_INVALID`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+              examples:
+                sesionVinculada:
+                  value:
+                    error: SESSION_NOT_PRIMARY
+                    message: "Solo una sesión principal puede cerrar las sesiones vinculadas."
+                csrfInvalido:
+                  value:
+                    error: CSRF_TOKEN_INVALID
+                    message: "La solicitud no trae un token CSRF válido; se obtiene con GET /api/csrf."
   /{namespace}/{aliasPersonalizado}:
     get:
       summary: Resolver un enlace personal

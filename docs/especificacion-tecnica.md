@@ -74,6 +74,12 @@ El contrato REST de creación y resolución está en [openapi.yaml](../openapi.y
 - `POST /api/logout` invalida la sesión del dispositivo que llama y
   responde `204` sin cuerpo, también cuando no hay sesión. Exige el token
   CSRF del doble envío, como todo POST.
+- `POST /api/sesiones-vinculadas/cerrar` invalida todas las sesiones
+  vinculadas del usuario autenticado y responde `204`; conserva la sesión
+  principal que hace el pedido y no afecta otros usuarios. Requiere sesión
+  principal: sin usuario responde `401` con `NOT_AUTHENTICATED` y desde una
+  sesión vinculada responde `403` con `SESSION_NOT_PRIMARY`. Exige CSRF como
+  todo POST.
 - El inicio de sesión no pasa por la API: la web navega a
   `GET /oauth2/authorization/google` y el proveedor OIDC vuelve por
   `GET /login/oauth2/code/google`, los caminos por defecto del cliente
@@ -205,6 +211,11 @@ usa el cliente OIDC de Spring Security con Google como único proveedor:
   /api/logout` usa el logout de Spring Security en esa ruta: invalida la
   sesión persistida del dispositivo, borra la cookie `SESSION` y responde
   `204` aunque no haya sesión.
+- `POST /api/sesiones-vinculadas/cerrar` actúa sobre las sesiones JDBC que
+  tienen el mismo `usuarioId` y `sesionTipo=vinculada`; no invalida la
+  sesión principal ni sesiones de otro usuario. Una sesión vinculada no
+  puede iniciar el cierre masivo. La operación exige CSRF y devuelve
+  `204` al completarse.
 - La web muestra «Entrar con Google» (navega a
   `/oauth2/authorization/google`) cuando `GET /api/sesion` devuelve
   `usuario: null`, y el email con «Cerrar sesión» cuando hay usuario;
@@ -521,7 +532,8 @@ issue #15 (ADR 0006):
   enlaces acortados y personales), `RedirectController` (`GET /{alias}`
   y `GET /{namespace}/{aliasPersonalizado}`), `CsrfController`
   (`GET /api/csrf`), `SesionController` (`GET /api/sesion`,
-  `POST /api/logout`), `NamespaceController` (`POST /api/namespace`,
+  `POST /api/logout`, `POST /api/sesiones-vinculadas/cerrar`),
+  `NamespaceController` (`POST /api/namespace`,
   `GET /api/namespace/sugerencia`), `ApiExceptionHandler` y `dto/`
   (`CreateLinkRequest`, `CsrfTokenResponse`, `ApiErrorResponse`,
   `SesionActualResponse`, `UsuarioSesion`, `ElegirNamespaceRequest`,
