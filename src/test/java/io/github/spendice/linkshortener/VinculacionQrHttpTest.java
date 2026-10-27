@@ -1,7 +1,10 @@
 package io.github.spendice.linkshortener;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Import;
 
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -23,8 +26,11 @@ import static org.assertj.core.api.Assertions.assertThat;
  * reales. Los dos dispositivos del flujo son dos clientes con almacenes
  * de cookies separados: la computadora que espera (sin sesión) y el
  * celular con la sesión principal que aprueba. Reutiliza la infraestructura
- * PostgreSQL y el ciclo de vida de {@link HttpApiFixture}.
+ * PostgreSQL y el ciclo de vida de {@link HttpApiFixture}; el reloj mutable
+ * entra solo a este contexto con {@code @Import}, porque el resto de las
+ * suites del fixture verifica vencimientos contra el reloj real.
  */
+@Import(ClockTestConfiguration.class)
 class VinculacionQrHttpTest extends HttpApiFixture {
 
     private static final String PUBLIC_BASE = "http://192.168.50.10:8080";
@@ -35,6 +41,14 @@ class VinculacionQrHttpTest extends HttpApiFixture {
 
     private static final String SUB_JUAN = "google-sub-vinculacion-juan";
     private static final String EMAIL_JUAN = "juan@ejemplo.com";
+
+    @Autowired
+    MutableClock clock;
+
+    @BeforeEach
+    void relojEnT0() {
+        clock.set(T0);
+    }
 
     @Test
     void laAprobacionDelCelularAbreLaSesionVinculadaEnLaComputadora() throws Exception {
