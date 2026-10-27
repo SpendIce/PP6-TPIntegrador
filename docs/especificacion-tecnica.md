@@ -5,8 +5,9 @@ evidencia de vencimiento y reinicio del issue #3, la reutilización de
 alias del issue #5, las garantías de concurrencia del issue #6, la capa
 de seguridad con CSRF del issue #18, el inicio de sesión con Google con
 sesión principal persistida del issue #19, la elección del namespace del
-primer login del issue #20 y los enlaces personales con alias
-personalizado del issue #21. La
+primer login del issue #20, los enlaces personales con alias
+personalizado del issue #21 y la vinculación de dispositivos por QR del
+issue #22. La
 estructura descrita refleja el refactor al esquema de clase del issue
 #15 (service único con `EntityManager` y HQL sobre las entities de
 `mappings`, [ADR 0006](adr/0006-service-unico-hql-mappings.md)). Cierra
@@ -58,9 +59,10 @@ El contrato REST de creación y resolución está en [openapi.yaml](../openapi.y
 - `GET /api/sesion` devuelve `{"usuario": null}` sin sesión o sin usuario
   en la sesión, y `{"usuario": {"email", "namespace", "tipo", "sugerencia"}}`
   con sesión iniciada: `email` de la cuenta de Google, `namespace` vacío
-  hasta que el usuario lo elija, `tipo` `principal` (la vinculación por QR
-  sumará `vinculada`) y `sugerencia` para la pantalla del primer login
-  (vacía cuando ya hay namespace). Responde `Cache-Control: no-store`.
+  hasta que el usuario lo elija, `tipo` `principal` o `vinculada` (la
+  sesión que abre la vinculación por QR, issue #22) y `sugerencia` para
+  la pantalla del primer login (vacía cuando ya hay namespace). Responde
+  `Cache-Control: no-store`.
 - `POST /api/namespace` registra el namespace del usuario de la sesión.
   Normaliza a minúsculas y exige de 3 a 30 caracteres `a-z`, `0-9` y `-`,
   sin guion inicial ni final. Rechaza con su propio código en
@@ -74,6 +76,32 @@ El contrato REST de creación y resolución está en [openapi.yaml](../openapi.y
 - `POST /api/logout` invalida la sesión del dispositivo que llama y
   responde `204` sin cuerpo, también cuando no hay sesión. Exige el token
   CSRF del doble envío, como todo POST.
+- `POST /api/vinculacion` (issue #22) crea el código de vinculación de un
+  solo uso del dispositivo que espera, sin exigir sesión (todavía no la
+  tiene) pero sí el token CSRF. Devuelve `201` con `codigo` (256 bits
+  aleatorios en base64url), `confirmacionUrl` (la dirección pública más
+  `/vincular/{codigo}`, el contenido que el QR codifica) y `expiresAt`
+  (`cuenta.link-code-ttl` desde la creación, `PT60S` por defecto).
+- `GET /api/vinculacion/{codigo}` es la consulta del dispositivo que
+  espera, cada 2 segundos: `pendiente` mientras nadie lo aprobó,
+  `vencida` si venció o ya se usó, `aprobada` una única vez, y esa
+  respuesta consume el código y materializa la sesión vinculada (cookie
+  `SESSION`) del usuario que aprobó. `404` con `LINK_CODE_INVALID` si el
+  código no existe.
+- `GET /api/vinculacion/{codigo}/confirmacion` alimenta la página de
+  confirmación del que aprueba: exige sesión con usuario (`401` con
+  `NOT_AUTHENTICATED` sin ella) y devuelve `estado` y `usuario` (la
+  página muestra el namespace o, si está vacío, el email). Un código
+  vencido, usado o inexistente responde `404` con `LINK_CODE_INVALID`.
+- `POST /api/vinculacion/{codigo}/aprobar` es la aprobación explícita:
+  exige sesión y el token CSRF, la sesión debe ser principal (una
+  vinculada recibe `403` con `NOT_PRINCIPAL_SESSION`) y solo un código
+  `pendiente` vigente queda aprobado (los demás estados responden `404`
+  con `LINK_CODE_INVALID`). Devuelve `200` con `{"estado": "aprobada"}`.
+- `GET /vincular/{codigo}` sirve la página de confirmación: es la única
+  ruta que exige sesión por la cadena de seguridad; sin ella redirige al
+  login con Google y la navegación vuelve a la misma dirección al
+  completarse (request cache).
 - El inicio de sesión no pasa por la API: la web navega a
   `GET /oauth2/authorization/google` y el proveedor OIDC vuelve por
   `GET /login/oauth2/code/google`, los caminos por defecto del cliente
@@ -119,11 +147,19 @@ suma el login con Google y las sesiones persistidas) mantiene el flujo
 anónimo de la etapa 1:
 
 - Todo el contrato sigue sin autenticación salvo la creación de enlaces
-  personales: `GET /{alias}`, `GET /{namespace}/{aliasPersonalizado}`,
-  la página 404, la web, los estáticos y las rutas reservadas no piden
-  credenciales, y crear enlaces acortados no exige sesión. `POST
-  /api/links` con `aliasPersonalizado` sí exige la sesión principal del
-  usuario y sin ella responde `401` con `NOT_AUTHENTICATED`.
+  personales y la página de confirmación de la vinculación: `GET
+  /{alias}`, `GET /{namespace}/{aliasPersonalizado}`, la página 404, la
+  web, los estáticos y las rutas reservadas no piden credenciales, y
+  crear enlaces acortados no exige sesión. `POST /api/links` con
+  `aliasPersonalizado` sí exige la sesión principal del usuario y sin
+  ella responde `401` con `NOT_AUTHENTICATED`. La ruta `/vincular/{codigo}`
+  y sus descendientes exigen una sesión autenticada por la cadena de
+  seguridad (`authorizeHttpRequests`): sin ella el filtro redirige al
+  login con Google y el request cache la retoma al completarse. La
+  aprobación en sí (`POST /api/vinculacion/{codigo}/aprobar`) no depende
+  de la cadena para el tipo de sesión: el controlador verifica el
+  atributo `sesionTipo` y rechaza una vinculada con
+  `NOT_PRINCIPAL_SESSION`.
 - Se usa el firewall por defecto de Spring Security (`DefaultHttpFirewall`), no
   el estricto: el estricto rechaza con `400` el `;` en la ruta y el doble
   slash, y la etapa 1 resolvía `/abc;utm=x` y `//abc` como `/abc`. Conservar
@@ -210,6 +246,54 @@ usa el cliente OIDC de Spring Security con Google como único proveedor:
   `usuario: null`, y el email con «Cerrar sesión» cuando hay usuario;
   ese botón obtiene el token CSRF y envía `POST /api/logout`.
 
+## Vinculación por QR
+
+La vinculación (issue #22, [ADR 0007](adr/0007-login-google-y-sesiones-persistidas.md))
+abre una sesión vinculada en un dispositivo que muestra un QR, aprobada
+desde la sesión principal del celular, al estilo de WhatsApp:
+
+- **El dispositivo que espera** (anónimo en la web) pide el código con
+  `POST /api/vinculacion`: `CuentaService.crearVinculacion` genera 256
+  bits de `SecureRandom` codificados en base64url (43 símbolos,
+  inadivinables) y persiste la fila `codigo_vinculacion` en estado
+  `PENDIENTE` con `creada_en` del `Clock` inyectado y `vence_en =
+  creada_en + cuenta.link-code-ttl` (`PT60S` por defecto). La respuesta
+  lleva la `confirmacionUrl` compuesta sobre `public-base-url` con
+  `/vincular/{codigo}`, que el cliente convierte en el PNG del QR con el
+  mismo módulo `QrPng` del enlace acortado (ver «QR del enlace»), y la
+  web lo renueva unos segundos antes de que venza.
+- **La consulta del estado** (`GET /api/vinculacion/{codigo}`, cada 2
+  segundos) corre `CuentaService.consumirVinculacion` en una transacción
+  con la fila bloqueada (`PESSIMISTIC_WRITE`): un código `APROBADA` se
+  marca `CONSUMIDA` en la misma transacción que devuelve el usuario que
+  aprobó, así que una sola consulta materializa la sesión (de un solo
+  uso) y dos dispositivos que esperan el mismo código no se la reparten.
+  El vencimiento se evalúa en el instante del servidor, como las
+  asignaciones: un código aprobado pero ya vencido responde `vencida` y
+  no abre nada; usado, vencido e inexistente nunca abren sesión.
+- **La aprobación** (`POST /api/vinculacion/{codigo}/aprobar`, desde la
+  página `/vincular/{codigo}` que sirve el forward a `vincular.html`)
+  exige sesión con usuario y el tipo `principal` del atributo
+  `sesionTipo` (una vinculada recibe `NOT_PRINCIPAL_SESSION`); la
+  confirmación muestra el namespace o el email y solo el botón aprueba.
+  `CuentaService.aprobarVinculacion` bloquea la fila del mismo modo y
+  solo un `PENDIENTE` vigente pasa a `APROBADA` con el `usuario_id` del
+  que aprobó: dos aprobaciones simultáneas o una carrera con el consumo
+  quedan serializadas por el bloqueo.
+- **La sesión vinculada** la materializa la consulta que consumió el
+  código en el dispositivo que esperaba, no el que aprobó: registra
+  `usuarioId` del aprobador, `sesionTipo=vinculada`, el índice
+  `principal_name` con el id del usuario, el `SecurityContext` (para que
+  las rutas con sesión la reconozcan) y la inactividad máxima
+  `cuenta.linked-session-idle-timeout` (`PT12H` por defecto) persistida
+  en `spring_session.max_inactive_interval`; el id de sesión se rota al
+  otorgarla igual que en el login. `GET /api/sesion` la informa con
+  `tipo` `vinculada` y la web recarga mostrándola.
+- Una sesión vinculada no puede aprobar otra vinculación (la
+  confirmación le informa su tipo y el POST la rechaza); para encadenar
+  dispositivos hace falta la sesión principal. El resto de su contrato
+  es el de cualquier sesión con usuario.
+
 ## Versiones fijadas
 
 | Componente | Versión | Uso |
@@ -246,9 +330,10 @@ usa el cliente OIDC de Spring Security con Google como único proveedor:
   único contenedor (patrón singleton con `@ServiceConnection`);
   `RutasReservadasHttpTest` declara sus propias `properties` de
   `@SpringBootTest`, así que corre en un contexto Spring cacheado
-  distinto pero contra el mismo contenedor. `VencimientoHttpTest` y
-  `ReciclajeAliasHttpTest` agregan `ClockTestConfiguration` (reloj
-  mutable) y declaran su propio `@Container` con `@ServiceConnection`.
+  distinto pero contra el mismo contenedor. `VencimientoHttpTest`,
+  `ReciclajeAliasHttpTest` y `VinculacionQrHttpTest` agregan
+  `ClockTestConfiguration` (reloj mutable) y declaran su propio
+  `@Container` con `@ServiceConnection`.
   `EvolucionDuracionHttpTest` y `ReinicioServicioHttpTest` levantan los
   contextos programáticamente con `SpringApplicationBuilder` contra su
   propio `@Container`, con el datasource pasado por argumentos de
@@ -333,6 +418,15 @@ resolución sin tocar la fila. No lleva restricción única sobre
 las asignaciones (ADR 0003) y el mismo usuario puede reusar el alias al
 vencer: la unicidad de la vigente la garantiza la serialización por
 usuario (ver «Coordinación transaccional»).
+
+La migración `V6__codigo_vinculacion.sql` (issue #22) agrega
+`codigo_vinculacion (codigo VARCHAR(64) PK, estado VARCHAR(16) NOT NULL,
+creada_en TIMESTAMPTZ NOT NULL, vence_en TIMESTAMPTZ NOT NULL, usuario_id
+BIGINT FK -> usuario.id)`. El `codigo` es la clave (256 bits aleatorios,
+inadivinable); `estado` recorre `PENDIENTE`, `APROBADA` y `CONSUMIDA`, y
+`usuario_id` queda `NULL` hasta que una sesión principal lo aprueba. El
+vencimiento se evalúa al consultar contra `vence_en`, como las
+asignaciones: no hay tarea de limpieza.
 
 El perfil `hsqldb` traduce esas tablas a mano en
 `db/hsqldb/schema.sql` (mismos nombres y columnas; `BYTEA` se vuelve
@@ -506,6 +600,16 @@ misma regla del entorno/`.env` pero sin default en el primer caso:
   principal; se aplica al materializar la sesión en el login y queda
   persistida en `spring_session.max_inactive_interval`. Valores no
   positivos o nulos cortan el arranque.
+- `cuenta.linked-session-idle-timeout` (`Duration`,
+  `LINKED_SESSION_IDLE_TIMEOUT`, default `PT12H`, `CuentaProperties`):
+  inactividad máxima de la sesión vinculada por QR; se aplica al
+  materializarla en la consulta que consume el código aprobado.
+- `cuenta.link-code-ttl` (`Duration`, `LINK_CODE_TTL`, default `PT60S`,
+  `CuentaProperties`): vigencia del código de vinculación desde su
+  creación; la web lo renueva antes de que venza. Las tres duraciones
+  del área se rechazan en el arranque cuando son nulas, no positivas,
+  menores de un segundo o mayores de `Integer.MAX_VALUE` segundos,
+  porque la sesión las guarda en un `int`.
 - `cuenta.namespace-reserved-names` (lista, `NAMESPACE_RESERVED_NAMES`,
   default `api,login,logout,vincular,oauth2,error`, `CuentaProperties`):
   nombres que no se pueden elegir como namespace porque chocan con las
@@ -522,10 +626,18 @@ issue #15 (ADR 0006):
   y `GET /{namespace}/{aliasPersonalizado}`), `CsrfController`
   (`GET /api/csrf`), `SesionController` (`GET /api/sesion`,
   `POST /api/logout`), `NamespaceController` (`POST /api/namespace`,
-  `GET /api/namespace/sugerencia`), `ApiExceptionHandler` y `dto/`
+  `GET /api/namespace/sugerencia`), `VinculacionController`
+  (`POST /api/vinculacion`, `GET /api/vinculacion/{codigo}`,
+  `GET /api/vinculacion/{codigo}/confirmacion`,
+  `POST /api/vinculacion/{codigo}/aprobar`; también materializa la
+  sesión vinculada en la consulta que consume el código),
+  `VincularPageController` (forward de `GET /vincular/{codigo}` a la
+  página estática), `ApiExceptionHandler` y `dto/`
   (`CreateLinkRequest`, `CsrfTokenResponse`, `ApiErrorResponse`,
   `SesionActualResponse`, `UsuarioSesion`, `ElegirNamespaceRequest`,
-  `NamespaceSugerenciaResponse`). Controllers pass-through:
+  `NamespaceSugerenciaResponse`, `CodigoVinculacionResponse`,
+  `EstadoVinculacionResponse`, `ConfirmacionVinculacionResponse`).
+  Controllers pass-through:
   traducen la request, llaman al método del service y devuelven su
   resultado; el `201` serializa el record `EnlaceCreado` directo como
   body.
@@ -538,15 +650,20 @@ issue #15 (ADR 0006):
   personalizado), y `CuentaService` (ADR 0008) con los
   casos de uso de la cuenta: `usuarioDeLogin` (alta por `sub` o reúso y
   refresco del email), `usuarioDeSesion` (usuario de la sesión actual),
-  `elegirNamespace` (validación, unicidad y persistencia del namespace) y
-  `sugerenciaDeNamespace` (adaptación de la parte local del email).
+  `elegirNamespace` (validación, unicidad y persistencia del namespace),
+  `sugerenciaDeNamespace` (adaptación de la parte local del email) y los
+  de la vinculación por QR: `crearVinculacion`, `estadoDeVinculacion`,
+  `aprobarVinculacion` y `consumirVinculacion`.
   La inyección es `@Autowired` en campos, incluido el `EntityManager`.
   También viven acá el record de resultado
   `EnlaceCreado`, `InvalidDestinationException`,
   `InvalidNamespaceException` e `InvalidAliasPersonalizadoException`,
-  cuyos `Reason` son los contratos de errores de la API.
+  cuyos `Reason` son los contratos de errores de la API, y los de la
+  vinculación: `CodigoVinculacionCreado`, `ResultadoVinculacion` y el
+  enum `EstadoVinculacion`.
 - `mappings`: entities JPA públicas `Alias`, `Asignacion`,
-  `AsignacionPersonal`, `GeneradorAlias` y `Usuario`, el modelo del
+  `AsignacionPersonal`, `CodigoVinculacion`, `GeneradorAlias` y
+  `Usuario`, el modelo del
   servicio. El service las consulta y
   persiste con `EntityManager` y HQL, sin repositorios Spring Data ni
   clases de dominio paralelas que traducir. Las tablas y columnas son
@@ -556,8 +673,9 @@ issue #15 (ADR 0006):
   `SecurityConfig` (cadena de filtros, CSRF, firewall, rechazo CSRF,
   login OIDC y validación de las credenciales de Google) y una
   `@Configuration` mínima con el bean `Clock`.
-- `resources/static`: web `index.html`, `app.js`, `styles.css`, módulo
-  `qr-code.js` y biblioteca vendorizada `vendor/qrcode.js`
+- `resources/static`: web `index.html`, `app.js`, `styles.css`,
+  `vincular.html` y `vincular.js` (confirmación de la vinculación),
+  módulo `qr-code.js` y biblioteca vendorizada `vendor/qrcode.js`
   (ver «QR del enlace»).
 
 ## QR del enlace (issue #7)
@@ -587,7 +705,10 @@ QR y el cliente no recibe entities JPA: consume solo el record
   Los errores de creación mantienen `#result` oculto: nunca se renderiza
   un QR de un resultado inexistente. Enlace, vencimiento y
   `reuseNotice` se muestran junto al QR; el aviso del contrato deja
-  claro que el alias puede reasignarse y no es permanente.
+  claro que el alias puede reasignarse y no es permanente. El mismo
+  módulo codifica la `confirmacionUrl` de la vinculación por QR (issue
+  #22): `renderQrVinculacion` la muestra en `img#vinculacion-qr` de la
+  pantalla de acceso.
 
 Verificación automatizable (`src/test/js/`): `qr-code.test.mjs` genera
 el PNG con el propio `QrPng` y lo decodifica con bibliotecas
@@ -603,9 +724,9 @@ incluida la verificación visual manual, en
 
 ## Reloj
 
-`AcortadorService` usa `java.time.Clock` inyectado (bean
-`Clock.systemUTC()` declarado en `config`). No existe operación pública
-para mover el reloj.
+`AcortadorService` y `CuentaService` usan `java.time.Clock` inyectado
+(bean `Clock.systemUTC()` declarado en `config`). No existe operación
+pública para mover el reloj.
 
 La vigencia se evalúa en el servidor en el instante de resolución: la
 consulta compara `clock.instant()` con el `vence_en` persistido de la
@@ -615,7 +736,9 @@ seguir apuntándolas hasta la próxima reutilización. Las visitas no
 modifican la asignación: resolver no renueva el vencimiento. Las
 asignaciones personales siguen la misma regla: `resolverEnlacePersonal`
 filtra por `venceEn > instante del servidor` y las vencidas quedan en
-`asignacion_personal` para el historial y la reutilización.
+`asignacion_personal` para el historial y la reutilización. El código de
+vinculación también lo evalúa el servidor al consultarlo: un `vence_en`
+alcanzado lo vuelve `vencida` aunque esté persistido en otro estado.
 
 En las pruebas de integración el reloj es un bean primario mutable
 (`MutableClock` vía `ClockTestConfiguration`, solo en `src/test`), lo que
@@ -707,12 +830,28 @@ un segmento resolviendo aunque coincida con un namespace, dos
 creaciones simultáneas sin duplicar la vigente y el campo vacío como
 enlace acortado.
 
+La vinculación por QR (issue #22) se verifica en
+`VinculacionQrHttpTest`, sobre PostgreSQL real, el proveedor OIDC
+simulado y el reloj mutable: el flujo completo entre los dos clientes
+de cookies separadas (la computadora que espera y el celular que
+aprueba), el QR con la URL de confirmación sobre la dirección pública,
+la consulta pendiente que no abre sesión, la aprobación explícita que
+la siguiente consulta consume abriendo la sesión vinculada con el
+usuario que aprobó, `tipo` `vinculada` y la inactividad `PT12H` leída de
+`spring_session`, el código de un solo uso que repetir responde
+`vencida`, el código vencido por `MutableClock` o inexistente que no
+abre ninguna sesión, la aprobación rechazada desde una sesión vinculada
+(`NOT_PRINCIPAL_SESSION`) y sin sesión (`NOT_AUTHENTICATED`), la página
+`/vincular/{codigo}` que redirige al login y vuelve tras completarlo, y
+el namespace o el email que muestra la confirmación.
+
 No implementa esta especificación: consola de
 gestión, estadísticas de visitas ni purga del historial (analizados en
 [evidencia-evolucion.md](evidencia-evolucion.md)). Tampoco las piezas de
-la etapa 2 que dependen del login: cambio de namespace, sesiones
-vinculadas por QR, período de gracia, gestión de los enlaces personales
-(listado, edición, borrado) ni otros proveedores de identidad. Los complementos
+la etapa 2 que dependen del login: cambio de namespace, período de
+gracia, gestión de los enlaces personales
+(listado, edición, borrado), lista de dispositivos, escáner de QR en la
+web ni otros proveedores de identidad. Los complementos
 Chrome y Firefox se entregan en `extensiones/` (issue #8) y el QR de la
 web se resuelve en el cliente (ver «QR del enlace»). El contrato OpenAPI
 ya contempla el aviso de reutilización (`reuseNotice`) para que la web lo
