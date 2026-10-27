@@ -1,4 +1,6 @@
 -- Issue #24: reserva exclusiva de namespaces actuales y anteriores.
+-- V6 y V7 pertenecen al issue #23 (cierre de sesiones vinculadas); esta
+-- migración se numera después para convivir con esa dependencia.
 -- Namespaces actuales y anteriores comparten este registro único para que
 -- una reserva vigente sea exclusiva incluso ante cambios concurrentes.
 CREATE TABLE nombre_namespace (

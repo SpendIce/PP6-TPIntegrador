@@ -1,4 +1,6 @@
--- Esquema del perfil hsqldb: equivalente a db/migration/V1 a V6 en
+-- Esquema del perfil hsqldb: equivalente a las migraciones de db/migration,
+-- incluida V8__namespace_anterior_gracia.sql (V6 y V7 pertenecen al issue
+-- #23), en
 -- dialecto HSQLDB (VARCHAR(8192) en lugar de TEXT, TIMESTAMP en lugar de
 -- TIMESTAMPTZ, LONGVARBINARY en lugar de BYTEA).
 -- El perfil corre sin Flyway, por eso este script lo aplica

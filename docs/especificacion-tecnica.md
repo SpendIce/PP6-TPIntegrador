@@ -335,7 +335,7 @@ las asignaciones (ADR 0003) y el mismo usuario puede reusar el alias al
 vencer: la unicidad de la vigente la garantiza la serialización por
 usuario (ver «Coordinación transaccional»).
 
-La migración `V6__namespace_anterior_gracia.sql` (issue #24) agrega
+La migración `V8__namespace_anterior_gracia.sql` (issue #24) agrega
 `nombre_namespace (namespace VARCHAR(30) PK,
 usuario_id BIGINT FK -> usuario.id, grace_ends_at TIMESTAMPTZ NULL)`, el
 registro único compartido por nombres actuales y anteriores para que una
