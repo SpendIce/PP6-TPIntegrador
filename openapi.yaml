@@ -479,7 +479,8 @@ paths:
         dispositivo que quiere iniciar sesión lo pide, muestra el QR con
         la `confirmacionUrl` y consulta el estado con
         `GET /api/vinculacion/{codigo}` cada 2 segundos. El código vence
-        a los 60 segundos (`cuenta.link-code-ttl`, configurable): la web
+        a los 60 segundos (`cuenta.link-code-ttl`, configurable, mínimo 5
+        segundos): la web
         pide uno nuevo antes de que venza y el QR se renueva solo. No
         exige sesión: quien espera todavía no inició sesión. La solicitud
         exige el token CSRF del doble envío, como todo POST.
@@ -1092,7 +1093,7 @@ components:
           format: date-time
           description: >
             Instante de vencimiento del código, `link-code-ttl` (60
-            segundos por defecto) después de su creación.
+            segundos por defecto, mínimo 5) después de su creación.
           example: "2026-10-27T12:01:00Z"
     EstadoVinculacion:
       type: object

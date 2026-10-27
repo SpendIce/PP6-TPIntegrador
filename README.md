@@ -137,7 +137,7 @@ recorre con `bash scripts/wizard-funnel-google.sh`.
 | `GOOGLE_CLIENT_ID` `GOOGLE_CLIENT_SECRET` | `spring.security.oauth2.client.registration.google.*` | sin default | Credenciales OIDC de la app en Google Cloud; su ausencia corta el arranque nombrando la variable. Registro y URI de vuelta en `docs/despliegue-funnel-google.md`. |
 | `MAIN_SESSION_IDLE_TIMEOUT` | `cuenta.main-session-idle-timeout` | `P30D` | Inactividad máxima de la sesión principal persistida (ISO-8601); se aplica al iniciar sesión con Google. |
 | `LINKED_SESSION_IDLE_TIMEOUT` | `cuenta.linked-session-idle-timeout` | `PT12H` | Inactividad máxima de la sesión vinculada por QR (ISO-8601); se aplica al abrirla la consulta que consume el código aprobado. |
-| `LINK_CODE_TTL` | `cuenta.link-code-ttl` | `PT60S` | Vigencia del código de vinculación de un solo uso (ISO-8601); la web lo renueva antes de que venza. |
+| `LINK_CODE_TTL` | `cuenta.link-code-ttl` | `PT60S` | Vigencia del código de vinculación de un solo uso (ISO-8601); la web lo renueva antes de que venza. Mínimo `PT5S`: por debajo el código vence antes de que la web consulte su estado una vez. |
 | `NAMESPACE_RESERVED_NAMES` | `cuenta.namespace-reserved-names` | `api,login,logout,vincular,oauth2,error` | Nombres que ningún usuario puede elegir como namespace porque chocan con rutas del propio servicio (CSV, se normalizan a minúsculas). |
 | `DB_HOST` `DB_PORT` `DB_NAME` `DB_USER` `DB_PASSWORD` | `spring.datasource.*` | `localhost` `5432` `acortador` | Conexión a PostgreSQL. |
 

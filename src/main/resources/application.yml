@@ -64,6 +64,7 @@ cuenta:
   # por la vinculación por QR (issue #22).
   linked-session-idle-timeout: ${LINKED_SESSION_IDLE_TIMEOUT:PT12H}
   # Vigencia de cada código de vinculación de un solo uso (issue #22).
+  # Mínimo admitido: PT5S (la web consulta el estado cada 2 s).
   link-code-ttl: ${LINK_CODE_TTL:PT60S}
   # Nombres que ningún usuario puede elegir como namespace porque chocan
   # con rutas del propio servicio (issue #20).

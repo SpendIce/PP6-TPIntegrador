@@ -609,7 +609,10 @@ misma regla del entorno/`.env` pero sin default en el primer caso:
   creación; la web lo renueva antes de que venza. Las tres duraciones
   del área se rechazan en el arranque cuando son nulas, no positivas,
   menores de un segundo o mayores de `Integer.MAX_VALUE` segundos,
-  porque la sesión las guarda en un `int`.
+  porque la sesión las guarda en un `int`. Además `link-code-ttl` exige
+  un mínimo de 5 segundos: la web consulta el estado cada 2 segundos y
+  agenda la renovación con un piso de una consulta más margen, así que
+  un código que vence antes nunca llegaría a consultarse.
 - `cuenta.namespace-reserved-names` (lista, `NAMESPACE_RESERVED_NAMES`,
   default `api,login,logout,vincular,oauth2,error`, `CuentaProperties`):
   nombres que no se pueden elegir como namespace porque chocan con las

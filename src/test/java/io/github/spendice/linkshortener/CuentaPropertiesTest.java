@@ -39,6 +39,21 @@ class CuentaPropertiesTest {
     }
 
     @Test
+    void rechazaUnTtlDeCodigoQueNoDejaConsultarSuEstado() {
+        // La web consulta cada 2 s con un piso de renovación de 2,5 s: un
+        // código que vence antes nunca llega a consultarse.
+        assertThatThrownBy(() -> propiedades(SESION_PRINCIPAL, RESERVADOS,
+                SESION_VINCULADA, Duration.ofSeconds(4)))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("link-code-ttl")
+                .hasMessageContaining("al menos 5 segundos");
+
+        // En el mínimo admitido la configuración construye.
+        assertThat(propiedades(SESION_PRINCIPAL, RESERVADOS, SESION_VINCULADA,
+                Duration.ofSeconds(5)).linkCodeTtl()).isEqualTo(Duration.ofSeconds(5));
+    }
+
+    @Test
     void rechazaDuracionesQueNoLleganAUnSegundo() {
         assertThatThrownBy(() -> propiedades(Duration.ofMillis(500), RESERVADOS,
                 SESION_VINCULADA, CODIGO))

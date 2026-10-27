@@ -34,6 +34,16 @@ public record CuentaProperties(Duration mainSessionIdleTimeout,
                                Duration linkedSessionIdleTimeout,
                                Duration linkCodeTtl) {
 
+    /**
+     * TTL mínimo del código: el cliente web consulta el estado cada 2 s y
+     * agenda la renovación con un piso de una consulta más 500 ms de margen
+     * ({@code vinculacion-timers.js}), así que un código tiene que vivir
+     * más que ese piso o la primera consulta nunca corre y ninguna
+     * aprobación llega a materializarse. Cinco segundos dejan dos ciclos
+     * completos aunque la respuesta tarde en llegar.
+     */
+    private static final Duration TTL_MINIMO = Duration.ofSeconds(5);
+
     public CuentaProperties {
         mainSessionIdleTimeout = validarDuracion(
                 "cuenta.main-session-idle-timeout", "MAIN_SESSION_IDLE_TIMEOUT",
@@ -44,6 +54,15 @@ public record CuentaProperties(Duration mainSessionIdleTimeout,
         linkCodeTtl = validarDuracion(
                 "cuenta.link-code-ttl", "LINK_CODE_TTL",
                 linkCodeTtl, "PT60S");
+        // Con un TTL debajo del mínimo el código vence antes de que la web
+        // pueda consultar su estado una vez: se rechaza en el arranque en
+        // vez de dejar una pantalla que nunca completa la vinculación.
+        if (linkCodeTtl.compareTo(TTL_MINIMO) < 0) {
+            throw new IllegalArgumentException(
+                    "cuenta.link-code-ttl debe durar al menos " + TTL_MINIMO.getSeconds()
+                            + " segundos (el cliente consulta el estado cada 2 s)"
+                            + " y se recibió " + linkCodeTtl);
+        }
         if (namespaceReservedNames == null || namespaceReservedNames.isEmpty()) {
             throw new IllegalArgumentException(
                     "cuenta.namespace-reserved-names es obligatoria"
