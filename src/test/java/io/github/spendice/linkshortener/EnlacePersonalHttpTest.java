@@ -65,8 +65,14 @@ class EnlacePersonalHttpTest extends HttpApiFixture {
         Map<String, Object> fila = filas.get(0);
         assertThat(fila.get("usuario_id")).isEqualTo(usuarioId);
         assertThat(fila.get("destino")).isEqualTo("https://docs.ejemplo.com/manual.pdf");
-        Instant creada = ((OffsetDateTime) fila.get("creada_en")).toInstant();
-        Instant vence = ((OffsetDateTime) fila.get("vence_en")).toInstant();
+        // getObject() de la fila devuelve Timestamp para TIMESTAMPTZ; se pide
+        // el tipo explícito, como en AsignacionesPersistidas.
+        Instant creada = db.queryForObject(
+                "SELECT creada_en FROM asignacion_personal WHERE alias_personalizado = ?",
+                OffsetDateTime.class, "mi-doc").toInstant();
+        Instant vence = db.queryForObject(
+                "SELECT vence_en FROM asignacion_personal WHERE alias_personalizado = ?",
+                OffsetDateTime.class, "mi-doc").toInstant();
         assertThat(vence).isEqualTo(creada.plus(Duration.ofMinutes(60)));
 
         // La resolución redirige al destino con no-store.

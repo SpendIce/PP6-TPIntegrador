@@ -171,11 +171,17 @@ class DestinationValidationHttpTest extends HttpApiFixture {
         HttpResponse<String> response = get("/");
 
         assertThat(response.statusCode()).isEqualTo(200);
-        // La validación vive en la API: el formulario no debe truncar la
-        // entrada (maxlength) ni impedir su envío (novalidate, sin type=url).
-        assertThat(response.body()).contains("novalidate");
-        assertThat(response.body()).doesNotContain("maxlength");
-        assertThat(response.body()).doesNotContain("type=\"url\"");
+        // La validación vive en la API: el campo de destino no debe truncar la
+        // entrada (maxlength) ni impedir su envío (sin type=url). El alias
+        // personalizado sí tiene su límite contractual de 50, así que la
+        // aserción se limita al input del destino.
+        String html = response.body();
+        int inicio = html.indexOf("id=\"destination\"");
+        assertThat(inicio).isNotNegative();
+        String inputDestino = html.substring(inicio, html.indexOf('>', inicio) + 1);
+        assertThat(html).contains("novalidate");
+        assertThat(inputDestino).doesNotContain("maxlength");
+        assertThat(inputDestino).doesNotContain("type=\"url\"");
     }
 
     private JsonNode create(String destination) throws Exception {
