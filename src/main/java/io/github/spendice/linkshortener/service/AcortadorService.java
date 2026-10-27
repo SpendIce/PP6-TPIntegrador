@@ -48,12 +48,13 @@ public class AcortadorService {
             "Este alias puede reutilizarse con otro destino después del vencimiento.";
 
     /**
-     * Alias personalizado válido (issue #21): de 1 a 50 caracteres
-     * minúsculas, dígitos y guiones, sin restricción de posición del
-     * guion. La entrada se normaliza a minúsculas antes de validar, así
-     * que «Mi-Doc» es un alias válido que se guarda como «mi-doc».
+     * Alias personalizado válido (issue #21): de 1 a 50 caracteres ASCII
+     * (a-z, A-Z, 0-9 y guion), sin restricción de posición del guion. Se
+     * valida la entrada original y recién después se normaliza a
+     * minúsculas, así que «Mi-Doc» se guarda como «mi-doc» pero un
+     * carácter Unicode que `toLowerCase` mapee a ASCII (KELVIN SIGN → k)
+     * se rechaza.
      */
-    /** Lo que entra: sólo ASCII. `toLowerCase` mapea Unicode a ASCII (p. ej. KELVIN SIGN → k). */
     private static final String ALIAS_PERSONALIZADO_ENTRADA = "[A-Za-z0-9-]{1,50}";
     private static final int ALIAS_PERSONALIZADO_MAX = 50;
 

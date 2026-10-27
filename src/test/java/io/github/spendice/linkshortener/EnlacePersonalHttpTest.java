@@ -54,7 +54,8 @@ class EnlacePersonalHttpTest extends HttpApiFixture {
         assertThat(Instant.parse(body.get("expiresAt").asText()))
                 .isAfter(antes.plus(Duration.ofMinutes(59)))
                 .isBefore(Instant.now().plus(Duration.ofMinutes(61)));
-        assertThat(body.get("reuseNotice").asText()).contains("reutilizarse");
+        assertThat(body.get("reuseNotice").asText()).isEqualTo(
+                "Este alias puede reutilizarse con otro destino después del vencimiento.");
 
         // La asignación pertenece al usuario: guarda su id, el alias
         // personalizado, el destino, la creación y el vencimiento.
