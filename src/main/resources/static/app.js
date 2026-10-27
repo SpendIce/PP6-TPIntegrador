@@ -9,7 +9,9 @@ const qrImage = document.getElementById("qr-image");
 const qrDownload = document.getElementById("qr-download");
 const cuentaEntrar = document.getElementById("cuenta-entrar");
 const cuentaUsuario = document.getElementById("cuenta-usuario");
+const cuentaCerrarVinculadas = document.getElementById("cuenta-cerrar-vinculadas");
 const cuentaSalir = document.getElementById("cuenta-salir");
+const cuentaMensaje = document.getElementById("cuenta-mensaje");
 const namespaceSection = document.getElementById("namespace");
 const namespaceForm = document.getElementById("namespace-form");
 const namespaceInput = document.getElementById("namespace-input");
@@ -40,6 +42,7 @@ const vinculacionEstado = document.getElementById("vinculacion-estado");
         }
         mostrarUsuario(sesion.usuario);
         cuentaSalir.hidden = false;
+        cuentaCerrarVinculadas.hidden = sesion.usuario.tipo !== "principal";
         if (!sesion.usuario.namespace) {
             namespaceInput.value = sesion.usuario.sugerencia || "";
             namespaceSection.hidden = false;
@@ -129,6 +132,29 @@ cuentaSalir.addEventListener("click", async () => {
         location.reload();
     } catch (error) {
         showError("No se pudo cerrar la sesión. Probá de nuevo.");
+    }
+});
+
+cuentaCerrarVinculadas.addEventListener("click", async () => {
+    try {
+        const csrfResponse = await fetch("/api/csrf");
+        const csrf = csrfResponse.ok ? await csrfResponse.json() : null;
+        if (!csrf || !csrf.token) {
+            showError("No se pudieron cerrar las sesiones vinculadas: falta el token CSRF.");
+            return;
+        }
+        const cierre = await fetch("/api/sesiones-vinculadas/cerrar", {
+            method: "POST",
+            headers: { "X-XSRF-TOKEN": csrf.token }
+        });
+        if (!cierre.ok) {
+            showError("No se pudieron cerrar las sesiones vinculadas. Probá de nuevo.");
+            return;
+        }
+        cuentaMensaje.textContent = "Se cerraron todas las sesiones vinculadas.";
+        cuentaMensaje.hidden = false;
+    } catch (error) {
+        showError("No se pudieron cerrar las sesiones vinculadas. Probá de nuevo.");
     }
 });
 
