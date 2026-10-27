@@ -73,7 +73,7 @@ class SesionesVinculadasHttpTest extends HttpApiFixture {
         Session sesion = (Session) ((FindByIndexNameSessionRepository) sesiones)
                 .findById(cookieDeSesion(dispositivo));
         sesion.setAttribute(CuentaService.ATRIBUTO_SESION_TIPO, CuentaService.TIPO_VINCULADA);
-        guardar(sesion);
+        guardarSesion(sesion);
         return dispositivo;
     }
 
@@ -89,7 +89,7 @@ class SesionesVinculadasHttpTest extends HttpApiFixture {
     }
 
     @SuppressWarnings({"rawtypes", "unchecked"})
-    private void guardar(Session sesion) {
+    private void guardarSesion(Session sesion) {
         ((FindByIndexNameSessionRepository) sesiones).save(sesion);
     }
 

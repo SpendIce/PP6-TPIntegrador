@@ -11,6 +11,7 @@ const cuentaEntrar = document.getElementById("cuenta-entrar");
 const cuentaUsuario = document.getElementById("cuenta-usuario");
 const cuentaCerrarVinculadas = document.getElementById("cuenta-cerrar-vinculadas");
 const cuentaSalir = document.getElementById("cuenta-salir");
+const cuentaMensaje = document.getElementById("cuenta-mensaje");
 const namespaceSection = document.getElementById("namespace");
 const namespaceForm = document.getElementById("namespace-form");
 const namespaceInput = document.getElementById("namespace-input");
@@ -144,7 +145,8 @@ cuentaCerrarVinculadas.addEventListener("click", async () => {
             showError("No se pudieron cerrar las sesiones vinculadas. Probá de nuevo.");
             return;
         }
-        showError("Se cerraron todas las sesiones vinculadas.");
+        cuentaMensaje.textContent = "Se cerraron todas las sesiones vinculadas.";
+        cuentaMensaje.hidden = false;
     } catch (error) {
         showError("No se pudieron cerrar las sesiones vinculadas. Probá de nuevo.");
     }
