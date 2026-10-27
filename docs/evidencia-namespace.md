@@ -1,9 +1,10 @@
-# Evidencia de la elección del namespace (issue #20)
+# Evidencia de la elección y el cambio de namespace (issues #20 y #24)
 
-Verificación del Change `issue-20-elegir-namespace`, contra los criterios
-de su spec. Las decisiones están en el
-[diseño](../.atl/changes/issue-20-elegir-namespace/design.md); el contrato
-en `openapi.yaml` y «Elección del namespace» de
+Verificación de los Changes `issue-20-elegir-namespace` y
+`issue-24-cambio-namespace-gracia`, contra los criterios de sus specs.
+Las decisiones están en el
+[diseño del cambio](../.atl/changes/issue-24-cambio-namespace-gracia/design.md);
+el contrato en `openapi.yaml` y la sección de namespace de
 [especificacion-tecnica.md](especificacion-tecnica.md).
 
 ## Qué se implementó
@@ -29,18 +30,28 @@ en `openapi.yaml` y «Elección del namespace» de
   `api,login,logout,vincular,oauth2,error`.
 - Migración `V4__namespace_usuario.sql` con
   `uq_usuario_namespace`; la misma restricción se traduce a mano en
-  `db/hsqldb/schema.sql` (ADR 0005).
+  `db/hsqldb/schema.sql` (ADR 0005). El cambio con gracia vive en
+  `V8__namespace_anterior_gracia.sql`, numerada después de las
+  migraciones V6/V7 del issue #23.
 - Web: con sesión y sin namespace aparece el formulario con la
   sugerencia precargada; los errores del contrato se muestran y el
-  namespace elegido se suma al email en la cabecera.
+  namespace elegido se suma al email en la cabecera. Con namespace
+  elegido, «Mi namespace» muestra el actual, lista los anteriores en
+  gracia con el tiempo restante, ofrece «Volver a este» y deja el botón
+  de cierre de sesiones vinculadas deshabilitado hasta que se integre el
+  issue #23.
 
 ## Concurrencia
 
 La elección bloquea la fila del usuario con `PESSIMISTIC_WRITE` y la
-restricción única cierra la carrera entre dos usuarios por el mismo
-nombre: el segundo recibe la violación, el service la traduce a
-`NAMESPACE_TAKEN` y la transacción se revierte. Nunca quedan ambos con
-el nombre, igual que la reserva de alias de `ConcurrenciaHttpTest`.
+fila del nombre con `PESSIMISTIC_WRITE` cuando ya existe; la
+verificación de dueño y gracia y la adopción ocurren sobre esa misma
+fila, así que nadie pisa una reserva confirmada por otra transacción.
+Si la fila no existe, la restricción única cierra la carrera entre dos
+usuarios por el mismo nombre: el segundo recibe la violación, el service
+la traduce a `NAMESPACE_TAKEN` y la transacción se revierte. Nunca
+quedan ambos con el nombre, igual que la reserva de alias de
+`ConcurrenciaHttpTest`.
 
 ## Pruebas automatizadas
 
@@ -53,11 +64,15 @@ el nombre, igual que la reserva de alias de `ConcurrenciaHttpTest`.
   anterior, encadenamiento en instantes distintos con una gracia que
   vence mientras la otra sigue, `401` sin sesión en el listado de
   anteriores, un segundo contexto con otro `namespace-grace-period` que
-  no altera la reserva en curso, y el solapamiento real de dos cambios
-  forzado con `InspeccionNombreNamespace` — el perdedor recibe
-  `NAMESPACE_TAKEN` (`409`).
+  no altera la reserva en curso, el solapamiento real de dos altas y el
+  de una adopción contra un cambio forzados con
+  `InspeccionNombreNamespace` — el perdedor recibe `NAMESPACE_TAKEN`
+  (`409`) —, y conservación del vencimiento de los enlaces personales.
+- `src/test/js/namespace-grace.test.mjs` (`node --test`): la página
+  muestra cada namespace anterior con su tiempo restante y «Volver a
+  este» devuelve el nombre para pedir el cambio.
 - `CuentaPropertiesTest`: normalización y obligatoriedad de la lista de
-  nombres reservados, y período de gracia positivo.
+  nombres reservados, y validación del período de gracia positivo.
 
 ## Ejecutado
 
@@ -65,9 +80,9 @@ Corrida del 2026-10-27 con el oráculo del Project:
 
 ```text
 ./gradlew --no-daemon --console=plain test
-BUILD SUCCESSFUL   (126 pruebas, 0 fallos, 22 suites)
+BUILD SUCCESSFUL   (127 pruebas, 0 fallos, 22 suites)
 
-cd src/test/js && node --test    -> pass 5
+cd src/test/js && node --test    -> pass 9
 cd extensiones && node --test    -> pass 42
 ```
 

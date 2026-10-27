@@ -455,6 +455,18 @@ vencidas). La resolución de dos segmentos corre en `readOnly` sin
 bloqueos, como `resolver`: ubica al usuario por su namespace, que es
 único, y lee su asignación vigente de ese alias.
 
+El cambio de namespace (issue #24) agrega un segundo punto de
+serialización sobre la fila del nombre: `elegirNamespace` bloquea al
+usuario con `PESSIMISTIC_WRITE` y la fila de `nombre_namespace` con
+`PESSIMISTIC_WRITE` antes de decidir si el nombre puede adoptarse. La
+verificación de dueño y gracia y la escritura ocurren sobre esa misma
+fila, así que una transacción no puede convertir en actual un nombre que
+otra acaba de reservar entre ambas sentencias. Si la fila no existe, la
+clave primaria de `nombre_namespace` cierra la carrera del alta: de dos
+usuarios que piden el mismo nombre libre, exactamente uno confirma y el
+otro recibe `NAMESPACE_TAKEN`. El nombre que se deja y el que se adopta
+se escriben en la misma transacción; los enlaces personales no se tocan.
+
 ## Configuración de despliegue
 
 Prefijo `shortener` (`ShortenerProperties`). Cada clave se declara en
@@ -542,7 +554,8 @@ issue #15 (ADR 0006):
   `ApiExceptionHandler` y `dto/`
   (`CreateLinkRequest`, `CsrfTokenResponse`, `ApiErrorResponse`,
   `SesionActualResponse`, `UsuarioSesion`, `ElegirNamespaceRequest`,
-  `NamespaceSugerenciaResponse`). Controllers pass-through:
+  `NamespaceSugerenciaResponse`, `NamespaceAnteriorResponse`). Controllers
+  pass-through:
   traducen la request, llaman al método del service y devuelven su
   resultado; el `201` serializa el record `EnlaceCreado` directo como
   body.
@@ -556,7 +569,7 @@ issue #15 (ADR 0006):
   casos de uso de la cuenta: `usuarioDeLogin` (alta por `sub` o reúso y
   refresco del email), `usuarioDeSesion` (usuario de la sesión actual),
   `elegirNamespace` (validación, unicidad, cambio y persistencia del
-  namespace) y
+  namespace), `namespacesAnteriores` (anteriores en gracia con su fin) y
   `sugerenciaDeNamespace` (adaptación de la parte local del email).
   La inyección es `@Autowired` en campos, incluido el `EntityManager`.
   También viven acá el record de resultado
@@ -731,9 +744,14 @@ con PostgreSQL real, OIDC simulado y `MutableClock`: cambios encadenados
 en instantes distintos con una gracia por nombre, recuperación de un
 namespace propio, reservas ajenas, liberación al fin de gracia, listado
 con fin UTC y `401` sin sesión, validación de formato y nombres
-reservados, exclusión ante solicitudes simultáneas, conservación del
-vencimiento personal y un segundo contexto con otro
-`cuenta.namespace-grace-period` que no altera la gracia en curso.
+reservados, exclusión ante solicitudes simultáneas —incluida la adopción
+de un nombre que otra transacción confirma mientras la primera lo
+intenta tomar—, conservación del vencimiento personal y un segundo
+contexto con otro `cuenta.namespace-grace-period` que no altera la
+gracia en curso. La página «Mi namespace» se verifica en
+`src/test/js/namespace-grace.test.mjs` (`node --test`): lista cada
+anterior con su tiempo restante y el botón «Volver a este» invoca el
+cambio con ese nombre.
 
 No implementa esta especificación: consola de
 gestión, estadísticas de visitas ni purga del historial (analizados en

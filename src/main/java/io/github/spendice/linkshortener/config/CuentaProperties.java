@@ -21,6 +21,11 @@ import java.util.Locale;
  *   puede elegir como namespace porque chocan con rutas del sistema
  *   ({@code NAMESPACE_RESERVED_NAMES}, {@code api,login,logout,vincular,oauth2,error}
  *   por defecto).</li>
+ *   <li>{@code namespace-grace-period}: tiempo que un namespace anterior
+ *   queda reservado para su dueño después de un cambio
+ *   ({@code NAMESPACE_GRACE_PERIOD}, {@code PT1H} por defecto). Debe ser
+ *   positivo; el fin se calcula al cambiar y modificar esta configuración
+ *   no altera las gracias en curso.</li>
  * </ul>
  */
 @ConfigurationProperties(prefix = "cuenta")

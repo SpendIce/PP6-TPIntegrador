@@ -21,9 +21,11 @@ class ApiExceptionHandler {
 
     /**
      * Un namespace con formato inválido o reservado es un error de la
-     * solicitud ({@code 400}); uno tomado, un usuario que ya eligió o un
-     * usuario que todavía no eligió (al pedir un enlace personal) es un
-     * conflicto con el estado actual ({@code 409}).
+     * solicitud ({@code 400}); uno tomado (incluido el que otro usuario
+     * todavía tiene en gracia) o un usuario que todavía no eligió (al
+     * pedir un enlace personal) es un conflicto con el estado actual
+     * ({@code 409}). El cambio de namespace está permitido: no hay
+     * rechazo por «ya eligió».
      */
     @ExceptionHandler(InvalidNamespaceException.class)
     ResponseEntity<ApiErrorResponse> invalidNamespace(InvalidNamespaceException exception) {
