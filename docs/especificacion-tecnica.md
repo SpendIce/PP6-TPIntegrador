@@ -588,9 +588,10 @@ issue #15 (ADR 0006):
   `SecurityConfig` (cadena de filtros, CSRF, firewall, rechazo CSRF,
   login OIDC y validación de las credenciales de Google) y una
   `@Configuration` mínima con el bean `Clock`.
-- `resources/static`: web `index.html`, `app.js`, `styles.css`, módulo
-  `qr-code.js` y biblioteca vendorizada `vendor/qrcode.js`
-  (ver «QR del enlace»).
+- `resources/static`: web `index.html`, `app.js`, `styles.css`, módulos
+  `qr-code.js` (ver «QR del enlace») y `namespace-grace.js` (lista y
+  tiempo restante de «Mi namespace»), y biblioteca vendorizada
+  `vendor/qrcode.js`.
 
 ## QR del enlace (issue #7)
 
@@ -748,10 +749,7 @@ reservados, exclusión ante solicitudes simultáneas —incluida la adopción
 de un nombre que otra transacción confirma mientras la primera lo
 intenta tomar—, conservación del vencimiento personal y un segundo
 contexto con otro `cuenta.namespace-grace-period` que no altera la
-gracia en curso. La página «Mi namespace» se verifica en
-`src/test/js/namespace-grace.test.mjs` (`node --test`): lista cada
-anterior con su tiempo restante y el botón «Volver a este» invoca el
-cambio con ese nombre.
+gracia en curso.
 
 No implementa esta especificación: consola de
 gestión, estadísticas de visitas ni purga del historial (analizados en

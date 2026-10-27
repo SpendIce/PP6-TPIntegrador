@@ -8,12 +8,16 @@ import org.springframework.boot.web.context.WebServerApplicationContext;
 import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.context.annotation.Import;
 
+import javax.sql.DataSource;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpRequest.BodyPublishers;
 import java.net.http.HttpResponse;
 import java.net.http.HttpResponse.BodyHandlers;
+import java.sql.Connection;
+import java.sql.ResultSet;
+import java.sql.Statement;
 import java.sql.Timestamp;
 import java.time.Duration;
 import java.time.Instant;
@@ -34,6 +38,9 @@ class CambioNamespaceHttpTest extends HttpApiFixture {
 
     @Autowired
     InspeccionNombreNamespace inspeccion;
+
+    @Autowired
+    DataSource dataSource;
 
     @Test
     void cambiaNamespaceReservaCadaNombreYPermiteRecuperarlo() throws Exception {
@@ -192,31 +199,42 @@ class CambioNamespaceHttpTest extends HttpApiFixture {
     }
 
     /**
-     * El intercalado que bloquea la fila del nombre tiene que cerrar:
-     * Pedro pasa la verificación de disponibilidad de «medio» (todavía
-     * libre) y queda detenido justo antes de leerla; Juan confirma su
-     * adopción de «medio» mientras tanto. Al reanudarse, Pedro no puede
-     * convertir en actual la fila que Juan acaba de reservar: recibe
-     * {@code NAMESPACE_TAKEN} y conserva su namespace.
+     * La adopción tiene que esperar el bloqueo de la fila del namespace:
+     * Juan deja «medio» en gracia, otra transacción retiene esa fila con
+     * {@code FOR UPDATE} y Pedro intenta tomarla. Sin el
+     * {@code PESSIMISTIC_WRITE} del service, Pedro leería la reserva sin
+     * esperar y resolvería en el acto; con el bloqueo queda pendiente
+     * hasta que la transacción lo suelta, y entonces recibe
+     * {@code NAMESPACE_TAKEN}. La reserva de Juan sigue intacta.
      */
     @Test
-    void noAdoptaElNombreQueOtroConfirmaMientrasLoIntentaTomar() throws Exception {
+    void laAdopcionEsperaElBloqueoDelNamespaceAntesDeDecidir() throws Exception {
         clock.set(T0);
         HttpClient juan = usuario("google-sub-gracia-adopcion-juan",
                 "adopcion-juan@ejemplo.com", "juan-inicial");
         HttpClient pedro = usuario("google-sub-gracia-adopcion-pedro",
                 "adopcion-pedro@ejemplo.com", "pedro-inicial");
+        assertThat(cambiar(juan, "medio").statusCode()).isEqualTo(200);
+        assertThat(cambiar(juan, "juan-final").statusCode()).isEqualTo(200);
+        Timestamp finGracia = db.queryForObject(
+                "SELECT grace_ends_at FROM namespace_anterior WHERE namespace = 'medio'",
+                Timestamp.class);
 
-        InspeccionNombreNamespace.Pausa pausa = inspeccion.pausarAntesDeLeerNombre();
         var pool = Executors.newFixedThreadPool(1);
-        try {
+        try (Connection bloqueo = dataSource.getConnection()) {
+            bloqueo.setAutoCommit(false);
+            try (Statement sentencia = bloqueo.createStatement();
+                 ResultSet fila = sentencia.executeQuery(
+                         "SELECT namespace FROM nombre_namespace"
+                                 + " WHERE namespace = 'medio' FOR UPDATE")) {
+                assertThat(fila.next()).isTrue();
+            }
             var intentoPedro = pool.submit(() -> cambiar(pedro, "medio"));
-            assertThat(pausa.esperarLlegada()).isTrue();
-            assertThat(cambiar(juan, "medio").statusCode()).isEqualTo(200);
-            pausa.liberar();
+            Thread.sleep(500);
+            assertThat(intentoPedro.isDone()).isFalse();
+            bloqueo.commit();
             assertError(intentoPedro.get(20, TimeUnit.SECONDS), 409, "NAMESPACE_TAKEN");
         } finally {
-            inspeccion.desarmarPausa();
             pool.shutdownNow();
         }
         assertThat(db.queryForObject(
@@ -224,8 +242,8 @@ class CambioNamespaceHttpTest extends HttpApiFixture {
                 String.class)).isEqualTo("pedro-inicial");
         assertThat(db.queryForObject(
                 "SELECT u.google_sub FROM nombre_namespace n JOIN usuario u ON u.id = n.usuario_id"
-                        + " WHERE n.namespace = 'medio'",
-                String.class)).isEqualTo("google-sub-gracia-adopcion-juan");
+                        + " WHERE n.namespace = 'medio' AND n.grace_ends_at = ?",
+                String.class, finGracia)).isEqualTo("google-sub-gracia-adopcion-juan");
     }
 
     @Test

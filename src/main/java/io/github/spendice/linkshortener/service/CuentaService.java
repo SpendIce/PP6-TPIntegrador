@@ -211,19 +211,13 @@ public class CuentaService {
         }
         boolean recuperarAnterior = propio != null;
         if (recuperarAnterior) {
-            em.createQuery("delete from NamespaceAnterior n where n.namespace = :namespace")
-                    .setParameter("namespace", namespace)
-                    .executeUpdate();
-            em.flush();
+            borrarNamespaceAnterior(namespace);
         } else if (nombreNuevo != null
                 && nombreNuevo.getGraceEndsAt() != null
                 && !nombreNuevo.getGraceEndsAt().isAfter(ahora)) {
             // La reserva ajena (o propia) ya venció: se libera la fila
             // antes de registrar al nuevo dueño.
-            em.createQuery("delete from NamespaceAnterior n where n.namespace = :namespace")
-                    .setParameter("namespace", namespace)
-                    .executeUpdate();
-            em.flush();
+            borrarNamespaceAnterior(namespace);
             em.remove(nombreNuevo);
             em.flush();
             nombreNuevo = null;
@@ -249,6 +243,13 @@ public class CuentaService {
         usuario.setNamespace(namespace);
         em.flush();
         return usuario;
+    }
+
+    private void borrarNamespaceAnterior(String namespace) {
+        em.createQuery("delete from NamespaceAnterior n where n.namespace = :namespace")
+                .setParameter("namespace", namespace)
+                .executeUpdate();
+        em.flush();
     }
 
     private NamespaceAnterior anteriorEnGracia(Usuario usuario, String namespace) {

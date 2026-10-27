@@ -64,10 +64,11 @@ quedan ambos con el nombre, igual que la reserva de alias de
   anterior, encadenamiento en instantes distintos con una gracia que
   vence mientras la otra sigue, `401` sin sesión en el listado de
   anteriores, un segundo contexto con otro `namespace-grace-period` que
-  no altera la reserva en curso, el solapamiento real de dos altas y el
-  de una adopción contra un cambio forzados con
-  `InspeccionNombreNamespace` — el perdedor recibe `NAMESPACE_TAKEN`
-  (`409`) —, y conservación del vencimiento de los enlaces personales.
+  no altera la reserva en curso, el solapamiento real de dos altas
+  forzado con `InspeccionNombreNamespace`, la adopción que espera el
+  bloqueo `FOR UPDATE` de la fila del namespace en gracia — el perdedor
+  recibe `NAMESPACE_TAKEN` (`409`) —, y conservación del vencimiento de
+  los enlaces personales.
 - `src/test/js/namespace-grace.test.mjs` (`node --test`): la página
   muestra cada namespace anterior con su tiempo restante y «Volver a
   este» devuelve el nombre para pedir el cambio.
