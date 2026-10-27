@@ -851,6 +851,7 @@ components:
             - NAMESPACE_NOT_CHOSEN
             - ALIAS_INVALID
             - ALIAS_TAKEN
+            - SESSION_NOT_PRIMARY
         message:
           type: string
           description: Descripción legible del problema para mostrar al usuario.
