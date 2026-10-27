@@ -72,7 +72,13 @@ class SecurityConfig {
                                     CuentaService cuentas,
                                     CuentaProperties cuenta) throws Exception {
         return http
-                .authorizeHttpRequests(auth -> auth.anyRequest().permitAll())
+                // La página de confirmación de la vinculación exige sesión
+                // (issue #22): sin ella el filtro redirige al login con
+                // Google y el request cache vuelve a /vincular/{codigo} al
+                // completarse. El resto del contrato sigue siendo anónimo.
+                .authorizeHttpRequests(auth -> auth
+                        .requestMatchers("/vincular", "/vincular/**").authenticated()
+                        .anyRequest().permitAll())
                 .oauth2Login(oauth2 -> oauth2
                         .successHandler(sesionPrincipal(cuentas, cuenta)))
                 .logout(logout -> logout
