@@ -52,7 +52,7 @@ corrida completa de `./gradlew --no-daemon --console=plain test` fallaron
 `DockerClientProviderStrategy` («Could not find a valid Docker
 environment»), incluidas las 15 de `EnlacePersonalHttpTest`. Es el mismo
 fallo de entorno que afecta a todas las suites previas del fixture; las
-23 pruebas que no necesitan contenedores pasaron.
+21 pruebas que no necesitan contenedores pasaron.
 
 Para no entregar sin evidencia real se verificó el mismo contrato sobre
 HSQLDB en memoria (perfil `hsqldb`, ADR 0005), que sí corre sin Docker:
@@ -82,3 +82,27 @@ Los dos chequeos pasaron en verde; eran de apoyo y se retiraron del árbol
 (la suite del contrato es la de Testcontainers). En un entorno con Docker
 la corrida a repetir es la del spec: `./gradlew --no-daemon
 --console=plain test`.
+
+## Revisión
+
+El diff `main...HEAD` pasó por una revisión de estándares y otra de spec.
+La de spec no encontró criterios faltantes ni trabajo fuera del Change.
+La de estándares encontró documentación desactualizada y una invariante
+rota del fixture, ya corregidas en esta misma rama:
+
+- Los Javadoc de `AcortadorService`, `SecurityConfig` y
+  `RedirectController` y el encabezado de `db/hsqldb/schema.sql` volvieron
+  a describir el estado real (cuatro casos de uso, el alias personalizado
+  exige sesión, la ruta de dos segmentos y el esquema V1 a V5).
+- El segmento personal de la ruta se renombró a `{aliasPersonalizado}`,
+  coherente con `openapi.yaml`, cuyos patrones de ruta quedaron ajustados
+  al contrato (namespace `3-30`, alias `1-50`, ambos sin distinguir
+  mayúsculas).
+- `seedAliasVigente` ahora avanza `generador_alias.proximo_indice` con
+  `GREATEST`, la invariante «un alias existente cuenta como ya emitido»
+  del seed de `ConcurrenciaHttpTest`; `CodigosDeAlias.indiceDe` es la
+  inversa de `codigoEn`.
+- Tras el renombre se verificó de nuevo sobre HSQLDB en memoria que
+  `GET /{namespace}/{aliasPersonalizado}` responde `404` con la página
+  acordada y `no-store` para un namespace inexistente (chequeo también
+  retirado del árbol).
