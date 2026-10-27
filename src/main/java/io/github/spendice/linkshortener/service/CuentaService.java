@@ -8,6 +8,7 @@ import io.github.spendice.linkshortener.service.InvalidNamespaceException.Reason
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.LockModeType;
 import jakarta.persistence.PersistenceException;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpSession;
 import org.hibernate.exception.ConstraintViolationException;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -39,7 +40,7 @@ import java.util.Optional;
  * /api/sesion}; la vinculación por QR (issue #22) son
  * {@link #crearVinculacion()}, {@link #estadoDeVinculacion(String)},
  * {@link #aprobarVinculacion(String, Long)} y
- * {@link #consumirVinculacion(String)}.</p>
+ * {@link #consumirVinculacion(String, HttpServletRequest, HttpSession, Duration)}.</p>
  */
 @Service
 public class CuentaService {
@@ -443,12 +444,16 @@ public class CuentaService {
     /**
      * Consulta del dispositivo que espera: responde el estado efectivo y,
      * cuando es {@code APROBADA}, consume el código (de un solo uso) y
-     * devuelve el usuario que aprobó para materializar la sesión
-     * vinculada. La siguiente consulta con el mismo código responde
-     * {@code VENCIDA} y no abre sesión. El bloqueo pesimista garantiza
-     * que una sola consulta consuma la aprobación.
+     * materializa la sesión vinculada del usuario que aprobó. La sesión
+     * se registra en la misma transacción:
+     * si falla la persistencia de sus atributos, el consumo también
+     * revierte. La siguiente consulta con el mismo código responde
+     * {@code VENCIDA}. El bloqueo pesimista garantiza que solo una
+     * consulta consume la aprobación.
      */
-    public ResultadoVinculacion consumirVinculacion(String codigo) {
+    public ResultadoVinculacion consumirVinculacion(String codigo, HttpServletRequest request,
+                                                     HttpSession sesion,
+                                                     Duration inactividadMaxima) {
         return transacciones.execute(status -> {
             CodigoVinculacion vinculacion =
                     em.find(CodigoVinculacion.class, codigo, LockModeType.PESSIMISTIC_WRITE);
@@ -459,8 +464,10 @@ public class CuentaService {
             if (estado != EstadoVinculacion.APROBADA) {
                 return new ResultadoVinculacion(estado, null);
             }
-            vinculacion.setEstado(CodigoVinculacion.Estado.CONSUMIDA);
             Usuario aprobador = em.find(Usuario.class, vinculacion.getUsuarioId());
+            HttpSession sesionVinculada = sesion == null ? request.getSession() : sesion;
+            registrarSesion(sesionVinculada, aprobador, TIPO_VINCULADA, inactividadMaxima);
+            vinculacion.setEstado(CodigoVinculacion.Estado.CONSUMIDA);
             return new ResultadoVinculacion(EstadoVinculacion.APROBADA, aprobador);
         });
     }

@@ -6,6 +6,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
+import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -20,6 +21,7 @@ import java.net.http.HttpRequest.BodyPublishers;
 import java.net.http.HttpResponse;
 import java.net.http.HttpResponse.BodyHandlers;
 import java.time.Duration;
+import java.time.Instant;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -35,6 +37,7 @@ import static org.assertj.core.api.Assertions.assertThat;
         "shortener.public-base-url=http://192.168.50.10:8080",
         "shortener.reserved-routes=api, error"
 })
+@Import(ClockTestConfiguration.class)
 abstract class HttpApiFixture {
 
     static final String PUBLIC_BASE = "http://192.168.50.10:8080";
@@ -92,6 +95,9 @@ abstract class HttpApiFixture {
                 () -> GoogleSimulado.CLIENT_SECRET);
     }
 
+    @Autowired
+    MutableClock clock;
+
     protected final HttpClient client = HttpClient.newBuilder()
             .followRedirects(HttpClient.Redirect.NEVER)
             .build();
@@ -126,6 +132,7 @@ abstract class HttpApiFixture {
                 + " codigo_vinculacion, spring_session, spring_session_attributes"
                 + " RESTART IDENTITY");
         db.update("UPDATE generador_alias SET proximo_indice = 0");
+        clock.set(Instant.parse("2026-10-05T12:00:00Z"));
     }
 
     HttpResponse<String> postJson(String jsonBody) throws Exception {

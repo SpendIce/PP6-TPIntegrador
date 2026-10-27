@@ -528,9 +528,11 @@ paths:
         Estado del código para el dispositivo que espera (issue #22):
         `pendiente` mientras nadie lo aprobó, `vencida` cuando venció o ya
         se usó, y `aprobada` una única vez: esa respuesta abre la sesión
-        vinculada del usuario que aprobó (cookie `SESSION`, inactividad
+        vinculada del usuario que aprobó. El alta de sus atributos y el
+        consumo del código son atómicos: si falla la persistencia, una
+        consulta posterior puede reintentar (cookie `SESSION`, inactividad
         máxima de `cuenta.linked-session-idle-timeout`, 12 horas por
-        defecto) y consume el código. Una consulta posterior con el mismo
+        defecto). Una consulta posterior con el mismo
         código responde `vencida` y no abre ninguna sesión. Un código que
         no existe responde `404`.
       operationId: estadoVinculacion

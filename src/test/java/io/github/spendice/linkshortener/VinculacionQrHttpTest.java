@@ -1,18 +1,7 @@
 package io.github.spendice.linkshortener;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.web.server.LocalServerPort;
-import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.test.context.DynamicPropertyRegistry;
-import org.springframework.test.context.DynamicPropertySource;
-import org.testcontainers.containers.PostgreSQLContainer;
-import org.testcontainers.junit.jupiter.Container;
-import org.testcontainers.junit.jupiter.Testcontainers;
 
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -33,64 +22,19 @@ import static org.assertj.core.api.Assertions.assertThat;
  * ({@link MutableClock}) para el vencimiento del código sin esperas
  * reales. Los dos dispositivos del flujo son dos clientes con almacenes
  * de cookies separados: la computadora que espera (sin sesión) y el
- * celular con la sesión principal que aprueba. El suite tiene contexto
- * propio (como {@code VencimientoHttpTest}) porque declara el reloj de
- * prueba que el fixture compartido no trae.
+ * celular con la sesión principal que aprueba. Reutiliza la infraestructura
+ * PostgreSQL y el ciclo de vida de {@link HttpApiFixture}.
  */
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
-        classes = {LinkShortenerApplication.class, ClockTestConfiguration.class},
-        properties = {
-                "shortener.public-base-url=http://192.168.50.10:8080",
-                "shortener.reserved-routes=api, error",
-                "spring.security.oauth2.client.registration.google.client-id=" + GoogleSimulado.CLIENT_ID,
-                "spring.security.oauth2.client.registration.google.client-secret=" + GoogleSimulado.CLIENT_SECRET
-        })
-@Testcontainers
-class VinculacionQrHttpTest {
+class VinculacionQrHttpTest extends HttpApiFixture {
 
     private static final String PUBLIC_BASE = "http://192.168.50.10:8080";
     private static final Instant T0 = Instant.parse("2026-10-05T12:00:00Z");
     private static final Duration CODIGO_TTL = Duration.ofSeconds(60);
-    private static final int VINCULADA_INACTIVIDAD_SEGUNDOS = (int) Duration.ofHours(12).toSeconds();
+    private static final int VINCULADA_INACTIVIDAD_SEGUNDOS =
+            (int) Duration.ofHours(12).toSeconds();
 
     private static final String SUB_JUAN = "google-sub-vinculacion-juan";
     private static final String EMAIL_JUAN = "juan@ejemplo.com";
-
-    private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(15);
-
-    @Container
-    static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>("postgres:16.4-alpine");
-
-    @DynamicPropertySource
-    static void datasource(DynamicPropertyRegistry registry) {
-        registry.add("spring.datasource.url", () -> TestHost.jdbcUrl(POSTGRES));
-        registry.add("spring.datasource.username", POSTGRES::getUsername);
-        registry.add("spring.datasource.password", POSTGRES::getPassword);
-    }
-
-    @DynamicPropertySource
-    static void googleSimulado(DynamicPropertyRegistry registry) {
-        registry.add("spring.security.oauth2.client.provider.google.issuer-uri",
-                GoogleSimulado::issuerUri);
-    }
-
-    @LocalServerPort
-    int port;
-    @Autowired
-    ObjectMapper json;
-    @Autowired
-    JdbcTemplate db;
-    @Autowired
-    MutableClock clock;
-
-    @BeforeEach
-    void espacioDeCodigosVacio() {
-        db.execute("TRUNCATE TABLE alias, asignacion, asignacion_personal, usuario,"
-                + " codigo_vinculacion, spring_session, spring_session_attributes"
-                + " RESTART IDENTITY");
-        db.update("UPDATE generador_alias SET proximo_indice = 0");
-        clock.set(T0);
-    }
 
     @Test
     void laAprobacionDelCelularAbreLaSesionVinculadaEnLaComputadora() throws Exception {
@@ -388,7 +332,7 @@ class VinculacionQrHttpTest {
         HttpRequest alta = Csrf.aplicar(dispositivo,
                         HttpRequest.newBuilder(URI.create(baseUrl() + "/api/namespace")), csrf)
                 .header("Content-Type", "application/json")
-                .timeout(REQUEST_TIMEOUT)
+                .timeout(Duration.ofSeconds(15))
                 .POST(BodyPublishers.ofString("{\"namespace\":\"" + namespace + "\"}"))
                 .build();
         HttpResponse<String> respuesta = dispositivo.send(alta, BodyHandlers.ofString());
@@ -398,17 +342,5 @@ class VinculacionQrHttpTest {
 
     private long contarSesiones() {
         return db.queryForObject("SELECT COUNT(*) FROM spring_session", Long.class);
-    }
-
-    void assertError(HttpResponse<String> response, int expectedStatus, String expectedCode)
-            throws Exception {
-        assertThat(response.statusCode()).isEqualTo(expectedStatus);
-        JsonNode body = json.readTree(response.body());
-        assertThat(body.get("error").asText()).isEqualTo(expectedCode);
-        assertThat(body.get("message").asText()).isNotBlank();
-    }
-
-    private String baseUrl() {
-        return "http://localhost:" + port;
     }
 }

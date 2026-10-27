@@ -264,10 +264,13 @@ desde la sesión principal del celular, al estilo de WhatsApp:
   web lo renueva unos segundos antes de que venza.
 - **La consulta del estado** (`GET /api/vinculacion/{codigo}`, cada 2
   segundos) corre `CuentaService.consumirVinculacion` en una transacción
-  con la fila bloqueada (`PESSIMISTIC_WRITE`): un código `APROBADA` se
-  marca `CONSUMIDA` en la misma transacción que devuelve el usuario que
-  aprobó, así que una sola consulta materializa la sesión (de un solo
-  uso) y dos dispositivos que esperan el mismo código no se la reparten.
+  con la fila bloqueada (`PESSIMISTIC_WRITE`): un código `APROBADA` crea
+  los atributos de la sesión vinculada y se marca `CONSUMIDA` dentro de
+  la misma transacción. Si falla esa persistencia, también revierte el
+  consumo, y la próxima consulta puede reintentar; dos dispositivos que
+  esperan el mismo código no se reparten la aprobación. Las consultas
+  con código pendiente, vencido o inexistente usan `getSession(false)` y
+  no crean una cookie de sesión.
   El vencimiento se evalúa en el instante del servidor, como las
   asignaciones: un código aprobado pero ya vencido responde `vencida` y
   no abre nada; usado, vencido e inexistente nunca abren sesión.

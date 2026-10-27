@@ -65,11 +65,13 @@ class VinculacionController {
      */
     @GetMapping("/api/vinculacion/{codigo}")
     ResponseEntity<?> estado(@PathVariable String codigo, HttpServletRequest request) {
-        ResultadoVinculacion resultado = cuentas.consumirVinculacion(codigo);
+        HttpSession sesion = request.getSession(false);
+        ResultadoVinculacion resultado = cuentas.consumirVinculacion(
+                codigo, request, sesion, cuenta.linkedSessionIdleTimeout());
         return switch (resultado.estado()) {
             case INEXISTENTE -> codigoInvalido();
             case APROBADA -> {
-                materializarSesionVinculada(request, resultado.usuario());
+                finalizarSesionVinculada(request, request.getSession(false), resultado.usuario());
                 yield estado("aprobada");
             }
             default -> estado(resultado.estado().name().toLowerCase(Locale.ROOT));
@@ -130,19 +132,15 @@ class VinculacionController {
     }
 
     /**
-     * Materializa la sesión vinculada del dispositivo que esperaba con la
-     * misma forma que graba el login ({@link CuentaService#registrarSesion}):
-     * el usuario que aprobó, el tipo {@code vinculada} y la inactividad
-     * máxima configurada ({@code linked-session-idle-timeout}). El id de
-     * sesión se rota al otorgarla, como en el login, y el {@code
-     * SecurityContext} queda persistido para que las rutas con sesión
-     * ({@code /vincular/**}) la reconozcan.
+     * Completa la sesión vinculada del dispositivo que esperaba. Sus
+     * atributos y el consumo del código ya quedaron registrados en la
+     * misma transacción; aquí rota el id al otorgar acceso y persiste el
+     * {@code SecurityContext} para que las rutas con sesión ({@code
+     * /vincular/**}) la reconozcan.
      */
-    private void materializarSesionVinculada(HttpServletRequest request, Usuario usuario) {
-        HttpSession sesion = request.getSession();
+    private void finalizarSesionVinculada(HttpServletRequest request, HttpSession sesion,
+                                          Usuario usuario) {
         request.changeSessionId();
-        cuentas.registrarSesion(sesion, usuario, CuentaService.TIPO_VINCULADA,
-                cuenta.linkedSessionIdleTimeout());
         SecurityContext contexto = SecurityContextHolder.createEmptyContext();
         contexto.setAuthentication(UsernamePasswordAuthenticationToken.authenticated(
                 usuario.getId(), null, AuthorityUtils.createAuthorityList("ROLE_USER")));

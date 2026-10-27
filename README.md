@@ -141,6 +141,12 @@ recorre con `bash scripts/wizard-funnel-google.sh`.
 | `NAMESPACE_RESERVED_NAMES` | `cuenta.namespace-reserved-names` | `api,login,logout,vincular,oauth2,error` | Nombres que ningún usuario puede elegir como namespace porque chocan con rutas del propio servicio (CSV, se normalizan a minúsculas). |
 | `DB_HOST` `DB_PORT` `DB_NAME` `DB_USER` `DB_PASSWORD` | `spring.datasource.*` | `localhost` `5432` `acortador` | Conexión a PostgreSQL. |
 
+En una pantalla sin sesión, la web solicita un código de vinculación y
+muestra su QR; se renueva antes de vencer y consulta el estado cada dos
+segundos. Al escanearlo, el dispositivo con sesión principal muestra el
+namespace (o el email) y requiere aprobar explícitamente. La consulta
+siguiente abre una sesión vinculada en la pantalla que espera.
+
 Las variables se pueden pasar en el entorno del proceso o declarar en un
 archivo `.env` en la raíz (ignorado por git; plantilla en `.env.example`):
 
