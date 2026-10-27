@@ -227,3 +227,113 @@ test("un estado vencida reemplaza el código sin esperar a la renovación", asyn
     await drenar();
     assert.equal(pedidos.total, 2, "la consulta vencida pide un código nuevo");
 });
+
+/**
+ * Resolver con la consulta del estado retenida: cada GET devuelve una
+ * promesa que la prueba libera con `diferida.liberar(estado)`, para
+ * ensayar la carrera entre la consulta en vuelo y la renovación.
+ */
+function resolverConConsultaRetenida(pedidos, consultas, diferida) {
+    return (url, opciones = {}) => {
+        if (url === "/api/sesion") return respuesta(200, { usuario: null });
+        if (url === "/api/csrf") return respuesta(200, { token: "csrf-t" });
+        if (url === "/api/vinculacion" && opciones.method === "POST") {
+            pedidos.total++;
+            const codigo = "COD" + pedidos.total;
+            return respuesta(201, {
+                codigo,
+                confirmacionUrl: "https://demo.test/vincular/" + codigo,
+                expiresAt: new Date(Date.now() + TTL_MS).toISOString()
+            }, { date: new Date(Date.now()).toUTCString() });
+        }
+        const estado = url.match(/^\/api\/vinculacion\/([A-Z0-9]+)$/);
+        if (estado) {
+            consultas.push(estado[1]);
+            return new Promise((resolve) => {
+                diferida.liberar = (body) =>
+                        resolve(respuesta(200, { estado: body }));
+            });
+        }
+        throw new Error("llamada no esperada: " + url);
+    };
+}
+
+test("la renovación espera a la consulta en vuelo y preserva el código aprobado", async (t) => {
+    const pedidos = { total: 0 };
+    const consultas = [];
+    const diferida = {};
+    const { recargas } = instalarEntorno(t,
+            resolverConConsultaRetenida(pedidos, consultas, diferida));
+
+    require(APP);
+    await drenar();
+    assert.equal(pedidos.total, 1);
+
+    t.mock.timers.tick(2000);
+    await drenar();
+    assert.deepEqual(consultas, ["COD1"], "la consulta del estado salió y quedó en vuelo");
+
+    t.mock.timers.tick(53_000);
+    await drenar();
+    assert.equal(pedidos.total, 1,
+            "con la consulta en vuelo la renovación todavía no pide otro código");
+
+    diferida.liberar("aprobada");
+    await drenar();
+    assert.equal(recargas.total, 1,
+            "la consulta que encontró aprobada completa el acceso");
+    assert.equal(pedidos.total, 1,
+            "el código aprobado se preserva: la renovación no pide reemplazo");
+});
+
+test("una aprobación que llega con el código ya rotado completa el acceso igual", async (t) => {
+    // Si la consulta en vuelo tarda más que la espera de la renovación,
+    // el código rota; pero una respuesta aprobada no se puede descartar:
+    // el servidor ya consumió el código y abrió la sesión vinculada con
+    // esa respuesta, así que la web recarga con ella.
+    const pedidos = { total: 0 };
+    const diferida = {};
+    const { recargas } = instalarEntorno(t,
+            resolverConConsultaRetenida(pedidos, [], diferida));
+
+    require(APP);
+    await drenar();
+
+    t.mock.timers.tick(2000);
+    await drenar();
+
+    t.mock.timers.tick(55_000);
+    await drenar();
+    assert.equal(pedidos.total, 1,
+            "la renovación todavía espera a la consulta en vuelo");
+
+    t.mock.timers.tick(2000);
+    await drenar();
+    assert.equal(pedidos.total, 2,
+            "agotada la espera de la consulta, el código rota");
+
+    diferida.liberar("aprobada");
+    await drenar();
+    assert.equal(recargas.total, 1,
+            "la aprobación tardía igual recarga con la sesión vinculada abierta");
+});
+
+test("una consulta vencida durante la renovación no duplica el pedido de código", async (t) => {
+    const pedidos = { total: 0 };
+    const diferida = {};
+    instalarEntorno(t, resolverConConsultaRetenida(pedidos, [], diferida));
+
+    require(APP);
+    await drenar();
+
+    t.mock.timers.tick(2000);
+    await drenar();
+
+    t.mock.timers.tick(53_000);
+    await drenar();
+
+    diferida.liberar("vencida");
+    await drenar();
+    assert.equal(pedidos.total, 2,
+            "la consulta vencida reemplaza el código y la renovación en espera no pide otro");
+});

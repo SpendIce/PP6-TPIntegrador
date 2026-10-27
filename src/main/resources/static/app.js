@@ -236,7 +236,10 @@ function pngDeQr(texto, mensajeError) {
 // consulta el estado cada 2 segundos. El código vence a los 60
 // segundos, así que se renueva unos segundos antes de que pase. La
 // consulta que encuentra el código aprobado ya abrió la sesión vinculada
-// en el servidor: recargar deja a la web con ella.
+// en el servidor: recargar deja a la web con ella. Por eso la renovación
+// espera a la consulta en vuelo antes de reemplazar el código —si trajo
+// la aprobación, el código se preserva— y una aprobación se honra aunque
+// llegue con el código ya rotado.
 // ---------------------------------------------------------------------
 
 const VINCULACION_CONSULTA_MS = 2000;
@@ -247,10 +250,23 @@ let vinculacionCodigo = null;
 let vinculacionTimer = null;
 let vinculacionRenovacion = null;
 let vinculacionQrUrl = null;
+// La consulta del estado en vuelo: la renovación la espera antes de
+// reemplazar el código, por si trae la aprobación.
+let vinculacionConsulta = null;
+// Queda cuando una consulta encontró el código aprobado: la sesión
+// vinculada ya se abrió y no se piden más códigos.
+let vinculacionAprobada = false;
+// Cada pedido de código invalida al anterior que siga esperando
+// respuestas, para que no pise al vigente al completar.
+let vinculacionGeneracion = 0;
 
 function iniciarVinculacion() {
     vinculacionSection.hidden = false;
     pedirCodigoVinculacion();
+}
+
+function esperar(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 async function pedirCodigoVinculacion() {
@@ -258,6 +274,23 @@ async function pedirCodigoVinculacion() {
     // consultas que sigan consultan el código vigente, nunca uno viejo.
     clearInterval(vinculacionTimer);
     clearTimeout(vinculacionRenovacion);
+    const generacion = ++vinculacionGeneracion;
+    if (vinculacionAprobada) {
+        return;
+    }
+
+    // Una consulta en vuelo puede traer la aprobación que ya abrió la
+    // sesión vinculada: se espera —acotado a una consulta más— antes de
+    // reemplazar el código. Si llegó aprobada, la consulta misma recarga
+    // y este pedido no sale: el código se preserva.
+    const enVuelo = vinculacionConsulta;
+    if (enVuelo !== null) {
+        await Promise.race([enVuelo.catch(() => null),
+                esperar(VINCULACION_CONSULTA_MS)]);
+        if (vinculacionAprobada || generacion !== vinculacionGeneracion) {
+            return;
+        }
+    }
     vinculacionCodigo = null;
 
     let creado;
@@ -277,10 +310,18 @@ async function pedirCodigoVinculacion() {
             throw new Error("creación rechazada");
         }
     } catch (error) {
+        if (vinculacionAprobada || generacion !== vinculacionGeneracion) {
+            return;
+        }
         vinculacionEstado.textContent =
                 "No se pudo pedir el código de vinculación; reintentá.";
         vinculacionRenovacion = setTimeout(pedirCodigoVinculacion,
                 VINCULACION_RENOVACION_MS);
+        return;
+    }
+    if (vinculacionAprobada || generacion !== vinculacionGeneracion) {
+        // Mientras se pedía, otra renovación ganó o una consulta
+        // encontró la aprobación: este código queda sin uso y vence solo.
         return;
     }
 
@@ -307,36 +348,59 @@ async function pedirCodigoVinculacion() {
                     VINCULACION_CONSULTA_MS, VINCULACION_RENOVACION_MS));
 }
 
-async function consultarEstadoVinculacion(codigo) {
+function consultarEstadoVinculacion(codigo) {
     if (codigo !== vinculacionCodigo) {
         return;
     }
+    // La consulta queda registrada para que la renovación la espere: si
+    // trae la aprobación, el código se preserva en vez de pedirse otro.
+    const consulta = ejecutarConsultaVinculacion(codigo);
+    vinculacionConsulta = consulta;
+    const limpiar = () => {
+        if (vinculacionConsulta === consulta) {
+            vinculacionConsulta = null;
+        }
+    };
+    consulta.then(limpiar, limpiar);
+}
+
+async function ejecutarConsultaVinculacion(codigo) {
     let estado;
     try {
         const respuesta = await fetch("/api/vinculacion/" + encodeURIComponent(codigo), {
             headers: { "Accept": "application/json" }
         });
         if (respuesta.status === 404) {
-            // El código quedó inválido: un QR nuevo lo reemplaza.
-            pedirCodigoVinculacion();
+            // El código quedó inválido: un QR nuevo lo reemplaza, salvo
+            // que otro pedido ya lo haya renovado.
+            if (codigo === vinculacionCodigo) {
+                pedirCodigoVinculacion();
+            }
             return;
         }
         estado = respuesta.ok ? await respuesta.json() : null;
     } catch (error) {
         return;
     }
-    if (!estado || codigo !== vinculacionCodigo) {
+    if (!estado) {
         return;
     }
     if (estado.estado === "aprobada") {
+        // El servidor ya consumió el código y esta misma respuesta abrió
+        // la sesión vinculada: se completa recargando aunque el código
+        // haya rotado mientras la consulta viajaba.
+        vinculacionAprobada = true;
         clearInterval(vinculacionTimer);
         clearTimeout(vinculacionRenovacion);
         vinculacionCodigo = null;
         location.reload();
-    } else if (estado.estado === "vencida") {
+        return;
+    }
+    if (estado.estado === "vencida" && codigo === vinculacionCodigo) {
         pedirCodigoVinculacion();
     }
-    // `pendiente`: la siguiente consulta del intervalo vuelve a mirar.
+    // `pendiente` y las respuestas de un código que ya rotó no cambian
+    // nada: la siguiente consulta del intervalo vuelve a mirar.
 }
 
 // true si el QR de vinculación quedó mostrado; false si no se pudo
