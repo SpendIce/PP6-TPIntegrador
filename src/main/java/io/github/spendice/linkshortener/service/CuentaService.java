@@ -38,7 +38,8 @@ import java.util.Optional;
  * success handler de la cadena de seguridad; la sesión actual
  * ({@link #usuarioDeSesion}) alimenta el endpoint {@code GET
  * /api/sesion}; la vinculación por QR (issue #22) son
- * {@link #crearVinculacion()}, {@link #estadoDeVinculacion(String)},
+ * {@link #crearVinculacion()},
+ * {@link #presentarVinculacion(String, Long, boolean)},
  * {@link #aprobarVinculacion(String, Long)} y
  * {@link #consumirVinculacion(String, HttpServletRequest, HttpSession, Duration)}.</p>
  */
@@ -405,26 +406,49 @@ public class CuentaService {
     }
 
     /**
-     * Estado efectivo del código para el dispositivo que aprueba: lee
-     * sin bloquear y nunca consume. Los estados {@code VENCIDA} e
-     * {@code INEXISTENTE} son el rechazo que la página muestra como
-     * «pedí uno nuevo».
+     * Presentación de la confirmación al usuario de la sesión que la
+     * abre: la primera sesión principal que la consulta liga el código a
+     * su usuario en {@code presentado_a} (la primera se queda) y solo él
+     * puede aprobarlo después — a otro usuario la confirmación responde
+     * {@link PresentacionVinculacion#PRESENTADA_A_OTRO} y el POST del
+     * código le sale como a uno inválido. Una sesión vinculada recibe el
+     * estado sin ligar nada: nunca puede aprobar. El bloqueo pesimista
+     * de la fila serializa dos presentaciones simultáneas.
      */
-    @Transactional(readOnly = true)
-    public EstadoVinculacion estadoDeVinculacion(String codigo) {
-        CodigoVinculacion vinculacion = em.find(CodigoVinculacion.class, codigo);
-        if (vinculacion == null) {
-            return EstadoVinculacion.INEXISTENTE;
-        }
-        return estadoEfectivo(vinculacion, clock.instant());
+    public PresentacionVinculacion presentarVinculacion(String codigo, Long usuarioId,
+                                                      boolean sesionPrincipal) {
+        return transacciones.execute(status -> {
+            CodigoVinculacion vinculacion =
+                    em.find(CodigoVinculacion.class, codigo, LockModeType.PESSIMISTIC_WRITE);
+            if (vinculacion == null) {
+                return PresentacionVinculacion.INVALIDO;
+            }
+            EstadoVinculacion estado = estadoEfectivo(vinculacion, clock.instant());
+            if (estado == EstadoVinculacion.VENCIDA) {
+                return PresentacionVinculacion.INVALIDO;
+            }
+            if (estado == EstadoVinculacion.APROBADA || !sesionPrincipal) {
+                return estado == EstadoVinculacion.APROBADA
+                        ? PresentacionVinculacion.APROBADA
+                        : PresentacionVinculacion.PENDIENTE;
+            }
+            if (vinculacion.getPresentadoA() == null) {
+                vinculacion.setPresentadoA(usuarioId);
+            }
+            return usuarioId.equals(vinculacion.getPresentadoA())
+                    ? PresentacionVinculacion.PENDIENTE
+                    : PresentacionVinculacion.PRESENTADA_A_OTRO;
+        });
     }
 
     /**
      * Aprobación desde la sesión principal del usuario: solo un código
-     * pendiente y vigente queda aprobado; cualquier otro estado (vencido,
-     * ya aprobado, ya consumido o inexistente) devuelve {@code false} y
-     * no abre nada. El bloqueo pesimista de la fila serializa dos
-     * aprobaciones simultáneas y la carrera con la consulta que consume.
+     * pendiente y vigente presentado a ese usuario queda aprobado;
+     * cualquier otro estado (vencido, ya aprobado, ya consumido o
+     * inexistente), un código presentado a otro usuario o una aprobación
+     * sin presentación previa devuelven {@code false} y no abren nada.
+     * El bloqueo pesimista de la fila serializa dos aprobaciones
+     * simultáneas y la carrera con la consulta que consume.
      */
     public boolean aprobarVinculacion(String codigo, Long usuarioId) {
         return Boolean.TRUE.equals(transacciones.execute(status -> {
@@ -432,7 +456,8 @@ public class CuentaService {
                     em.find(CodigoVinculacion.class, codigo, LockModeType.PESSIMISTIC_WRITE);
             if (vinculacion == null
                     || estadoEfectivo(vinculacion, clock.instant())
-                            != EstadoVinculacion.PENDIENTE) {
+                            != EstadoVinculacion.PENDIENTE
+                    || !usuarioId.equals(vinculacion.getPresentadoA())) {
                 return false;
             }
             vinculacion.setEstado(CodigoVinculacion.Estado.APROBADA);

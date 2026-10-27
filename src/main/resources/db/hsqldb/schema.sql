@@ -1,4 +1,4 @@
--- Esquema del perfil hsqldb: equivalente a db/migration/V1 a V6 en
+-- Esquema del perfil hsqldb: equivalente a db/migration/V1 a V7 en
 -- dialecto HSQLDB (VARCHAR(8192) en lugar de TEXT, TIMESTAMP en lugar de
 -- TIMESTAMPTZ, LONGVARBINARY en lugar de BYTEA).
 -- El perfil corre sin Flyway, por eso este script lo aplica
@@ -74,16 +74,30 @@ CREATE INDEX IF NOT EXISTS ix_asignacion_personal_usuario_alias
     ON asignacion_personal (usuario_id, alias_personalizado);
 
 -- Codigos de vinculacion por QR (V6): un solo uso, vencen a los 60
--- segundos; el usuario_id es el que aprobo desde su sesion principal.
+-- segundos; el usuario_id es el que aprobo desde su sesion principal y
+-- presentado_a (V7) registra a que usuario se le mostro la confirmacion:
+-- solo el puede aprobarla.
 CREATE TABLE IF NOT EXISTS codigo_vinculacion (
-    codigo     VARCHAR(64) PRIMARY KEY,
-    estado     VARCHAR(16) NOT NULL,
-    creada_en  TIMESTAMP   NOT NULL,
-    vence_en   TIMESTAMP   NOT NULL,
-    usuario_id BIGINT,
+    codigo       VARCHAR(64) PRIMARY KEY,
+    estado       VARCHAR(16) NOT NULL,
+    creada_en    TIMESTAMP   NOT NULL,
+    vence_en     TIMESTAMP   NOT NULL,
+    usuario_id   BIGINT,
+    presentado_a BIGINT,
     CONSTRAINT fk_codigo_vinculacion_usuario
-        FOREIGN KEY (usuario_id) REFERENCES usuario (id)
+        FOREIGN KEY (usuario_id) REFERENCES usuario (id),
+    CONSTRAINT fk_codigo_vinculacion_presentado
+        FOREIGN KEY (presentado_a) REFERENCES usuario (id)
 );
+
+-- La columna y su FK se agregan con ALTER para que tambien apliquen a
+-- bases ya creadas; en bases nuevas ya vienen del CREATE y
+-- continue-on-error omite los ALTER (ADR 0005).
+ALTER TABLE codigo_vinculacion
+    ADD COLUMN presentado_a BIGINT;
+ALTER TABLE codigo_vinculacion
+    ADD CONSTRAINT fk_codigo_vinculacion_presentado
+    FOREIGN KEY (presentado_a) REFERENCES usuario (id);
 
 -- Spring Session JDBC (V3): LONGVARBINARY en lugar de BYTEA.
 CREATE TABLE IF NOT EXISTS spring_session (

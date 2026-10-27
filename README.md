@@ -144,8 +144,10 @@ recorre con `bash scripts/wizard-funnel-google.sh`.
 En una pantalla sin sesión, la web solicita un código de vinculación y
 muestra su QR; se renueva antes de vencer y consulta el estado cada dos
 segundos. Al escanearlo, el dispositivo con sesión principal muestra el
-namespace (o el email) y requiere aprobar explícitamente. La consulta
-siguiente abre una sesión vinculada en la pantalla que espera.
+namespace (o el email) y requiere aprobar explícitamente: el código queda
+ligado al usuario al que se le mostró la confirmación y solo él puede
+aprobarlo. La consulta siguiente abre una sesión vinculada en la pantalla
+que espera.
 
 Las variables se pueden pasar en el entorno del proceso o declarar en un
 archivo `.env` en la raíz (ignorado por git; plantilla en `.env.example`):

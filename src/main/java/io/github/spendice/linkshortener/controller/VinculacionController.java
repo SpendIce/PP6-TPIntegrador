@@ -10,6 +10,7 @@ import io.github.spendice.linkshortener.mappings.Usuario;
 import io.github.spendice.linkshortener.service.CodigoVinculacionCreado;
 import io.github.spendice.linkshortener.service.CuentaService;
 import io.github.spendice.linkshortener.service.EstadoVinculacion;
+import io.github.spendice.linkshortener.service.PresentacionVinculacion;
 import io.github.spendice.linkshortener.service.ResultadoVinculacion;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpSession;
@@ -82,7 +83,10 @@ class VinculacionController {
      * Datos de la página de confirmación para el que aprueba: el estado
      * del código y su usuario (la página muestra el namespace o, si no
      * lo eligió, el email). Exige sesión con usuario: sin ella responde
-     * {@code 401} y la página vuelve a entrar por el login.
+     * {@code 401} y la página vuelve a entrar por el login. La primera
+     * sesión principal que la abre liga el código a su usuario en
+     * {@code presentado_a}: a otra sesión el código le responde el mismo
+     * {@code 404} que a uno inválido y no lo puede aprobar.
      */
     @GetMapping("/api/vinculacion/{codigo}/confirmacion")
     ResponseEntity<?> confirmacion(@PathVariable String codigo, HttpServletRequest request) {
@@ -91,15 +95,18 @@ class VinculacionController {
         if (usuario == null) {
             return sinSesion();
         }
-        EstadoVinculacion estado = cuentas.estadoDeVinculacion(codigo);
-        if (estado == EstadoVinculacion.INEXISTENTE || estado == EstadoVinculacion.VENCIDA) {
+        PresentacionVinculacion presentacion = cuentas.presentarVinculacion(codigo,
+                usuario.getId(),
+                CuentaService.TIPO_PRINCIPAL.equals(CuentaService.tipoDeSesion(sesion)));
+        if (presentacion == PresentacionVinculacion.INVALIDO
+                || presentacion == PresentacionVinculacion.PRESENTADA_A_OTRO) {
             return codigoInvalido();
         }
         String namespace = usuario.getNamespace() == null ? "" : usuario.getNamespace();
         return ResponseEntity.ok()
                 .cacheControl(CacheControl.noStore())
                 .body(new ConfirmacionVinculacionResponse(
-                        estado.name().toLowerCase(Locale.ROOT),
+                        presentacion.name().toLowerCase(Locale.ROOT),
                         new UsuarioSesion(usuario.getEmail(), namespace,
                                 CuentaService.tipoDeSesion(sesion),
                                 namespace.isEmpty()
@@ -109,8 +116,10 @@ class VinculacionController {
     /**
      * Aprobación explícita: la sesión debe ser principal; desde una
      * vinculada se rechaza con {@code NOT_PRINCIPAL_SESSION}. Solo un
-     * código pendiente y vigente queda aprobado; el resto responde el
-     * mismo {@code 404} que un inexistente y no abre ninguna sesión.
+     * código pendiente y vigente presentado a esta sesión queda
+     * aprobado: presentado a otra, sin presentación previa, vencido,
+     * usado o inexistente responde el mismo {@code 404} y no abre
+     * ninguna sesión.
      */
     @PostMapping("/api/vinculacion/{codigo}/aprobar")
     ResponseEntity<?> aprobar(@PathVariable String codigo, HttpServletRequest request) {

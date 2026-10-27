@@ -91,13 +91,16 @@ El contrato REST de creación y resolución está en [openapi.yaml](../openapi.y
 - `GET /api/vinculacion/{codigo}/confirmacion` alimenta la página de
   confirmación del que aprueba: exige sesión con usuario (`401` con
   `NOT_AUTHENTICATED` sin ella) y devuelve `estado` y `usuario` (la
-  página muestra el namespace o, si está vacío, el email). Un código
-  vencido, usado o inexistente responde `404` con `LINK_CODE_INVALID`.
+  página muestra el namespace o, si está vacío, el email). La primera
+  sesión principal que la consulta liga el código a su usuario en
+  `presentado_a`: a otra sesión el código le responde `404` con
+  `LINK_CODE_INVALID`, igual que uno vencido, usado o inexistente.
 - `POST /api/vinculacion/{codigo}/aprobar` es la aprobación explícita:
   exige sesión y el token CSRF, la sesión debe ser principal (una
   vinculada recibe `403` con `NOT_PRINCIPAL_SESSION`) y solo un código
-  `pendiente` vigente queda aprobado (los demás estados responden `404`
-  con `LINK_CODE_INVALID`). Devuelve `200` con `{"estado": "aprobada"}`.
+  `pendiente` vigente presentado a esa sesión queda aprobado — presentado
+  a otro usuario, sin presentación previa y los demás estados responden
+  `404` con `LINK_CODE_INVALID`. Devuelve `200` con `{"estado": "aprobada"}`.
 - `GET /vincular/{codigo}` sirve la página de confirmación: es la única
   ruta que exige sesión por la cadena de seguridad; sin ella redirige al
   login con Google y la navegación vuelve a la misma dirección al
@@ -286,9 +289,15 @@ desde la sesión principal del celular, al estilo de WhatsApp:
   exige sesión con usuario y el tipo `principal` del atributo
   `sesionTipo` (una vinculada recibe `NOT_PRINCIPAL_SESSION`); la
   confirmación muestra el namespace o el email y solo el botón aprueba.
-  `CuentaService.aprobarVinculacion` bloquea la fila del mismo modo y
-  solo un `PENDIENTE` vigente pasa a `APROBADA` con el `usuario_id` del
-  que aprobó: dos aprobaciones simultáneas o una carrera con el consumo
+  `CuentaService.presentarVinculacion` corre al abrirse la confirmación
+  (`GET .../confirmacion`): la primera sesión principal liga el código a
+  su usuario en `presentado_a` bajo el bloqueo pesimista de la fila, y a
+  otra sesión principal el código le responde como a uno inválido —ni lo
+  ve ni lo puede aprobar. `CuentaService.aprobarVinculacion` bloquea la
+  fila del mismo modo y solo un `PENDIENTE` vigente cuyo `presentado_a`
+  es el usuario de la sesión pasa a `APROBADA` con su `usuario_id`: una
+  aprobación sin presentación previa o de otro usuario sale con `false`
+  (`404`), y dos aprobaciones simultáneas o una carrera con el consumo
   quedan serializadas por el bloqueo.
 - **La sesión vinculada** la materializa la consulta que consumió el
   código en el dispositivo que esperaba, no el que aprobó: registra
@@ -441,9 +450,12 @@ usuario (ver «Coordinación transaccional»).
 La migración `V6__codigo_vinculacion.sql` (issue #22) agrega
 `codigo_vinculacion (codigo VARCHAR(64) PK, estado VARCHAR(16) NOT NULL,
 creada_en TIMESTAMPTZ NOT NULL, vence_en TIMESTAMPTZ NOT NULL, usuario_id
-BIGINT FK -> usuario.id)`. El `codigo` es la clave (256 bits aleatorios,
-inadivinable); `estado` recorre `PENDIENTE`, `APROBADA` y `CONSUMIDA`, y
-`usuario_id` queda `NULL` hasta que una sesión principal lo aprueba. El
+BIGINT FK -> usuario.id)`, y `V7__codigo_vinculacion_presentado_a.sql`
+suma `presentado_a BIGINT FK -> usuario.id`. El `codigo` es la clave
+(256 bits aleatorios, inadivinable); `estado` recorre `PENDIENTE`,
+`APROBADA` y `CONSUMIDA`; `presentado_a` queda `NULL` hasta que la
+primera sesión principal abre la confirmación —es quien luego puede
+aprobarla— y `usuario_id` queda `NULL` hasta que lo aprueba. El
 vencimiento se evalúa al consultar contra `vence_en`, como las
 asignaciones: no hay tarea de limpieza.
 
@@ -674,15 +686,15 @@ issue #15 (ADR 0006):
   refresco del email), `usuarioDeSesion` (usuario de la sesión actual),
   `elegirNamespace` (validación, unicidad y persistencia del namespace),
   `sugerenciaDeNamespace` (adaptación de la parte local del email) y los
-  de la vinculación por QR: `crearVinculacion`, `estadoDeVinculacion`,
+  de la vinculación por QR: `crearVinculacion`, `presentarVinculacion`,
   `aprobarVinculacion` y `consumirVinculacion`.
   La inyección es `@Autowired` en campos, incluido el `EntityManager`.
   También viven acá el record de resultado
   `EnlaceCreado`, `InvalidDestinationException`,
   `InvalidNamespaceException` e `InvalidAliasPersonalizadoException`,
   cuyos `Reason` son los contratos de errores de la API, y los de la
-  vinculación: `CodigoVinculacionCreado`, `ResultadoVinculacion` y el
-  enum `EstadoVinculacion`.
+  vinculación: `CodigoVinculacionCreado`, `ResultadoVinculacion` y los
+  enums `EstadoVinculacion` y `PresentacionVinculacion`.
 - `mappings`: entities JPA públicas `Alias`, `Asignacion`,
   `AsignacionPersonal`, `CodigoVinculacion`, `GeneradorAlias` y
   `Usuario`, el modelo del
@@ -863,7 +875,10 @@ usuario que aprobó, `tipo` `vinculada` y la inactividad `PT12H` leída de
 `spring_session`, el código de un solo uso que repetir responde
 `vencida`, el código vencido por `MutableClock` o inexistente que no
 abre ninguna sesión, la aprobación rechazada desde una sesión vinculada
-(`NOT_PRINCIPAL_SESSION`) y sin sesión (`NOT_AUTHENTICATED`), la página
+(`NOT_PRINCIPAL_SESSION`) y sin sesión (`NOT_AUTHENTICATED`), la
+ligadura del código al usuario al que se le presentó la confirmación
+(otra sesión principal no lo ve ni lo aprueba, y sin presentación
+previa el POST se rechaza), la página
 `/vincular/{codigo}` que redirige al login y vuelve tras completarlo, y
 el namespace o el email que muestra la confirmación.
 `VinculacionQrHsqldbTest` recorre el mismo recorrido sobre el perfil

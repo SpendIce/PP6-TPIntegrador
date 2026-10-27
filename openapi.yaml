@@ -602,7 +602,10 @@ paths:
         aprobaría. La confirmación muestra el namespace del usuario o, si
         todavía no lo eligió, su email. Exige una sesión con usuario: sin
         ella responde `401` y la página redirige al login con Google,
-        que vuelve a la confirmación al completarse.
+        que vuelve a la confirmación al completarse. La primera sesión
+        principal que la consulta liga el código a su usuario: a otra
+        sesión le responde `404` con `LINK_CODE_INVALID` y esa sesión
+        tampoco lo puede aprobar.
       operationId: confirmacionVinculacion
       parameters:
         - name: codigo
@@ -663,7 +666,9 @@ paths:
                     error: NOT_AUTHENTICATED
                     message: "Iniciá sesión con Google para aprobar una vinculación."
         '404':
-          description: El código no existe, venció o ya se usó.
+          description: >
+            El código no existe, venció, ya se usó o se presentó a otra
+            sesión.
           headers:
             Cache-Control:
               schema:
@@ -684,12 +689,14 @@ paths:
       description: >
         Confirmación explícita de la vinculación (issue #22): la sesión
         del que aprueba debe ser principal; una sesión vinculada recibe
-        `403` con `NOT_PRINCIPAL_SESSION`. Solo un código `pendiente` y
-        vigente se puede aprobar: usado, vencido o inexistente responde
-        `404` con `LINK_CODE_INVALID` y no abre ninguna sesión (la sesión
-        vinculada la abre el dispositivo que espera en su siguiente
-        consulta del estado). Exige el token CSRF del doble envío, como
-        todo POST.
+        `403` con `NOT_PRINCIPAL_SESSION`. Solo un código `pendiente`,
+        vigente y presentado a esta sesión (la consulta de la
+        confirmación lo ligó a su usuario) se puede aprobar: usado,
+        vencido, inexistente, presentado a otro usuario o sin
+        presentación previa responde `404` con `LINK_CODE_INVALID` y no
+        abre ninguna sesión (la sesión vinculada la abre el dispositivo
+        que espera en su siguiente consulta del estado). Exige el token
+        CSRF del doble envío, como todo POST.
       operationId: aprobarVinculacion
       parameters:
         - name: codigo
@@ -750,7 +757,9 @@ paths:
                     error: NOT_PRINCIPAL_SESSION
                     message: "Solo una sesión principal puede aprobar una vinculación por QR."
         '404':
-          description: El código no existe, venció o ya se usó.
+          description: >
+            El código no existe, venció, ya se usó o no se presentó a
+            esta sesión.
           headers:
             Cache-Control:
               schema:
@@ -777,7 +786,8 @@ paths:
         eligió, su email, y el botón que envía
         `POST /api/vinculacion/{codigo}/aprobar`. Desde una sesión
         vinculada la página informa que no puede aprobar otra vinculación,
-        y con un código vencido o inexistente pide uno nuevo.
+        y con un código vencido, inexistente o presentado a otra sesión
+        pide uno nuevo.
       operationId: paginaVinculacion
       parameters:
         - name: codigo

@@ -253,10 +253,14 @@ class VinculacionQrHsqldbTest {
         return codigo;
     }
 
-    /** La aprobación sembrada: la fila queda como la deja una principal. */
+    /**
+     * La aprobación sembrada: la fila queda como la deja una principal —
+     * aprobada, con el usuario que la aprobó y al que se le presentó la
+     * confirmación (la aprobación solo la puede hacer ese usuario).
+     */
     private void aprobarSembrado(String codigo, Long usuarioId) {
-        db.update("UPDATE codigo_vinculacion SET estado = 'APROBADA', usuario_id = ?"
-                + " WHERE codigo = ?", usuarioId, codigo);
+        db.update("UPDATE codigo_vinculacion SET estado = 'APROBADA', usuario_id = ?,"
+                + " presentado_a = ? WHERE codigo = ?", usuarioId, usuarioId, codigo);
     }
 
     private Long sembrarUsuario(String googleSub, String email) {

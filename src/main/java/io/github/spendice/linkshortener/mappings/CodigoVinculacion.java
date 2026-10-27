@@ -17,7 +17,10 @@ import java.time.Instant;
  * limpieza.
  *
  * <p>El ciclo es {@code PENDIENTE} → {@code APROBADA} → {@code
- * CONSUMIDA}: la sesión principal que lo aprueba queda en {@code
+ * CONSUMIDA}: la primera sesión principal que abre la confirmación liga
+ * el código a su usuario en {@code presentadoA}, y solo ese usuario
+ * puede aprobarlo (otra sesión principal o una aprobación sin
+ * presentación previa se rechazan); el que aprobó queda en {@code
  * usuarioId}, y la consulta del dispositivo que espera lo consume y abre
  * la sesión vinculada. Un código vencido o consumido no abre ninguna
  * sesión.</p>
@@ -50,6 +53,14 @@ public class CodigoVinculacion {
     /** Usuario que aprobó desde su sesión principal; vacío en pendiente. */
     @Column(name = "usuario_id")
     private Long usuarioId;
+
+    /**
+     * Usuario al que se presentó la confirmación: la primera sesión
+     * principal que la abre lo liga acá y solo él puede aprobar el
+     * código. Vacío hasta la primera presentación.
+     */
+    @Column(name = "presentado_a")
+    private Long presentadoA;
 
     protected CodigoVinculacion() {
     }
@@ -87,5 +98,13 @@ public class CodigoVinculacion {
 
     public void setUsuarioId(Long usuarioId) {
         this.usuarioId = usuarioId;
+    }
+
+    public Long getPresentadoA() {
+        return presentadoA;
+    }
+
+    public void setPresentadoA(Long presentadoA) {
+        this.presentadoA = presentadoA;
     }
 }

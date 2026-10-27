@@ -120,6 +120,7 @@ class VinculacionQrHttpTest extends HttpApiFixture {
         HttpClient computadora = Dispositivos.nuevo();
         HttpClient celular = sesionDe(SUB_JUAN, EMAIL_JUAN);
         String codigo = pedirCodigoVinculacion(computadora);
+        verConfirmacion(celular, codigo);
         Dispositivos.postVacio(celular, baseUrl(), "/api/vinculacion/" + codigo + "/aprobar");
         Dispositivos.get(computadora, baseUrl(), "/api/vinculacion/" + codigo);
         assertThat(Dispositivos.cookieDeSesion(computadora)).isNotNull();
@@ -158,10 +159,60 @@ class VinculacionQrHttpTest extends HttpApiFixture {
     }
 
     @Test
+    void laAprobacionLaPuedeHacerSoloElUsuarioAlQueSeLePresento() throws Exception {
+        HttpClient computadora = Dispositivos.nuevo();
+        HttpClient juan = sesionDe(SUB_JUAN, EMAIL_JUAN);
+        HttpClient ana = sesionDe("google-sub-vinculacion-ana", "ana@ejemplo.com");
+        String codigo = pedirCodigoVinculacion(computadora);
+
+        // Juan abre la confirmación: el código queda presentado a él.
+        assertThat(verConfirmacion(juan, codigo).get("usuario").get("email").asText())
+                .isEqualTo(EMAIL_JUAN);
+
+        // Ana, con otra sesión principal, no puede ni ver ni aprobar el
+        // código presentado a Juan: le responde como a uno inválido.
+        assertError(Dispositivos.get(ana, baseUrl(), "/api/vinculacion/" + codigo + "/confirmacion"),
+                404, "LINK_CODE_INVALID");
+        assertError(Dispositivos.postVacio(ana, baseUrl(), "/api/vinculacion/" + codigo + "/aprobar"),
+                404, "LINK_CODE_INVALID");
+        assertThat(estadoDe(computadora, codigo).get("estado").asText()).isEqualTo("pendiente");
+
+        // Juan, al que se le mostró el código, sí lo aprueba y la
+        // computadora queda con la sesión vinculada de él.
+        assertThat(Dispositivos.postVacio(juan, baseUrl(), "/api/vinculacion/" + codigo + "/aprobar")
+                .statusCode()).isEqualTo(200);
+        assertThat(estadoDe(computadora, codigo).get("estado").asText()).isEqualTo("aprobada");
+        JsonNode usuario = json.readTree(
+                Dispositivos.get(computadora, baseUrl(), "/api/sesion").body()).get("usuario");
+        assertThat(usuario.get("email").asText()).isEqualTo(EMAIL_JUAN);
+        assertThat(usuario.get("tipo").asText()).isEqualTo("vinculada");
+    }
+
+    @Test
+    void unaAprobacionSinConfirmacionPreviaSeRechaza() throws Exception {
+        HttpClient computadora = Dispositivos.nuevo();
+        HttpClient juan = sesionDe(SUB_JUAN, EMAIL_JUAN);
+        String codigo = pedirCodigoVinculacion(computadora);
+
+        // El POST sin que la confirmación se haya mostrado a Juan no
+        // liga aprobación alguna: el código sigue pendiente.
+        assertError(Dispositivos.postVacio(juan, baseUrl(), "/api/vinculacion/" + codigo + "/aprobar"),
+                404, "LINK_CODE_INVALID");
+        assertThat(estadoDe(computadora, codigo).get("estado").asText()).isEqualTo("pendiente");
+        assertThat(Dispositivos.cookieDeSesion(computadora)).isNull();
+
+        // Una vez que la confirmación se le presentó, sí aprueba.
+        verConfirmacion(juan, codigo);
+        assertThat(Dispositivos.postVacio(juan, baseUrl(), "/api/vinculacion/" + codigo + "/aprobar")
+                .statusCode()).isEqualTo(200);
+    }
+
+    @Test
     void unCodigoAprobadoQueVencioAntesDeLaConsultaNoAbreSesion() throws Exception {
         HttpClient computadora = Dispositivos.nuevo();
         HttpClient celular = sesionDe(SUB_JUAN, EMAIL_JUAN);
         String codigo = pedirCodigoVinculacion(computadora);
+        verConfirmacion(celular, codigo);
         Dispositivos.postVacio(celular, baseUrl(), "/api/vinculacion/" + codigo + "/aprobar");
 
         // La aprobación quedó registrada, pero el código venció antes de
@@ -176,6 +227,7 @@ class VinculacionQrHttpTest extends HttpApiFixture {
         HttpClient computadora = Dispositivos.nuevo();
         HttpClient celular = sesionDe(SUB_JUAN, EMAIL_JUAN);
         String codigo = pedirCodigoVinculacion(computadora);
+        verConfirmacion(celular, codigo);
         Dispositivos.postVacio(celular, baseUrl(), "/api/vinculacion/" + codigo + "/aprobar");
         db.execute("CREATE FUNCTION rechazar_atributo_sesion() RETURNS trigger AS $$"
                 + "BEGIN RAISE EXCEPTION 'fallo de persistencia simulado'; END;"
@@ -238,6 +290,7 @@ class VinculacionQrHttpTest extends HttpApiFixture {
         HttpClient computadora = Dispositivos.nuevo();
         HttpClient celular = sesionDe(SUB_JUAN, EMAIL_JUAN);
         String primerCodigo = pedirCodigoVinculacion(computadora);
+        verConfirmacion(celular, primerCodigo);
         Dispositivos.postVacio(celular, baseUrl(), "/api/vinculacion/" + primerCodigo + "/aprobar");
         Dispositivos.get(computadora, baseUrl(), "/api/vinculacion/" + primerCodigo);
         assertThat(Dispositivos.cookieDeSesion(computadora)).isNotNull();
@@ -358,6 +411,18 @@ class VinculacionQrHttpTest extends HttpApiFixture {
         assertThat(Instant.parse(body.get("expiresAt").asText()))
                 .isEqualTo(clock.instant().plus(CODIGO_TTL));
         return codigo;
+    }
+
+    /**
+     * La confirmación vista por el dispositivo que aprueba: 200 con el
+     * cuerpo {@code {estado, usuario}} y la ligadura del código a su
+     * usuario, como hace la página al cargar.
+     */
+    private JsonNode verConfirmacion(HttpClient dispositivo, String codigo) throws Exception {
+        HttpResponse<String> respuesta = Dispositivos.get(dispositivo, baseUrl(),
+                "/api/vinculacion/" + codigo + "/confirmacion");
+        assertThat(respuesta.statusCode()).isEqualTo(200);
+        return json.readTree(respuesta.body());
     }
 
     /** Consulta del estado por el dispositivo que espera: 200 con cuerpo. */
