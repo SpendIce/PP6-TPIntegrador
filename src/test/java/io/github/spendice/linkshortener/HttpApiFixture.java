@@ -11,8 +11,6 @@ import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.testcontainers.containers.PostgreSQLContainer;
 
-import java.net.CookieManager;
-import java.net.CookiePolicy;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -103,10 +101,7 @@ abstract class HttpApiFixture {
      * usa para recorrer el flujo CSRF con cookies reales.
      */
     protected HttpClient nuevoClienteDispositivo() {
-        return HttpClient.newBuilder()
-                .followRedirects(HttpClient.Redirect.NEVER)
-                .cookieHandler(new CookieManager(null, CookiePolicy.ACCEPT_ALL))
-                .build();
+        return Dispositivos.nuevo();
     }
 
     @LocalServerPort

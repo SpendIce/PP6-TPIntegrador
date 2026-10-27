@@ -337,3 +337,100 @@ test("una consulta vencida durante la renovación no duplica el pedido de códig
     assert.equal(pedidos.total, 2,
             "la consulta vencida reemplaza el código y la renovación en espera no pide otro");
 });
+
+/**
+ * Resolver con el alta del código retenida: cuando `diferida.retener`
+ * es true cada POST devuelve una promesa que la prueba libera con
+ * `diferida.liberar()`, para ensayar qué pasa con el QR mostrado
+ * mientras la renovación espera el reemplazo.
+ */
+function resolverConAltaRetenida(pedidos, consultas, diferida, responderEstado) {
+    const alta = () => {
+        pedidos.total++;
+        const codigo = "COD" + pedidos.total;
+        return respuesta(201, {
+            codigo,
+            confirmacionUrl: "https://demo.test/vincular/" + codigo,
+            expiresAt: new Date(Date.now() + TTL_MS).toISOString()
+        }, { date: new Date(Date.now()).toUTCString() });
+    };
+    return (url, opciones = {}) => {
+        if (url === "/api/sesion") return respuesta(200, { usuario: null });
+        if (url === "/api/csrf") return respuesta(200, { token: "csrf-t" });
+        if (url === "/api/vinculacion" && opciones.method === "POST") {
+            if (diferida.retener) {
+                return new Promise((resolve) => {
+                    diferida.liberar = () => resolve(alta());
+                });
+            }
+            return alta();
+        }
+        const estado = url.match(/^\/api\/vinculacion\/([A-Z0-9]+)$/);
+        if (estado) {
+            consultas.push(estado[1]);
+            return responderEstado(estado[1], consultas.length);
+        }
+        throw new Error("llamada no esperada: " + url);
+    };
+}
+
+test("el QR mostrado sigue consultándose mientras el reemplazo está en vuelo", async (t) => {
+    const pedidos = { total: 0 };
+    const consultas = [];
+    const diferida = {};
+    instalarEntorno(t, resolverConAltaRetenida(pedidos, consultas, diferida,
+            () => respuesta(200, { estado: "pendiente" })));
+
+    require(APP);
+    await drenar();
+    assert.equal(pedidos.total, 1);
+    diferida.retener = true;
+
+    // La renovación sale a los 55 s y el pedido del código nuevo queda
+    // retenido: la renovación tarda más que un intervalo de consulta.
+    t.mock.timers.tick(55_000);
+    await drenar();
+    const consultasAlRenovar = consultas.length;
+
+    t.mock.timers.tick(4_000);
+    await drenar();
+    assert.ok(consultas.length > consultasAlRenovar,
+            "el código del QR mostrado no queda sin consultas con el reemplazo en vuelo");
+    assert.equal(consultas.at(-1), "COD1");
+    assert.equal(pedidos.total, 1, "el reemplazo todavía no llegó");
+
+    // Cuando llega, rota y las consultas pasan al código nuevo.
+    diferida.liberar();
+    await drenar();
+    assert.equal(pedidos.total, 2);
+    t.mock.timers.tick(2000);
+    await drenar();
+    assert.equal(consultas.at(-1), "COD2",
+            "con el QR nuevo en pantalla la consulta usa su código");
+});
+
+test("una aprobación del QR mostrado se consume con el reemplazo en vuelo", async (t) => {
+    // La renovación tarda más que un intervalo y en ese hueco se aprueba
+    // el QR que sigue en pantalla: su consulta tiene que encontrarla y
+    // abrir la sesión, no esperar a que se escanee el QR nuevo.
+    const pedidos = { total: 0 };
+    const diferida = {};
+    const aprobado = { si: false };
+    const { recargas } = instalarEntorno(t,
+            resolverConAltaRetenida(pedidos, [], diferida,
+                    () => respuesta(200, { estado: aprobado.si ? "aprobada" : "pendiente" })));
+
+    require(APP);
+    await drenar();
+    diferida.retener = true;
+
+    t.mock.timers.tick(55_000);
+    await drenar();
+    assert.equal(pedidos.total, 1, "el reemplazo quedó retenido");
+
+    aprobado.si = true;
+    t.mock.timers.tick(2000);
+    await drenar();
+    assert.equal(recargas.total, 1,
+            "la consulta del código mostrado consumió la aprobación y recarga");
+});

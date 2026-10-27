@@ -239,7 +239,9 @@ function pngDeQr(texto, mensajeError) {
 // en el servidor: recargar deja a la web con ella. Por eso la renovación
 // espera a la consulta en vuelo antes de reemplazar el código —si trajo
 // la aprobación, el código se preserva— y una aprobación se honra aunque
-// llegue con el código ya rotado.
+// llegue con el código ya rotado. Mientras el reemplazo se pide, el QR
+// que sigue en pantalla conserva sus consultas: nunca se muestra un
+// código cuya aprobación no pueda consumirse.
 // ---------------------------------------------------------------------
 
 const VINCULACION_CONSULTA_MS = 2000;
@@ -270,9 +272,9 @@ function esperar(ms) {
 }
 
 async function pedirCodigoVinculacion() {
-    // Los timers del código anterior se cancelan antes del await: las
-    // consultas que sigan consultan el código vigente, nunca uno viejo.
-    clearInterval(vinculacionTimer);
+    // Solo la renovación programada se frena: el código que sigue en el
+    // QR conserva sus consultas mientras se pide el reemplazo, porque su
+    // aprobación todavía puede abrir la sesión.
     clearTimeout(vinculacionRenovacion);
     const generacion = ++vinculacionGeneracion;
     if (vinculacionAprobada) {
@@ -291,7 +293,6 @@ async function pedirCodigoVinculacion() {
             return;
         }
     }
-    vinculacionCodigo = null;
 
     let creado;
     let alta = null;
@@ -313,6 +314,7 @@ async function pedirCodigoVinculacion() {
         if (vinculacionAprobada || generacion !== vinculacionGeneracion) {
             return;
         }
+        // El código vigente sigue consultándose durante el reintento.
         vinculacionEstado.textContent =
                 "No se pudo pedir el código de vinculación; reintentá.";
         vinculacionRenovacion = setTimeout(pedirCodigoVinculacion,
@@ -325,17 +327,20 @@ async function pedirCodigoVinculacion() {
         return;
     }
 
-    vinculacionCodigo = creado.codigo;
     if (!renderQrVinculacion(creado.confirmacionUrl)) {
-        // Sin QR no hay cómo aprobar este código: consultarlo es trabajo
-        // perdido. Se informa y se reintenta con un código nuevo.
-        vinculacionCodigo = null;
+        // Sin QR nuevo no hay cómo aprobar este código, pero el anterior
+        // sigue vigente con sus consultas: se informa y se reintenta.
         vinculacionEstado.textContent =
                 "No se pudo generar el QR de vinculación; reintentando.";
         vinculacionRenovacion = setTimeout(pedirCodigoVinculacion,
                 VINCULACION_RENOVACION_MS);
         return;
     }
+
+    // Recién con el QR nuevo en pantalla el código anterior deja de
+    // consultarse y pasa a ser el vigente.
+    clearInterval(vinculacionTimer);
+    vinculacionCodigo = creado.codigo;
     vinculacionEstado.textContent = "";
 
     vinculacionTimer = setInterval(

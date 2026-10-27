@@ -460,9 +460,12 @@ asignaciones: no hay tarea de limpieza.
 
 El perfil `hsqldb` traduce esas tablas a mano en
 `db/hsqldb/schema.sql` (mismos nombres y columnas; `BYTEA` se vuelve
-`LONGVARBINARY`), como manda el ADR 0005. La restricción del namespace se
-agrega con un `ALTER` tolerado por `continue-on-error`, para que aplique
-tanto a bases nuevas como a las que ya existían.
+`LONGVARBINARY`), como manda el ADR 0005. Lo que el `CREATE TABLE IF NOT
+EXISTS` no alcanza a cubrir —la restricción única del namespace, la FK
+cíclica de `asignacion` y el `presentado_a` de V7— queda en `ALTER`s con
+`IF NOT EXISTS`: aplican una sola vez en bases nuevas y en las ya
+creadas, y el script completo es idempotente, así que un error de
+inicialización aborta el arranque en vez de quedar oculto.
 
 ## Coordinación transaccional
 
