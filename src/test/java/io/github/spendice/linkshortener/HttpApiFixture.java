@@ -123,7 +123,8 @@ abstract class HttpApiFixture {
         // todas las suites que comparten el contenedor. Usuarios y
         // sesiones persistidas (issue #19) también se limpian.
         db.execute("TRUNCATE TABLE alias, asignacion, asignacion_personal, usuario,"
-                + " spring_session, spring_session_attributes RESTART IDENTITY");
+                + " codigo_vinculacion, spring_session, spring_session_attributes"
+                + " RESTART IDENTITY");
         db.update("UPDATE generador_alias SET proximo_indice = 0");
     }
 
