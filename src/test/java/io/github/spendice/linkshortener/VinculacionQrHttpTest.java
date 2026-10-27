@@ -297,8 +297,10 @@ class VinculacionQrHttpTest {
         HttpResponse<String> vuelta = GoogleSimulado.login(celular, baseUrl(),
                 SUB_JUAN, EMAIL_JUAN);
         assertThat(vuelta.statusCode()).isEqualTo(302);
+        // Spring agrega `?continue` al request cacheado y lo reinyecta en la
+        // vuelta: la dirección sigue siendo la confirmación del código.
         assertThat(vuelta.headers().firstValue("Location").orElse(""))
-                .endsWith("/vincular/" + codigo);
+                .contains("/vincular/" + codigo);
         assertThat(Dispositivos.get(celular, baseUrl(), "/vincular/" + codigo).statusCode()).isEqualTo(200);
     }
 
