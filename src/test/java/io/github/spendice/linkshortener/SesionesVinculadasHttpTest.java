@@ -34,21 +34,33 @@ class SesionesVinculadasHttpTest extends HttpApiFixture {
     void sesionPrincipalCierraSoloLasVinculadasDeSuUsuario() throws Exception {
         HttpClient principal = nuevoClienteDispositivo();
         GoogleSimulado.login(principal, baseUrl(), SUB_JUAN, EMAIL_JUAN);
-        HttpClient vinculada = sesionVinculadaDe(SUB_JUAN);
-        HttpClient otroUsuario = nuevoClienteDispositivo();
-        GoogleSimulado.login(otroUsuario, baseUrl(), SUB_PEDRO, EMAIL_PEDRO);
+        HttpClient vinculadaA = sesionVinculadaDe(SUB_JUAN);
+        HttpClient vinculadaB = sesionVinculadaDe(SUB_JUAN);
+        HttpClient otroPrincipal = nuevoClienteDispositivo();
+        GoogleSimulado.login(otroPrincipal, baseUrl(), SUB_PEDRO, EMAIL_PEDRO);
+        HttpClient vinculadaAjena = sesionVinculadaDe(SUB_PEDRO);
 
-        HttpResponse<String> cierreVinculado = cerrarSesionesVinculadas(vinculada);
+        HttpResponse<String> cierreVinculado = cerrarSesionesVinculadas(vinculadaA);
         assertError(cierreVinculado, 403, "SESSION_NOT_PRIMARY");
-        assertThat(get(vinculada, "/api/sesion").body()).contains("vinculada");
+        assertThat(get(vinculadaA, "/api/sesion").body()).contains("vinculada");
 
         HttpResponse<String> cierre = cerrarSesionesVinculadas(principal);
 
         assertThat(cierre.statusCode()).isEqualTo(204);
         assertThat(cierre.body()).isEmpty();
         assertThat(get(principal, "/api/sesion").body()).contains(EMAIL_JUAN);
-        assertThat(get(vinculada, "/api/sesion").body()).contains("\"usuario\":null");
-        assertThat(get(otroUsuario, "/api/sesion").body()).contains(EMAIL_PEDRO);
+        assertThat(get(vinculadaA, "/api/sesion").body()).contains("\"usuario\":null");
+        assertThat(get(vinculadaB, "/api/sesion").body()).contains("\"usuario\":null");
+        assertThat(get(otroPrincipal, "/api/sesion").body()).contains(EMAIL_PEDRO);
+        assertThat(get(vinculadaAjena, "/api/sesion").body())
+                .contains(EMAIL_PEDRO).contains("vinculada");
+    }
+
+    @Test
+    void cerrarSinSesionRespondeNoAutenticado() throws Exception {
+        HttpResponse<String> cierre = cerrarSesionesVinculadas(nuevoClienteDispositivo());
+
+        assertError(cierre, 401, "NOT_AUTHENTICATED");
     }
 
     @Test
