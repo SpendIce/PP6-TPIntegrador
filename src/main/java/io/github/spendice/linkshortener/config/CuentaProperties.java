@@ -17,6 +17,11 @@ import java.util.Locale;
  *   <li>{@code main-session-idle-timeout}: inactividad máxima que se
  *   graba en cada sesión principal al iniciar sesión con Google
  *   ({@code MAIN_SESSION_IDLE_TIMEOUT}, {@code P30D} por defecto).</li>
+ *   <li>{@code linked-session-idle-timeout}: inactividad máxima que se
+ *   graba en cada sesión vinculada al abrirla por la vinculación por QR
+ *   ({@code LINKED_SESSION_IDLE_TIMEOUT}, {@code PT12H} por defecto).</li>
+ *   <li>{@code link-code-ttl}: vigencia de cada código de vinculación
+ *   ({@code LINK_CODE_TTL}, {@code PT60S} por defecto).</li>
  *   <li>{@code namespace-reserved-names}: nombres que ningún usuario
  *   puede elegir como namespace porque chocan con rutas del sistema
  *   ({@code NAMESPACE_RESERVED_NAMES}, {@code api,login,logout,vincular,oauth2,error}
@@ -25,28 +30,38 @@ import java.util.Locale;
  */
 @ConfigurationProperties(prefix = "cuenta")
 public record CuentaProperties(Duration mainSessionIdleTimeout,
-                               List<String> namespaceReservedNames) {
+                               List<String> namespaceReservedNames,
+                               Duration linkedSessionIdleTimeout,
+                               Duration linkCodeTtl) {
+
+    /**
+     * TTL mínimo del código: el cliente web consulta el estado cada 2 s y
+     * agenda la renovación con un piso de una consulta más 500 ms de margen
+     * ({@code vinculacion-timers.js}), así que un código tiene que vivir
+     * más que ese piso o la primera consulta nunca corre y ninguna
+     * aprobación llega a materializarse. Cinco segundos dejan dos ciclos
+     * completos aunque la respuesta tarde en llegar.
+     */
+    private static final Duration TTL_MINIMO = Duration.ofSeconds(5);
 
     public CuentaProperties {
-        if (mainSessionIdleTimeout == null) {
+        mainSessionIdleTimeout = validarDuracion(
+                "cuenta.main-session-idle-timeout", "MAIN_SESSION_IDLE_TIMEOUT",
+                mainSessionIdleTimeout, "P30D");
+        linkedSessionIdleTimeout = validarDuracion(
+                "cuenta.linked-session-idle-timeout", "LINKED_SESSION_IDLE_TIMEOUT",
+                linkedSessionIdleTimeout, "PT12H");
+        linkCodeTtl = validarDuracion(
+                "cuenta.link-code-ttl", "LINK_CODE_TTL",
+                linkCodeTtl, "PT60S");
+        // Con un TTL debajo del mínimo el código vence antes de que la web
+        // pueda consultar su estado una vez: se rechaza en el arranque en
+        // vez de dejar una pantalla que nunca completa la vinculación.
+        if (linkCodeTtl.compareTo(TTL_MINIMO) < 0) {
             throw new IllegalArgumentException(
-                    "cuenta.main-session-idle-timeout es obligatoria"
-                            + " (MAIN_SESSION_IDLE_TIMEOUT, p. ej. P30D)");
-        }
-        if (mainSessionIdleTimeout.compareTo(Duration.ZERO) <= 0) {
-            throw new IllegalArgumentException(
-                    "cuenta.main-session-idle-timeout debe ser positiva y se recibió "
-                            + mainSessionIdleTimeout);
-        }
-        // La sesión guarda la inactividad en segundos enteros: un valor que
-        // trunque a 0 vence al instante y uno que desborde un int pierde el
-        // vencimiento. Se rechaza en el arranque en vez de corromper la sesión.
-        long segundos = mainSessionIdleTimeout.getSeconds();
-        if (segundos < 1 || segundos > Integer.MAX_VALUE) {
-            throw new IllegalArgumentException(
-                    "cuenta.main-session-idle-timeout debe durar entre 1 segundo y "
-                            + Integer.MAX_VALUE + " segundos y se recibió "
-                            + mainSessionIdleTimeout);
+                    "cuenta.link-code-ttl debe durar al menos " + TTL_MINIMO.getSeconds()
+                            + " segundos (el cliente consulta el estado cada 2 s)"
+                            + " y se recibió " + linkCodeTtl);
         }
         if (namespaceReservedNames == null || namespaceReservedNames.isEmpty()) {
             throw new IllegalArgumentException(
@@ -65,5 +80,31 @@ public record CuentaProperties(Duration mainSessionIdleTimeout,
                     "cuenta.namespace-reserved-names no puede quedar vacía"
                             + " (NAMESPACE_RESERVED_NAMES)");
         }
+    }
+
+    /**
+     * Las duraciones del área se graban en segundos enteros (la sesión en
+     * {@code max_inactive_interval}; el código compara instantes): un
+     * valor que trunque a 0 vence al instante y uno que desborde un
+     * {@code int} pierde el vencimiento. Se rechaza en el arranque en vez
+     * de corromper la sesión o el código.
+     */
+    private static Duration validarDuracion(String clave, String variable,
+                                            Duration valor, String ejemplo) {
+        if (valor == null) {
+            throw new IllegalArgumentException(
+                    clave + " es obligatoria (" + variable + ", p. ej. " + ejemplo + ")");
+        }
+        if (valor.compareTo(Duration.ZERO) <= 0) {
+            throw new IllegalArgumentException(
+                    clave + " debe ser positiva y se recibió " + valor);
+        }
+        long segundos = valor.getSeconds();
+        if (segundos < 1 || segundos > Integer.MAX_VALUE) {
+            throw new IllegalArgumentException(
+                    clave + " debe durar entre 1 segundo y " + Integer.MAX_VALUE
+                            + " segundos y se recibió " + valor);
+        }
+        return valor;
     }
 }

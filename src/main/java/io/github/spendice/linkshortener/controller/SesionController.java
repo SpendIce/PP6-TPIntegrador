@@ -26,15 +26,13 @@ class SesionController {
     @GetMapping("/api/sesion")
     ResponseEntity<SesionActualResponse> actual(HttpServletRequest request) {
         HttpSession sesion = request.getSession(false);
-        Long usuarioId = sesion == null
-                ? null : (Long) sesion.getAttribute(CuentaService.ATRIBUTO_USUARIO_ID);
-        UsuarioSesion usuario = cuentas.usuarioDeSesion(usuarioId)
+        UsuarioSesion usuario = cuentas.usuarioDeSesion(sesion)
                 .map(u -> {
                     String namespace = u.getNamespace() == null ? "" : u.getNamespace();
                     return new UsuarioSesion(
                             u.getEmail(),
                             namespace,
-                            tipoDe(sesion),
+                            CuentaService.tipoDeSesion(sesion),
                             namespace.isEmpty()
                                     ? cuentas.sugerenciaDeNamespace(u.getEmail()) : "");
                 })
@@ -42,11 +40,5 @@ class SesionController {
         return ResponseEntity.ok()
                 .cacheControl(CacheControl.noStore())
                 .body(new SesionActualResponse(usuario));
-    }
-
-    /** Solo el login directo abre sesiones hoy: el tipo es principal. */
-    private String tipoDe(HttpSession sesion) {
-        String tipo = (String) sesion.getAttribute(CuentaService.ATRIBUTO_SESION_TIPO);
-        return tipo == null ? CuentaService.TIPO_PRINCIPAL : tipo;
     }
 }

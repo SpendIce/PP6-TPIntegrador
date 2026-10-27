@@ -36,6 +36,22 @@
         </form>
         <p id="namespace-error" class="error" hidden></p>
     </section>
+    <!-- Vinculación por QR (issue #22): sin sesión, la pantalla de
+         acceso muestra el QR que el celular escanea para aprobar desde
+         su sesión principal. El código vence a los 60 segundos y app.js
+         lo renueva antes de que pase; el estado se consulta cada 2
+         segundos hasta que la aprobación abre la sesión vinculada. -->
+    <section id="vinculacion" hidden>
+        <h2>Vinculá este dispositivo</h2>
+        <p class="notice">
+            Escaneá el QR con el celular en el que ya iniciaste sesión
+            para entrar acá sin escribir tu cuenta.
+        </p>
+        <figure id="vinculacion-figura">
+            <img id="vinculacion-qr" alt="QR para vincular este dispositivo">
+        </figure>
+        <p id="vinculacion-estado" class="notice"></p>
+    </section>
     <form id="shorten-form" novalidate>
         <label for="destination">Dirección a acortar</label>
         <div class="field-row">
@@ -76,6 +92,7 @@
 </main>
 <script src="vendor/qrcode.js"></script>
 <script src="qr-code.js"></script>
+<script src="vinculacion-timers.js"></script>
 <script src="app.js"></script>
 </body>
 </html>
