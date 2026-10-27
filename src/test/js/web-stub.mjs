@@ -37,7 +37,6 @@ export function crearElemento() {
 export function crearDocumento() {
     const elementos = new Map();
     return {
-        elementos,
         getElementById(id) {
             if (!elementos.has(id)) elementos.set(id, crearElemento());
             return elementos.get(id);
