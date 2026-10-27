@@ -44,18 +44,15 @@ PostgreSQL real y el proveedor OIDC simulado, ADR 0004 y ADR 0007,
 extendiendo `HttpApiFixture`): cubre los 15 criterios de aceptación,
 incluida la carrera entre dos dispositivos del mismo usuario.
 
-**Limitación del entorno.** Este sandbox no tiene el socket del daemon de
-Docker (`/var/run/docker.sock` ausente, sin binario `docker` ni socket
-TCP), así que ninguna suite de Testcontainers puede arrancar: en la
-corrida completa de `./gradlew --no-daemon --console=plain test` fallaron
-83 pruebas, todas con `IllegalStateException` en
-`DockerClientProviderStrategy` («Could not find a valid Docker
-environment»), incluidas las 15 de `EnlacePersonalHttpTest`. Es el mismo
-fallo de entorno que afecta a todas las suites previas del fixture; las
-21 pruebas que no necesitan contenedores pasaron.
+**Corrida completa.** `./gradlew --no-daemon --console=plain test` en el
+sandbox de verificación (socket del daemon de Docker montado): BUILD
+SUCCESSFUL, exit 0, 118 pruebas y 0 fallos en 21 suites. `EnlacePersonalHttpTest`
+aporta 15 pruebas en verde (`build/test-results/test/TEST-…EnlacePersonalHttpTest.xml`).
 
-Para no entregar sin evidencia real se verificó el mismo contrato sobre
-HSQLDB en memoria (perfil `hsqldb`, ADR 0005), que sí corre sin Docker:
+## Verificación de apoyo sobre HSQLDB
+
+Sin conexión a Docker se verificó el mismo contrato sobre HSQLDB en memoria
+(perfil `hsqldb`, ADR 0005):
 
 - Un chequeo del service con las entities, HQL y transacciones reales:
   creación, normalización a minúsculas, resolución sin distinguir
@@ -79,9 +76,8 @@ HSQLDB en memoria (perfil `hsqldb`, ADR 0005), que sí corre sin Docker:
   vigente.
 
 Los dos chequeos pasaron en verde; eran de apoyo y se retiraron del árbol
-(la suite del contrato es la de Testcontainers). En un entorno con Docker
-la corrida a repetir es la del spec: `./gradlew --no-daemon
---console=plain test`.
+(la suite del contrato es la de Testcontainers, que corre completa en el
+oráculo).
 
 ## Revisión
 

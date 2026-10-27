@@ -36,7 +36,7 @@ class RedirectController {
             <body>
                 <main>
                     <h1>Este enlace no existe o venció</h1>
-                    <p>El enlace acortado que buscás no existe o su vigencia terminó.</p>
+                    <p>El enlace que buscás no existe o su vigencia terminó.</p>
                 </main>
             </body>
             </html>
