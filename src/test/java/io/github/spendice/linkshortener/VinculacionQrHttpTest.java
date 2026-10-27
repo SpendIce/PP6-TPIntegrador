@@ -158,6 +158,42 @@ class VinculacionQrHttpTest extends HttpApiFixture {
     }
 
     @Test
+    void unFalloAlPersistirLaSesionPermiteReintentarElConsumo() throws Exception {
+        HttpClient computadora = Dispositivos.nuevo();
+        HttpClient celular = sesionDe(SUB_JUAN, EMAIL_JUAN);
+        String codigo = pedirCodigoVinculacion(computadora);
+        Dispositivos.postVacio(celular, baseUrl(), "/api/vinculacion/" + codigo + "/aprobar");
+        db.execute("CREATE FUNCTION rechazar_atributo_sesion() RETURNS trigger AS $$"
+                + "BEGIN RAISE EXCEPTION 'fallo de persistencia simulado'; END;"
+                + "$$ LANGUAGE plpgsql");
+        db.execute("CREATE TRIGGER fallo_sesion BEFORE INSERT ON spring_session_attributes"
+                + " FOR EACH ROW EXECUTE FUNCTION rechazar_atributo_sesion()");
+
+        try {
+            HttpResponse<String> fallo = Dispositivos.get(
+                    computadora, baseUrl(), "/api/vinculacion/" + codigo);
+            assertThat(fallo.statusCode()).isBetween(500, 599);
+            assertThat(Dispositivos.cookieDeSesion(computadora)).isNull();
+            assertThat(db.queryForObject(
+                    "SELECT estado FROM codigo_vinculacion WHERE codigo = ?",
+                    String.class, codigo)).isEqualTo("APROBADA");
+        } finally {
+            db.execute("DROP TRIGGER fallo_sesion ON spring_session_attributes");
+            db.execute("DROP FUNCTION rechazar_atributo_sesion()");
+        }
+
+        HttpResponse<String> reintento = Dispositivos.get(
+                computadora, baseUrl(), "/api/vinculacion/" + codigo);
+        assertThat(reintento.statusCode()).isEqualTo(200);
+        assertThat(json.readTree(reintento.body()).get("estado").asText())
+                .isEqualTo("aprobada");
+        assertThat(Dispositivos.cookieDeSesion(computadora)).isNotNull();
+        assertThat(db.queryForObject(
+                "SELECT estado FROM codigo_vinculacion WHERE codigo = ?",
+                String.class, codigo)).isEqualTo("CONSUMIDA");
+    }
+
+    @Test
     void unCodigoInexistenteNoAbreSesionYResponde404() throws Exception {
         HttpClient computadora = Dispositivos.nuevo();
         HttpClient celular = sesionDe(SUB_JUAN, EMAIL_JUAN);
