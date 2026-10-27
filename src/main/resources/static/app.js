@@ -16,6 +16,9 @@ const namespaceInput = document.getElementById("namespace-input");
 const namespaceError = document.getElementById("namespace-error");
 const aliasPersonal = document.getElementById("alias-personal");
 const aliasInput = document.getElementById("alias-personalizado");
+const vinculacionSection = document.getElementById("vinculacion");
+const vinculacionQr = document.getElementById("vinculacion-qr");
+const vinculacionEstado = document.getElementById("vinculacion-estado");
 
 // Sesión actual (issue #19): sin sesión se ofrece el acceso con Google;
 // con sesión principal se muestra el email del usuario y el cierre. Si
@@ -30,6 +33,9 @@ const aliasInput = document.getElementById("alias-personalizado");
         const sesion = await respuesta.json();
         if (!sesion.usuario) {
             cuentaEntrar.hidden = false;
+            // Sin sesión, la pantalla de acceso ofrece la vinculación por
+            // QR (issue #22): el celular con sesión principal la aprueba.
+            iniciarVinculacion();
             return;
         }
         mostrarUsuario(sesion.usuario);
@@ -212,5 +218,117 @@ function renderQr(body) {
         qrImage.removeAttribute("src");
         qrDownload.removeAttribute("href");
         console.error("No se pudo generar el QR del enlace.", e);
+    }
+}
+
+// ---------------------------------------------------------------------
+// Vinculación por QR (issue #22): el dispositivo que espera pide un
+// código de un solo uso, muestra el QR con su URL de confirmación y
+// consulta el estado cada 2 segundos. El código vence a los 60
+// segundos, así que se renueva unos segundos antes de que pase. La
+// consulta que encuentra el código aprobado ya abrió la sesión vinculada
+// en el servidor: recargar deja a la web con ella.
+// ---------------------------------------------------------------------
+
+const VINCULACION_CONSULTA_MS = 2000;
+// Margen para que el QR nuevo llegue antes de que el anterior venza.
+const VINCULACION_RENOVACION_MS = 5000;
+
+let vinculacionCodigo = null;
+let vinculacionTimer = null;
+let vinculacionRenovacion = null;
+let vinculacionQrUrl = null;
+
+function iniciarVinculacion() {
+    vinculacionSection.hidden = false;
+    pedirCodigoVinculacion();
+}
+
+async function pedirCodigoVinculacion() {
+    // Los timers del código anterior se cancelan antes del await: las
+    // consultas que sigan consultan el código vigente, nunca uno viejo.
+    clearInterval(vinculacionTimer);
+    clearTimeout(vinculacionRenovacion);
+    vinculacionCodigo = null;
+
+    let creado;
+    try {
+        const csrfResponse = await fetch("/api/csrf");
+        const csrf = csrfResponse.ok ? await csrfResponse.json() : null;
+        if (!csrf || typeof csrf.token !== "string" || !csrf.token) {
+            throw new Error("sin token csrf");
+        }
+        const respuesta = await fetch("/api/vinculacion", {
+            method: "POST",
+            headers: { "X-XSRF-TOKEN": csrf.token }
+        });
+        creado = respuesta.ok ? await respuesta.json() : null;
+        if (!creado) {
+            throw new Error("creación rechazada");
+        }
+    } catch (error) {
+        vinculacionEstado.textContent =
+                "No se pudo pedir el código de vinculación; reintentá.";
+        vinculacionRenovacion = setTimeout(pedirCodigoVinculacion,
+                VINCULACION_RENOVACION_MS);
+        return;
+    }
+
+    vinculacionCodigo = creado.codigo;
+    renderQrVinculacion(creado.confirmacionUrl);
+    vinculacionEstado.textContent = "";
+
+    vinculacionTimer = setInterval(
+            () => consultarEstadoVinculacion(creado.codigo), VINCULACION_CONSULTA_MS);
+    const esperaMs = Date.parse(creado.expiresAt) - Date.now() - VINCULACION_RENOVACION_MS;
+    vinculacionRenovacion = setTimeout(pedirCodigoVinculacion, Math.max(esperaMs, 1000));
+}
+
+async function consultarEstadoVinculacion(codigo) {
+    if (codigo !== vinculacionCodigo) {
+        return;
+    }
+    let estado;
+    try {
+        const respuesta = await fetch("/api/vinculacion/" + encodeURIComponent(codigo), {
+            headers: { "Accept": "application/json" }
+        });
+        if (respuesta.status === 404) {
+            // El código quedó inválido: un QR nuevo lo reemplaza.
+            pedirCodigoVinculacion();
+            return;
+        }
+        estado = respuesta.ok ? await respuesta.json() : null;
+    } catch (error) {
+        return;
+    }
+    if (!estado || codigo !== vinculacionCodigo) {
+        return;
+    }
+    if (estado.estado === "aprobada") {
+        clearInterval(vinculacionTimer);
+        clearTimeout(vinculacionRenovacion);
+        vinculacionCodigo = null;
+        location.reload();
+    } else if (estado.estado === "vencida") {
+        pedirCodigoVinculacion();
+    }
+    // `pendiente`: la siguiente consulta del intervalo vuelve a mirar.
+}
+
+function renderQrVinculacion(confirmacionUrl) {
+    if (vinculacionQrUrl !== null) {
+        URL.revokeObjectURL(vinculacionQrUrl);
+        vinculacionQrUrl = null;
+    }
+    try {
+        // El QR codifica la URL de confirmación que devuelve la API,
+        // con el mismo módulo que el QR del enlace acortado.
+        const pngBytes = QrPng.encode(qrcode, confirmacionUrl);
+        vinculacionQrUrl = URL.createObjectURL(new Blob([pngBytes], { type: "image/png" }));
+        vinculacionQr.src = vinculacionQrUrl;
+    } catch (e) {
+        vinculacionQr.removeAttribute("src");
+        console.error("No se pudo generar el QR de vinculación.", e);
     }
 }
