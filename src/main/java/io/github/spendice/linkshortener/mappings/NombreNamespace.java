@@ -35,6 +35,14 @@ public class NombreNamespace {
         this.graceEndsAt = graceEndsAt;
     }
 
+    public Usuario getUsuario() {
+        return usuario;
+    }
+
+    public Instant getGraceEndsAt() {
+        return graceEndsAt;
+    }
+
     public void setGraceEndsAt(Instant graceEndsAt) {
         this.graceEndsAt = graceEndsAt;
     }

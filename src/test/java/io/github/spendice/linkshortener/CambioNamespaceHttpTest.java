@@ -191,6 +191,43 @@ class CambioNamespaceHttpTest extends HttpApiFixture {
                 Long.class)).isEqualTo(1);
     }
 
+    /**
+     * El intercalado que bloquea la fila del nombre tiene que cerrar:
+     * Pedro pasa la verificación de disponibilidad de «medio» (todavía
+     * libre) y queda detenido justo antes de leerla; Juan confirma su
+     * adopción de «medio» mientras tanto. Al reanudarse, Pedro no puede
+     * convertir en actual la fila que Juan acaba de reservar: recibe
+     * {@code NAMESPACE_TAKEN} y conserva su namespace.
+     */
+    @Test
+    void noAdoptaElNombreQueOtroConfirmaMientrasLoIntentaTomar() throws Exception {
+        clock.set(T0);
+        HttpClient juan = usuario("google-sub-gracia-adopcion-juan",
+                "adopcion-juan@ejemplo.com", "juan-inicial");
+        HttpClient pedro = usuario("google-sub-gracia-adopcion-pedro",
+                "adopcion-pedro@ejemplo.com", "pedro-inicial");
+
+        InspeccionNombreNamespace.Pausa pausa = inspeccion.pausarAntesDeLeerNombre();
+        var pool = Executors.newFixedThreadPool(1);
+        try {
+            var intentoPedro = pool.submit(() -> cambiar(pedro, "medio"));
+            assertThat(pausa.esperarLlegada()).isTrue();
+            assertThat(cambiar(juan, "medio").statusCode()).isEqualTo(200);
+            pausa.liberar();
+            assertError(intentoPedro.get(20, TimeUnit.SECONDS), 409, "NAMESPACE_TAKEN");
+        } finally {
+            inspeccion.desarmarPausa();
+            pool.shutdownNow();
+        }
+        assertThat(db.queryForObject(
+                "SELECT namespace FROM usuario WHERE google_sub = 'google-sub-gracia-adopcion-pedro'",
+                String.class)).isEqualTo("pedro-inicial");
+        assertThat(db.queryForObject(
+                "SELECT u.google_sub FROM nombre_namespace n JOIN usuario u ON u.id = n.usuario_id"
+                        + " WHERE n.namespace = 'medio'",
+                String.class)).isEqualTo("google-sub-gracia-adopcion-juan");
+    }
+
     @Test
     void cambioAplicaFormatoYNombresReservados() throws Exception {
         HttpClient juan = usuario("google-sub-gracia-validacion", "valida@ejemplo.com", "juan");

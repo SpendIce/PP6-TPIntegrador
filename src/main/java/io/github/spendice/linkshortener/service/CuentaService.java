@@ -159,13 +159,16 @@ public class CuentaService {
      * Caso de uso de elección o cambio de namespace (issues #20 y #24).
      *
      * <p>La elección corre en su propia transacción con la fila del
-     * usuario bloqueada y la unicidad final la impone la clave primaria
-     * de {@code nombre_namespace}, compartida por nombres actuales y
-     * anteriores. Todo nombre adoptado — en la primera elección o en un
-     * cambio — queda registrado ahí con {@code grace_ends_at} nulo, y solo
-     * recibe el fin de gracia cuando el usuario lo deja: la fila es lo
-     * que serializa la carrera con quien intente tomarlo mientras tanto.
-     * Al cambiar, los enlaces personales no se modifican.
+     * usuario bloqueada y la fila del nombre —si existe— bloqueada con
+     * {@code PESSIMISTIC_WRITE}: la verificación de dueño y la adopción
+     * ocurren sobre esa misma fila, así que nadie puede convertir en
+     * actual un nombre que otro acaba de reservar entre ambas sentencias.
+     * Si la fila no existe, la clave primaria de {@code nombre_namespace}
+     * cierra la carrera del alta. Todo nombre adoptado — en la primera
+     * elección o en un cambio — queda registrado ahí con
+     * {@code grace_ends_at} nulo, y solo recibe el fin de gracia cuando
+     * el usuario lo deja. Al cambiar, los enlaces personales no se
+     * modifican.
      */
     public Usuario elegirNamespace(Long usuarioId, String propuesta) {
         String namespace = normalizarNamespace(propuesta);
@@ -192,7 +195,18 @@ public class CuentaService {
         if (namespace.equals(usuario.getNamespace())) {
             return usuario;
         }
-        if (estaTomado(namespace, usuarioId)) {
+        Instant ahora = clock.instant();
+        // La fila del nombre se bloquea antes de decidir si puede
+        // adoptarse: si otra transacción está soltando o tomando ese
+        // nombre, esta espera su commit y reevalúa dueño y gracia. Sin
+        // ese bloqueo, una verificación de disponibilidad y un em.find
+        // posteriores podían pisar la reserva ajena recién confirmada.
+        NombreNamespace nombreNuevo = em.find(
+                NombreNamespace.class, namespace, LockModeType.PESSIMISTIC_WRITE);
+        boolean ajeno = nombreNuevo != null
+                && !nombreNuevo.getUsuario().getId().equals(usuarioId);
+        if (ajeno && (nombreNuevo.getGraceEndsAt() == null
+                || nombreNuevo.getGraceEndsAt().isAfter(ahora))) {
             throw namespaceTomado(namespace);
         }
         boolean recuperarAnterior = propio != null;
@@ -201,23 +215,22 @@ public class CuentaService {
                     .setParameter("namespace", namespace)
                     .executeUpdate();
             em.flush();
-        } else {
-            em.createQuery("delete from NamespaceAnterior n where n.namespace = :namespace "
-                            + "and n.graceEndsAt <= :ahora")
+        } else if (nombreNuevo != null
+                && nombreNuevo.getGraceEndsAt() != null
+                && !nombreNuevo.getGraceEndsAt().isAfter(ahora)) {
+            // La reserva ajena (o propia) ya venció: se libera la fila
+            // antes de registrar al nuevo dueño.
+            em.createQuery("delete from NamespaceAnterior n where n.namespace = :namespace")
                     .setParameter("namespace", namespace)
-                    .setParameter("ahora", clock.instant())
                     .executeUpdate();
             em.flush();
-            em.createQuery("delete from NombreNamespace n where n.namespace = :namespace "
-                            + "and n.graceEndsAt <= :ahora")
-                    .setParameter("namespace", namespace)
-                    .setParameter("ahora", clock.instant())
-                    .executeUpdate();
+            em.remove(nombreNuevo);
             em.flush();
+            nombreNuevo = null;
         }
         String actual = usuario.getNamespace();
         if (actual != null) {
-            Instant finGracia = clock.instant().plus(properties.namespaceGracePeriod());
+            Instant finGracia = ahora.plus(properties.namespaceGracePeriod());
             NombreNamespace nombreActual = em.find(NombreNamespace.class, actual);
             if (nombreActual == null) {
                 em.persist(new NombreNamespace(actual, usuario, finGracia));
@@ -227,10 +240,7 @@ public class CuentaService {
             em.persist(new NamespaceAnterior(usuario, actual, finGracia));
         }
         // Todo nombre adoptado queda registrado con grace nulo: es lo que
-        // estaTomado reconoce como actual, así que un cambio también lo
-        // escribe — si no, el registro del nombre que se suelta no sería
-        // visible para quien intente adoptarlo durante la gracia.
-        NombreNamespace nombreNuevo = em.find(NombreNamespace.class, namespace);
+        // distingue un nombre actual de una reserva anterior.
         if (nombreNuevo == null) {
             em.persist(new NombreNamespace(namespace, usuario, null));
         } else {
@@ -252,20 +262,6 @@ public class CuentaService {
                 .setMaxResults(1)
                 .getResultList();
         return resultados.isEmpty() ? null : resultados.get(0);
-    }
-
-    private boolean estaTomado(String namespace, Long usuarioId) {
-        return !em.createQuery(
-                        "select n.usuario.id from NombreNamespace n where n.namespace = :namespace "
-                                + "and n.usuario.id <> :usuarioId "
-                                + "and (n.graceEndsAt is null or n.graceEndsAt > :ahora)",
-                        Long.class)
-                .setParameter("namespace", namespace)
-                .setParameter("ahora", clock.instant())
-                .setParameter("usuarioId", usuarioId)
-                .setMaxResults(1)
-                .getResultList()
-                .isEmpty();
     }
 
     @Transactional(readOnly = true)
