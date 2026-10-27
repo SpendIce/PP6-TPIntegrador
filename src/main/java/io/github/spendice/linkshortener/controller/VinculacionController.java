@@ -22,7 +22,6 @@ import org.springframework.security.core.authority.AuthorityUtils;
 import org.springframework.security.core.context.SecurityContext;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.web.context.HttpSessionSecurityContextRepository;
-import org.springframework.session.FindByIndexNameSessionRepository;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -86,7 +85,7 @@ class VinculacionController {
     @GetMapping("/api/vinculacion/{codigo}/confirmacion")
     ResponseEntity<?> confirmacion(@PathVariable String codigo, HttpServletRequest request) {
         HttpSession sesion = request.getSession(false);
-        Usuario usuario = usuarioDe(sesion);
+        Usuario usuario = cuentas.usuarioDeSesion(sesion).orElse(null);
         if (usuario == null) {
             return sinSesion();
         }
@@ -99,7 +98,8 @@ class VinculacionController {
                 .cacheControl(CacheControl.noStore())
                 .body(new ConfirmacionVinculacionResponse(
                         estado.name().toLowerCase(Locale.ROOT),
-                        new UsuarioSesion(usuario.getEmail(), namespace, tipoDe(sesion),
+                        new UsuarioSesion(usuario.getEmail(), namespace,
+                                CuentaService.tipoDeSesion(sesion),
                                 namespace.isEmpty()
                                         ? cuentas.sugerenciaDeNamespace(usuario.getEmail()) : "")));
     }
@@ -113,11 +113,11 @@ class VinculacionController {
     @PostMapping("/api/vinculacion/{codigo}/aprobar")
     ResponseEntity<?> aprobar(@PathVariable String codigo, HttpServletRequest request) {
         HttpSession sesion = request.getSession(false);
-        Usuario usuario = usuarioDe(sesion);
+        Usuario usuario = cuentas.usuarioDeSesion(sesion).orElse(null);
         if (usuario == null) {
             return sinSesion();
         }
-        if (!CuentaService.TIPO_PRINCIPAL.equals(tipoDe(sesion))) {
+        if (!CuentaService.TIPO_PRINCIPAL.equals(CuentaService.tipoDeSesion(sesion))) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN)
                     .cacheControl(CacheControl.noStore())
                     .body(new ApiErrorResponse("NOT_PRINCIPAL_SESSION",
@@ -130,40 +130,24 @@ class VinculacionController {
     }
 
     /**
-     * Materializa la sesión vinculada del dispositivo que esperaba: el
-     * usuario que aprobó, el tipo {@code vinculada}, el índice de
-     * principal (para ubicarla) y la inactividad máxima configurada
-     * ({@code linked-session-idle-timeout}). El id de sesión se rota al
-     * otorgarla, como en el login, y el {@code SecurityContext} queda
-     * persistido para que las rutas con sesión ({@code /vincular/**}) la
-     * reconozcan.
+     * Materializa la sesión vinculada del dispositivo que esperaba con la
+     * misma forma que graba el login ({@link CuentaService#registrarSesion}):
+     * el usuario que aprobó, el tipo {@code vinculada} y la inactividad
+     * máxima configurada ({@code linked-session-idle-timeout}). El id de
+     * sesión se rota al otorgarla, como en el login, y el {@code
+     * SecurityContext} queda persistido para que las rutas con sesión
+     * ({@code /vincular/**}) la reconozcan.
      */
     private void materializarSesionVinculada(HttpServletRequest request, Usuario usuario) {
         HttpSession sesion = request.getSession();
         request.changeSessionId();
-        sesion.setAttribute(CuentaService.ATRIBUTO_USUARIO_ID, usuario.getId());
-        sesion.setAttribute(CuentaService.ATRIBUTO_SESION_TIPO, CuentaService.TIPO_VINCULADA);
-        sesion.setAttribute(FindByIndexNameSessionRepository.PRINCIPAL_NAME_INDEX_NAME,
-                usuario.getId().toString());
-        sesion.setMaxInactiveInterval((int) cuenta.linkedSessionIdleTimeout().getSeconds());
+        cuentas.registrarSesion(sesion, usuario, CuentaService.TIPO_VINCULADA,
+                cuenta.linkedSessionIdleTimeout());
         SecurityContext contexto = SecurityContextHolder.createEmptyContext();
         contexto.setAuthentication(UsernamePasswordAuthenticationToken.authenticated(
                 usuario.getId(), null, AuthorityUtils.createAuthorityList("ROLE_USER")));
         sesion.setAttribute(HttpSessionSecurityContextRepository.SPRING_SECURITY_CONTEXT_KEY,
                 contexto);
-    }
-
-    private Usuario usuarioDe(HttpSession sesion) {
-        if (sesion == null) {
-            return null;
-        }
-        Long usuarioId = (Long) sesion.getAttribute(CuentaService.ATRIBUTO_USUARIO_ID);
-        return cuentas.usuarioDeSesion(usuarioId).orElse(null);
-    }
-
-    private static String tipoDe(HttpSession sesion) {
-        String tipo = (String) sesion.getAttribute(CuentaService.ATRIBUTO_SESION_TIPO);
-        return tipo == null ? CuentaService.TIPO_PRINCIPAL : tipo;
     }
 
     private static ResponseEntity<EstadoVinculacionResponse> estado(String estado) {

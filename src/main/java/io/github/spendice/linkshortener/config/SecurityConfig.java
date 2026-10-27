@@ -6,7 +6,6 @@ import io.github.spendice.linkshortener.mappings.Usuario;
 import io.github.spendice.linkshortener.service.CuentaService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
-import jakarta.servlet.http.HttpSession;
 import org.springframework.beans.factory.SmartInitializingSingleton;
 import org.springframework.boot.autoconfigure.security.oauth2.client.OAuth2ClientProperties;
 import org.springframework.context.annotation.Bean;
@@ -27,7 +26,6 @@ import org.springframework.security.web.csrf.CsrfException;
 import org.springframework.security.web.csrf.CsrfTokenRequestAttributeHandler;
 import org.springframework.security.web.firewall.DefaultHttpFirewall;
 import org.springframework.security.web.firewall.HttpFirewall;
-import org.springframework.session.FindByIndexNameSessionRepository;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -153,12 +151,8 @@ class SecurityConfig {
                                           CuentaProperties cuenta) {
         OidcUser oidcUser = (OidcUser) authentication.getPrincipal();
         Usuario usuario = cuentas.usuarioDeLogin(oidcUser.getSubject(), oidcUser.getEmail());
-        HttpSession sesion = request.getSession();
-        sesion.setAttribute(CuentaService.ATRIBUTO_USUARIO_ID, usuario.getId());
-        sesion.setAttribute(CuentaService.ATRIBUTO_SESION_TIPO, CuentaService.TIPO_PRINCIPAL);
-        sesion.setAttribute(FindByIndexNameSessionRepository.PRINCIPAL_NAME_INDEX_NAME,
-                usuario.getId().toString());
-        sesion.setMaxInactiveInterval((int) cuenta.mainSessionIdleTimeout().getSeconds());
+        cuentas.registrarSesion(request.getSession(), usuario,
+                CuentaService.TIPO_PRINCIPAL, cuenta.mainSessionIdleTimeout());
     }
 
     /**

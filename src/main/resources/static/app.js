@@ -207,17 +207,26 @@ function renderQr(body) {
         URL.revokeObjectURL(currentQrUrl);
         currentQrUrl = null;
     }
-    try {
-        const pngBytes = QrPng.encode(qrcode, body.shortUrl);
-        currentQrUrl = URL.createObjectURL(new Blob([pngBytes], { type: "image/png" }));
-        qrImage.src = currentQrUrl;
-        qrDownload.href = currentQrUrl;
-        qrDownload.download = QrPng.suggestedFileName(body.alias);
-    } catch (e) {
+    currentQrUrl = pngDeQr(body.shortUrl, "No se pudo generar el QR del enlace.");
+    if (currentQrUrl === null) {
         // El enlace y su vencimiento siguen siendo útiles aunque el QR falle.
         qrImage.removeAttribute("src");
         qrDownload.removeAttribute("href");
-        console.error("No se pudo generar el QR del enlace.", e);
+        return;
+    }
+    qrImage.src = currentQrUrl;
+    qrDownload.href = currentQrUrl;
+    qrDownload.download = QrPng.suggestedFileName(body.alias);
+}
+
+// PNG del QR como object URL con el módulo vendored; null si falla.
+function pngDeQr(texto, mensajeError) {
+    try {
+        const pngBytes = QrPng.encode(qrcode, texto);
+        return URL.createObjectURL(new Blob([pngBytes], { type: "image/png" }));
+    } catch (e) {
+        console.error(mensajeError, e);
+        return null;
     }
 }
 
@@ -321,14 +330,13 @@ function renderQrVinculacion(confirmacionUrl) {
         URL.revokeObjectURL(vinculacionQrUrl);
         vinculacionQrUrl = null;
     }
-    try {
-        // El QR codifica la URL de confirmación que devuelve la API,
-        // con el mismo módulo que el QR del enlace acortado.
-        const pngBytes = QrPng.encode(qrcode, confirmacionUrl);
-        vinculacionQrUrl = URL.createObjectURL(new Blob([pngBytes], { type: "image/png" }));
-        vinculacionQr.src = vinculacionQrUrl;
-    } catch (e) {
+    // El QR codifica la URL de confirmación que devuelve la API, con el
+    // mismo módulo que el QR del enlace acortado.
+    vinculacionQrUrl = pngDeQr(confirmacionUrl,
+            "No se pudo generar el QR de vinculación.");
+    if (vinculacionQrUrl === null) {
         vinculacionQr.removeAttribute("src");
-        console.error("No se pudo generar el QR de vinculación.", e);
+        return;
     }
+    vinculacionQr.src = vinculacionQrUrl;
 }

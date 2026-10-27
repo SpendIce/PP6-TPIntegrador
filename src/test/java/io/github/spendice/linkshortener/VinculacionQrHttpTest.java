@@ -14,19 +14,14 @@ import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
-import java.net.CookieManager;
-import java.net.CookiePolicy;
-import java.net.HttpCookie;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpRequest.BodyPublishers;
 import java.net.http.HttpResponse;
 import java.net.http.HttpResponse.BodyHandlers;
-import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.Base64;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -99,7 +94,7 @@ class VinculacionQrHttpTest {
 
     @Test
     void laAprobacionDelCelularAbreLaSesionVinculadaEnLaComputadora() throws Exception {
-        HttpClient computadora = nuevoClienteDispositivo();
+        HttpClient computadora = Dispositivos.nuevo();
         HttpClient celular = sesionDe(SUB_JUAN, EMAIL_JUAN);
 
         // La computadora que espera pide el código: el QR codifica la
@@ -108,35 +103,34 @@ class VinculacionQrHttpTest {
 
         // La consulta informa pendiente y no abre ninguna sesión.
         assertThat(estadoDe(computadora, codigo).get("estado").asText()).isEqualTo("pendiente");
-        assertThat(cookieDeSesion(computadora)).isNull();
+        assertThat(Dispositivos.cookieDeSesion(computadora)).isNull();
 
         // El celular abre la confirmación: muestra al usuario de su
         // sesión principal, sin aprobar todavía.
-        assertThat(get(celular, "/vincular/" + codigo).statusCode()).isEqualTo(200);
+        assertThat(Dispositivos.get(celular, baseUrl(), "/vincular/" + codigo).statusCode()).isEqualTo(200);
         JsonNode confirmacion = json.readTree(
-                get(celular, "/api/vinculacion/" + codigo + "/confirmacion").body());
+                Dispositivos.get(celular, baseUrl(), "/api/vinculacion/" + codigo + "/confirmacion").body());
         assertThat(confirmacion.get("estado").asText()).isEqualTo("pendiente");
         assertThat(confirmacion.get("usuario").get("email").asText()).isEqualTo(EMAIL_JUAN);
         assertThat(confirmacion.get("usuario").get("tipo").asText()).isEqualTo("principal");
 
         // La aprobación es una acción explícita del celular.
-        HttpResponse<String> aprobacion = postVacio(celular,
-                "/api/vinculacion/" + codigo + "/aprobar");
+        HttpResponse<String> aprobacion = Dispositivos.postVacio(celular, baseUrl(), "/api/vinculacion/" + codigo + "/aprobar");
         assertThat(aprobacion.statusCode()).isEqualTo(200);
         assertThat(json.readTree(aprobacion.body()).get("estado").asText())
                 .isEqualTo("aprobada");
 
         // La consulta siguiente de la computadora consume el código y
         // abre la sesión vinculada del usuario que aprobó.
-        HttpResponse<String> aprobada = get(computadora, "/api/vinculacion/" + codigo);
+        HttpResponse<String> aprobada = Dispositivos.get(computadora, baseUrl(), "/api/vinculacion/" + codigo);
         assertThat(aprobada.statusCode()).isEqualTo(200);
         assertThat(json.readTree(aprobada.body()).get("estado").asText())
                 .isEqualTo("aprobada");
-        String sessionId = cookieDeSesion(computadora);
+        String sessionId = Dispositivos.cookieDeSesion(computadora);
         assertThat(sessionId).isNotNull();
 
         // La sesión informa el usuario que aprobó y el tipo vinculada.
-        JsonNode usuario = json.readTree(get(computadora, "/api/sesion").body()).get("usuario");
+        JsonNode usuario = json.readTree(Dispositivos.get(computadora, baseUrl(), "/api/sesion").body()).get("usuario");
         assertThat(usuario.get("email").asText()).isEqualTo(EMAIL_JUAN);
         assertThat(usuario.get("tipo").asText()).isEqualTo("vinculada");
 
@@ -165,30 +159,30 @@ class VinculacionQrHttpTest {
 
     @Test
     void unCodigoUsadoNoAbreOtraSesion() throws Exception {
-        HttpClient computadora = nuevoClienteDispositivo();
+        HttpClient computadora = Dispositivos.nuevo();
         HttpClient celular = sesionDe(SUB_JUAN, EMAIL_JUAN);
         String codigo = pedirCodigoVinculacion(computadora);
-        postVacio(celular, "/api/vinculacion/" + codigo + "/aprobar");
-        get(computadora, "/api/vinculacion/" + codigo);
-        assertThat(cookieDeSesion(computadora)).isNotNull();
+        Dispositivos.postVacio(celular, baseUrl(), "/api/vinculacion/" + codigo + "/aprobar");
+        Dispositivos.get(computadora, baseUrl(), "/api/vinculacion/" + codigo);
+        assertThat(Dispositivos.cookieDeSesion(computadora)).isNotNull();
         long sesiones = contarSesiones();
 
         // Repetir la consulta con el código ya consumido responde
         // vencida y no crea otra sesión; tampoco la de otro dispositivo.
         assertThat(estadoDe(computadora, codigo).get("estado").asText()).isEqualTo("vencida");
-        HttpClient otro = nuevoClienteDispositivo();
+        HttpClient otro = Dispositivos.nuevo();
         assertThat(estadoDe(otro, codigo).get("estado").asText()).isEqualTo("vencida");
-        assertThat(cookieDeSesion(otro)).isNull();
+        assertThat(Dispositivos.cookieDeSesion(otro)).isNull();
         assertThat(contarSesiones()).isEqualTo(sesiones);
 
         // Y aprobarlo otra vez lo rechaza.
-        assertError(postVacio(celular, "/api/vinculacion/" + codigo + "/aprobar"),
+        assertError(Dispositivos.postVacio(celular, baseUrl(), "/api/vinculacion/" + codigo + "/aprobar"),
                 404, "LINK_CODE_INVALID");
     }
 
     @Test
     void unCodigoVencidoNoAbreNingunaSesion() throws Exception {
-        HttpClient computadora = nuevoClienteDispositivo();
+        HttpClient computadora = Dispositivos.nuevo();
         HttpClient celular = sesionDe(SUB_JUAN, EMAIL_JUAN);
         String codigo = pedirCodigoVinculacion(computadora);
 
@@ -198,43 +192,43 @@ class VinculacionQrHttpTest {
 
         clock.set(T0.plus(CODIGO_TTL).plusSeconds(1));
         assertThat(estadoDe(computadora, codigo).get("estado").asText()).isEqualTo("vencida");
-        assertThat(cookieDeSesion(computadora)).isNull();
-        assertError(postVacio(celular, "/api/vinculacion/" + codigo + "/aprobar"),
+        assertThat(Dispositivos.cookieDeSesion(computadora)).isNull();
+        assertError(Dispositivos.postVacio(celular, baseUrl(), "/api/vinculacion/" + codigo + "/aprobar"),
                 404, "LINK_CODE_INVALID");
-        assertError(get(celular, "/api/vinculacion/" + codigo + "/confirmacion"),
+        assertError(Dispositivos.get(celular, baseUrl(), "/api/vinculacion/" + codigo + "/confirmacion"),
                 404, "LINK_CODE_INVALID");
     }
 
     @Test
     void unCodigoAprobadoQueVencioAntesDeLaConsultaNoAbreSesion() throws Exception {
-        HttpClient computadora = nuevoClienteDispositivo();
+        HttpClient computadora = Dispositivos.nuevo();
         HttpClient celular = sesionDe(SUB_JUAN, EMAIL_JUAN);
         String codigo = pedirCodigoVinculacion(computadora);
-        postVacio(celular, "/api/vinculacion/" + codigo + "/aprobar");
+        Dispositivos.postVacio(celular, baseUrl(), "/api/vinculacion/" + codigo + "/aprobar");
 
         // La aprobación quedó registrada, pero el código venció antes de
         // que el dispositivo la consuma: ya no abre ninguna sesión.
         clock.set(T0.plus(CODIGO_TTL).plusSeconds(1));
         assertThat(estadoDe(computadora, codigo).get("estado").asText()).isEqualTo("vencida");
-        assertThat(cookieDeSesion(computadora)).isNull();
+        assertThat(Dispositivos.cookieDeSesion(computadora)).isNull();
     }
 
     @Test
     void unCodigoInexistenteNoAbreSesionYResponde404() throws Exception {
-        HttpClient computadora = nuevoClienteDispositivo();
+        HttpClient computadora = Dispositivos.nuevo();
         HttpClient celular = sesionDe(SUB_JUAN, EMAIL_JUAN);
 
-        assertError(get(computadora, "/api/vinculacion/no-existe"), 404, "LINK_CODE_INVALID");
-        assertThat(cookieDeSesion(computadora)).isNull();
-        assertError(postVacio(celular, "/api/vinculacion/no-existe/aprobar"),
+        assertError(Dispositivos.get(computadora, baseUrl(), "/api/vinculacion/no-existe"), 404, "LINK_CODE_INVALID");
+        assertThat(Dispositivos.cookieDeSesion(computadora)).isNull();
+        assertError(Dispositivos.postVacio(celular, baseUrl(), "/api/vinculacion/no-existe/aprobar"),
                 404, "LINK_CODE_INVALID");
-        assertError(get(celular, "/api/vinculacion/no-existe/confirmacion"),
+        assertError(Dispositivos.get(celular, baseUrl(), "/api/vinculacion/no-existe/confirmacion"),
                 404, "LINK_CODE_INVALID");
     }
 
     @Test
     void cadaPedidoEmiteUnCodigoDistintoEInadivinable() throws Exception {
-        HttpClient computadora = nuevoClienteDispositivo();
+        HttpClient computadora = Dispositivos.nuevo();
 
         String primero = pedirCodigoVinculacion(computadora);
         String segundo = pedirCodigoVinculacion(computadora);
@@ -247,38 +241,38 @@ class VinculacionQrHttpTest {
     @Test
     void unaSesionVinculadaNoPuedeAprobarOtraVinculacion() throws Exception {
         // Primera vinculación: la computadora queda con sesión vinculada.
-        HttpClient computadora = nuevoClienteDispositivo();
+        HttpClient computadora = Dispositivos.nuevo();
         HttpClient celular = sesionDe(SUB_JUAN, EMAIL_JUAN);
         String primerCodigo = pedirCodigoVinculacion(computadora);
-        postVacio(celular, "/api/vinculacion/" + primerCodigo + "/aprobar");
-        get(computadora, "/api/vinculacion/" + primerCodigo);
-        assertThat(cookieDeSesion(computadora)).isNotNull();
+        Dispositivos.postVacio(celular, baseUrl(), "/api/vinculacion/" + primerCodigo + "/aprobar");
+        Dispositivos.get(computadora, baseUrl(), "/api/vinculacion/" + primerCodigo);
+        assertThat(Dispositivos.cookieDeSesion(computadora)).isNotNull();
 
         // Otra computadora pide un código y la vinculada intenta
         // aprobarlo: la confirmación expone su tipo y el POST se rechaza.
-        HttpClient otraComputadora = nuevoClienteDispositivo();
+        HttpClient otraComputadora = Dispositivos.nuevo();
         String segundoCodigo = pedirCodigoVinculacion(otraComputadora);
 
         JsonNode confirmacion = json.readTree(
-                get(computadora, "/api/vinculacion/" + segundoCodigo + "/confirmacion").body());
+                Dispositivos.get(computadora, baseUrl(), "/api/vinculacion/" + segundoCodigo + "/confirmacion").body());
         assertThat(confirmacion.get("usuario").get("tipo").asText()).isEqualTo("vinculada");
-        assertError(postVacio(computadora, "/api/vinculacion/" + segundoCodigo + "/aprobar"),
+        assertError(Dispositivos.postVacio(computadora, baseUrl(), "/api/vinculacion/" + segundoCodigo + "/aprobar"),
                 403, "NOT_PRINCIPAL_SESSION");
 
         // El código sigue pendiente: el rechazo no lo marcó aprobado.
         assertThat(estadoDe(otraComputadora, segundoCodigo).get("estado").asText())
                 .isEqualTo("pendiente");
-        assertThat(cookieDeSesion(otraComputadora)).isNull();
+        assertThat(Dispositivos.cookieDeSesion(otraComputadora)).isNull();
     }
 
     @Test
     void sinSesionLaConfirmacionYLaAprobacionSeRechazan() throws Exception {
-        HttpClient anonimo = nuevoClienteDispositivo();
-        String codigo = pedirCodigoVinculacion(nuevoClienteDispositivo());
+        HttpClient anonimo = Dispositivos.nuevo();
+        String codigo = pedirCodigoVinculacion(Dispositivos.nuevo());
 
-        assertError(get(anonimo, "/api/vinculacion/" + codigo + "/confirmacion"),
+        assertError(Dispositivos.get(anonimo, baseUrl(), "/api/vinculacion/" + codigo + "/confirmacion"),
                 401, "NOT_AUTHENTICATED");
-        assertError(postVacio(anonimo, "/api/vinculacion/" + codigo + "/aprobar"),
+        assertError(Dispositivos.postVacio(anonimo, baseUrl(), "/api/vinculacion/" + codigo + "/aprobar"),
                 401, "NOT_AUTHENTICATED");
 
         // El código sigue pendiente: el rechazo no lo tocó.
@@ -287,13 +281,13 @@ class VinculacionQrHttpTest {
 
     @Test
     void laPaginaDeConfirmacionExigeSesionYVuelveTrasElLogin() throws Exception {
-        HttpClient computadora = nuevoClienteDispositivo();
+        HttpClient computadora = Dispositivos.nuevo();
         String codigo = pedirCodigoVinculacion(computadora);
 
         // El celular sin sesión abre la página del QR: el servidor lo
         // manda al login con Google.
-        HttpClient celular = nuevoClienteDispositivo();
-        HttpResponse<String> pagina = get(celular, "/vincular/" + codigo);
+        HttpClient celular = Dispositivos.nuevo();
+        HttpResponse<String> pagina = Dispositivos.get(celular, baseUrl(), "/vincular/" + codigo);
         assertThat(pagina.statusCode()).isEqualTo(302);
         assertThat(pagina.headers().firstValue("Location").orElse(""))
                 .contains("/oauth2/authorization/google");
@@ -305,28 +299,28 @@ class VinculacionQrHttpTest {
         assertThat(vuelta.statusCode()).isEqualTo(302);
         assertThat(vuelta.headers().firstValue("Location").orElse(""))
                 .endsWith("/vincular/" + codigo);
-        assertThat(get(celular, "/vincular/" + codigo).statusCode()).isEqualTo(200);
+        assertThat(Dispositivos.get(celular, baseUrl(), "/vincular/" + codigo).statusCode()).isEqualTo(200);
     }
 
     @Test
     void laConfirmacionMuestraElNamespaceOElEmail() throws Exception {
         // Juan ya eligió su namespace: la confirmación lo muestra.
-        HttpClient computadora = nuevoClienteDispositivo();
+        HttpClient computadora = Dispositivos.nuevo();
         HttpClient juan = usuarioConNamespace(SUB_JUAN, EMAIL_JUAN, "juan");
         String codigo = pedirCodigoVinculacion(computadora);
 
         JsonNode usuario = json.readTree(
-                get(juan, "/api/vinculacion/" + codigo + "/confirmacion").body()).get("usuario");
+                Dispositivos.get(juan, baseUrl(), "/api/vinculacion/" + codigo + "/confirmacion").body()).get("usuario");
         assertThat(usuario.get("namespace").asText()).isEqualTo("juan");
         assertThat(usuario.get("sugerencia").asText()).isEmpty();
 
         // Ana no eligió namespace: la página muestra su email.
-        HttpClient computadora2 = nuevoClienteDispositivo();
+        HttpClient computadora2 = Dispositivos.nuevo();
         HttpClient ana = sesionDe("google-sub-vinculacion-ana", "ana@ejemplo.com");
         String codigo2 = pedirCodigoVinculacion(computadora2);
 
         JsonNode usuario2 = json.readTree(
-                get(ana, "/api/vinculacion/" + codigo2 + "/confirmacion").body()).get("usuario");
+                Dispositivos.get(ana, baseUrl(), "/api/vinculacion/" + codigo2 + "/confirmacion").body()).get("usuario");
         assertThat(usuario2.get("namespace").asText()).isEmpty();
         assertThat(usuario2.get("email").asText()).isEqualTo("ana@ejemplo.com");
         assertThat(usuario2.get("sugerencia").asText()).isEqualTo("ana");
@@ -341,7 +335,7 @@ class VinculacionQrHttpTest {
      * {@code /vincular/{codigo}} y el vencimiento es el TTL del clock.
      */
     private String pedirCodigoVinculacion(HttpClient dispositivo) throws Exception {
-        HttpResponse<String> respuesta = postVacio(dispositivo, "/api/vinculacion");
+        HttpResponse<String> respuesta = Dispositivos.postVacio(dispositivo, baseUrl(), "/api/vinculacion");
         assertThat(respuesta.statusCode()).isEqualTo(201);
         JsonNode body = json.readTree(respuesta.body());
         String codigo = body.get("codigo").asText();
@@ -354,32 +348,14 @@ class VinculacionQrHttpTest {
 
     /** Consulta del estado por el dispositivo que espera: 200 con cuerpo. */
     private JsonNode estadoDe(HttpClient dispositivo, String codigo) throws Exception {
-        HttpResponse<String> respuesta = get(dispositivo, "/api/vinculacion/" + codigo);
+        HttpResponse<String> respuesta = Dispositivos.get(dispositivo, baseUrl(), "/api/vinculacion/" + codigo);
         assertThat(respuesta.statusCode()).isEqualTo(200);
         return json.readTree(respuesta.body());
     }
 
-    /** POST sin cuerpo con el token CSRF del doble envío (issue #18). */
-    private HttpResponse<String> postVacio(HttpClient dispositivo, String path)
-            throws Exception {
-        String csrf = Csrf.obtener(dispositivo, baseUrl());
-        HttpRequest request = Csrf.aplicar(dispositivo,
-                        HttpRequest.newBuilder(URI.create(baseUrl() + path)), csrf)
-                .timeout(REQUEST_TIMEOUT)
-                .POST(BodyPublishers.noBody())
-                .build();
-        return dispositivo.send(request, BodyHandlers.ofString());
-    }
-
-    private HttpResponse<String> get(HttpClient dispositivo, String path) throws Exception {
-        HttpRequest request = HttpRequest.newBuilder(URI.create(baseUrl() + path))
-                .GET().timeout(REQUEST_TIMEOUT).build();
-        return dispositivo.send(request, BodyHandlers.ofString());
-    }
-
     /** Inicia sesión principal con Google simulado en un dispositivo. */
     private HttpClient sesionDe(String sub, String email) throws Exception {
-        HttpClient dispositivo = nuevoClienteDispositivo();
+        HttpClient dispositivo = Dispositivos.nuevo();
         GoogleSimulado.login(dispositivo, baseUrl(), sub, email);
         return dispositivo;
     }
@@ -398,33 +374,6 @@ class VinculacionQrHttpTest {
         HttpResponse<String> respuesta = dispositivo.send(alta, BodyHandlers.ofString());
         assertThat(respuesta.statusCode()).as("alta del namespace %s", namespace).isEqualTo(200);
         return dispositivo;
-    }
-
-    /**
-     * Un "dispositivo" del contrato: cliente con su propio almacén de
-     * cookies, independiente del de los demás (issue #22 pide los dos
-     * clientes separados: celular y computadora).
-     */
-    private HttpClient nuevoClienteDispositivo() {
-        return HttpClient.newBuilder()
-                .followRedirects(HttpClient.Redirect.NEVER)
-                .cookieHandler(new CookieManager(null, CookiePolicy.ACCEPT_ALL))
-                .build();
-    }
-
-    /**
-     * Id de la sesión persistida del dispositivo: la cookie {@code SESSION}
-     * viaja codificada en base64url ({@code DefaultCookieSerializer}).
-     */
-    private String cookieDeSesion(HttpClient dispositivo) {
-        CookieManager almacen = (CookieManager) dispositivo.cookieHandler().orElseThrow();
-        return almacen.getCookieStore().getCookies().stream()
-                .filter(cookie -> cookie.getName().equals("SESSION"))
-                .findFirst()
-                .map(HttpCookie::getValue)
-                .map(valor -> new String(
-                        Base64.getUrlDecoder().decode(valor), StandardCharsets.UTF_8))
-                .orElse(null);
     }
 
     private long contarSesiones() {

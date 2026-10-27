@@ -34,7 +34,7 @@ class NamespaceController {
     @GetMapping("/api/namespace/sugerencia")
     ResponseEntity<?> sugerencia(HttpServletRequest request) {
         HttpSession sesion = request.getSession(false);
-        Usuario usuario = usuarioDe(sesion);
+        Usuario usuario = cuentas.usuarioDeSesion(sesion).orElse(null);
         if (usuario == null) {
             return sinSesion();
         }
@@ -48,7 +48,7 @@ class NamespaceController {
     ResponseEntity<?> elegir(@RequestBody ElegirNamespaceRequest propuesta,
                              HttpServletRequest request) {
         HttpSession sesion = request.getSession(false);
-        Usuario usuario = usuarioDe(sesion);
+        Usuario usuario = cuentas.usuarioDeSesion(sesion).orElse(null);
         if (usuario == null) {
             return sinSesion();
         }
@@ -58,21 +58,8 @@ class NamespaceController {
                 .body(new SesionActualResponse(new UsuarioSesion(
                         elegido.getEmail(),
                         elegido.getNamespace(),
-                        tipoDe(sesion),
+                        CuentaService.tipoDeSesion(sesion),
                         "")));
-    }
-
-    private Usuario usuarioDe(HttpSession sesion) {
-        if (sesion == null) {
-            return null;
-        }
-        Long usuarioId = (Long) sesion.getAttribute(CuentaService.ATRIBUTO_USUARIO_ID);
-        return cuentas.usuarioDeSesion(usuarioId).orElse(null);
-    }
-
-    private static String tipoDe(HttpSession sesion) {
-        String tipo = (String) sesion.getAttribute(CuentaService.ATRIBUTO_SESION_TIPO);
-        return tipo == null ? CuentaService.TIPO_PRINCIPAL : tipo;
     }
 
     private static ResponseEntity<ApiErrorResponse> sinSesion() {

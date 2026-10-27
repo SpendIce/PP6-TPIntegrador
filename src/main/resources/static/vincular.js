@@ -52,7 +52,7 @@ const codigo = decodeURIComponent(location.pathname.split("/").pop() || "");
         return;
     }
     if (datos.estado === "aprobada") {
-        listo.textContent = "Ya aprobaste esta vinculación;"
+        listo.textContent = "La vinculación ya quedó aprobada;"
                 + " el otro dispositivo está quedando conectado.";
         listo.hidden = false;
         return;

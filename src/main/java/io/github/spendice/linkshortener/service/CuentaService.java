@@ -8,15 +8,18 @@ import io.github.spendice.linkshortener.service.InvalidNamespaceException.Reason
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.LockModeType;
 import jakarta.persistence.PersistenceException;
+import jakarta.servlet.http.HttpSession;
 import org.hibernate.exception.ConstraintViolationException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.session.FindByIndexNameSessionRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import java.security.SecureRandom;
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.Base64;
 import java.util.List;
@@ -330,6 +333,45 @@ public class CuentaService {
             return Optional.empty();
         }
         return Optional.ofNullable(em.find(Usuario.class, usuarioId));
+    }
+
+    /**
+     * Usuario al que pertenece la sesión HTTP del request: vacío si no
+     * hay sesión o si no tiene usuario.
+     */
+    @Transactional(readOnly = true)
+    public Optional<Usuario> usuarioDeSesion(HttpSession sesion) {
+        if (sesion == null) {
+            return Optional.empty();
+        }
+        return usuarioDeSesion((Long) sesion.getAttribute(ATRIBUTO_USUARIO_ID));
+    }
+
+    /**
+     * Tipo registrado en la sesión: {@link #TIPO_PRINCIPAL} del login
+     * directo o {@link #TIPO_VINCULADA} de la vinculación por QR. Las
+     * sesiones abiertas antes de que el atributo existiera cuentan como
+     * principal.
+     */
+    public static String tipoDeSesion(HttpSession sesion) {
+        String tipo = (String) sesion.getAttribute(ATRIBUTO_SESION_TIPO);
+        return tipo == null ? TIPO_PRINCIPAL : tipo;
+    }
+
+    /**
+     * Materializa la sesión del usuario con la misma forma que graba el
+     * login ({@code principal}) y el consumo de la vinculación
+     * ({@code vinculada}): su id, el tipo, el índice
+     * {@code principal_name} que deja ubicables sus sesiones y la
+     * inactividad máxima configurada según el tipo.
+     */
+    public void registrarSesion(HttpSession sesion, Usuario usuario, String tipo,
+                              Duration inactividadMaxima) {
+        sesion.setAttribute(ATRIBUTO_USUARIO_ID, usuario.getId());
+        sesion.setAttribute(ATRIBUTO_SESION_TIPO, tipo);
+        sesion.setAttribute(FindByIndexNameSessionRepository.PRINCIPAL_NAME_INDEX_NAME,
+                usuario.getId().toString());
+        sesion.setMaxInactiveInterval((int) inactividadMaxima.getSeconds());
     }
 
     // ---------------------------------------------------------------
