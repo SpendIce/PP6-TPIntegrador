@@ -261,17 +261,18 @@ async function pedirCodigoVinculacion() {
     vinculacionCodigo = null;
 
     let creado;
+    let alta = null;
     try {
         const csrfResponse = await fetch("/api/csrf");
         const csrf = csrfResponse.ok ? await csrfResponse.json() : null;
         if (!csrf || typeof csrf.token !== "string" || !csrf.token) {
             throw new Error("sin token csrf");
         }
-        const respuesta = await fetch("/api/vinculacion", {
+        alta = await fetch("/api/vinculacion", {
             method: "POST",
             headers: { "X-XSRF-TOKEN": csrf.token }
         });
-        creado = respuesta.ok ? await respuesta.json() : null;
+        creado = alta.ok ? await alta.json() : null;
         if (!creado) {
             throw new Error("creación rechazada");
         }
@@ -289,8 +290,14 @@ async function pedirCodigoVinculacion() {
 
     vinculacionTimer = setInterval(
             () => consultarEstadoVinculacion(creado.codigo), VINCULACION_CONSULTA_MS);
-    const esperaMs = Date.parse(creado.expiresAt) - Date.now() - VINCULACION_RENOVACION_MS;
-    vinculacionRenovacion = setTimeout(pedirCodigoVinculacion, Math.max(esperaMs, 1000));
+    // La renovación se programa contra el reloj del servidor (encabezado
+    // `Date`): con el reloj del dispositivo adelantado, usar Date.now()
+    // renovaría el código cada segundo aunque siga vigente. Sin `Date`, el
+    // piso de 5 s acota el peor caso.
+    const ahoraServidor = Date.parse(alta?.headers?.get("date") || "");
+    const referencia = Number.isFinite(ahoraServidor) ? ahoraServidor : Date.now();
+    const esperaMs = Date.parse(creado.expiresAt) - referencia - VINCULACION_RENOVACION_MS;
+    vinculacionRenovacion = setTimeout(pedirCodigoVinculacion, Math.max(esperaMs, 5000));
 }
 
 async function consultarEstadoVinculacion(codigo) {
