@@ -14,6 +14,7 @@ import org.hibernate.exception.ConstraintViolationException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.session.FindByIndexNameSessionRepository;
+import org.springframework.session.Session;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -25,6 +26,7 @@ import java.time.Instant;
 import java.util.Base64;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Optional;
 
 /**
@@ -99,6 +101,9 @@ public class CuentaService {
 
     @Autowired
     Clock clock;
+
+    @Autowired
+    FindByIndexNameSessionRepository<?> sesiones;
 
     /**
      * Caso de uso del login: devuelve el usuario de la identidad de
@@ -326,6 +331,17 @@ public class CuentaService {
     }
 
     /**
+     * Tipo efectivo de una sesión autenticada: cuando el atributo no
+     * está guardado (sesiones creadas antes del tipo) la sesión se
+     * interpreta {@code principal} igual en toda la superficie del
+     * contrato.
+     */
+    public static String tipoDeSesion(HttpSession sesion) {
+        String tipo = (String) sesion.getAttribute(ATRIBUTO_SESION_TIPO);
+        return tipo == null ? TIPO_PRINCIPAL : tipo;
+    }
+
+    /**
      * Usuario al que pertenece una sesión: vacío si no hay sesión o si la
      * sesión no tiene usuario (todavía no completó el login).
      */
@@ -347,17 +363,6 @@ public class CuentaService {
             return Optional.empty();
         }
         return usuarioDeSesion((Long) sesion.getAttribute(ATRIBUTO_USUARIO_ID));
-    }
-
-    /**
-     * Tipo registrado en la sesión: {@link #TIPO_PRINCIPAL} del login
-     * directo o {@link #TIPO_VINCULADA} de la vinculación por QR. Las
-     * sesiones abiertas antes de que el atributo existiera cuentan como
-     * principal.
-     */
-    public static String tipoDeSesion(HttpSession sesion) {
-        String tipo = (String) sesion.getAttribute(ATRIBUTO_SESION_TIPO);
-        return tipo == null ? TIPO_PRINCIPAL : tipo;
     }
 
     /**
@@ -536,4 +541,16 @@ public class CuentaService {
         String base = shortener.publicBaseUrl().toString();
         return base.endsWith("/") ? base.substring(0, base.length() - 1) : base;
     }
+
+    /** Invalida las sesiones vinculadas del usuario, conservando las principales. */
+    public void cerrarSesionesVinculadas(Long usuarioId) {
+        Map<String, ?> sesionesDelUsuario = sesiones.findByPrincipalName(usuarioId.toString());
+        for (Object valor : sesionesDelUsuario.values()) {
+            if (valor instanceof Session sesion
+                    && TIPO_VINCULADA.equals(sesion.getAttribute(ATRIBUTO_SESION_TIPO))) {
+                sesiones.deleteById(sesion.getId());
+            }
+        }
+    }
+
 }

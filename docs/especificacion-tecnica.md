@@ -59,10 +59,10 @@ El contrato REST de creación y resolución está en [openapi.yaml](../openapi.y
 - `GET /api/sesion` devuelve `{"usuario": null}` sin sesión o sin usuario
   en la sesión, y `{"usuario": {"email", "namespace", "tipo", "sugerencia"}}`
   con sesión iniciada: `email` de la cuenta de Google, `namespace` vacío
-  hasta que el usuario lo elija, `tipo` `principal` o `vinculada` (la
-  sesión que abre la vinculación por QR, issue #22) y `sugerencia` para
-  la pantalla del primer login (vacía cuando ya hay namespace). Responde
-  `Cache-Control: no-store`.
+  hasta que el usuario lo elija, `tipo` `principal` o `vinculada` según
+  cómo se abrió la sesión (la vinculada se crea por QR, issue #22) y
+  `sugerencia` para la pantalla del primer login (vacía cuando ya hay
+  namespace). Responde `Cache-Control: no-store`.
 - `POST /api/namespace` registra el namespace del usuario de la sesión.
   Normaliza a minúsculas y exige de 3 a 30 caracteres `a-z`, `0-9` y `-`,
   sin guion inicial ni final. Rechaza con su propio código en
@@ -105,6 +105,12 @@ El contrato REST de creación y resolución está en [openapi.yaml](../openapi.y
   ruta que exige sesión por la cadena de seguridad; sin ella redirige al
   login con Google y la navegación vuelve a la misma dirección al
   completarse (request cache).
+- `POST /api/sesiones-vinculadas/cerrar` invalida todas las sesiones
+  vinculadas del usuario autenticado y responde `204`; conserva la sesión
+  principal que hace el pedido y no afecta otros usuarios. Requiere sesión
+  principal: sin usuario responde `401` con `NOT_AUTHENTICATED` y desde una
+  sesión vinculada responde `403` con `SESSION_NOT_PRIMARY`. Exige CSRF como
+  todo POST.
 - El inicio de sesión no pasa por la API: la web navega a
   `GET /oauth2/authorization/google` y el proveedor OIDC vuelve por
   `GET /login/oauth2/code/google`, los caminos por defecto del cliente
@@ -244,6 +250,12 @@ usa el cliente OIDC de Spring Security con Google como único proveedor:
   /api/logout` usa el logout de Spring Security en esa ruta: invalida la
   sesión persistida del dispositivo, borra la cookie `SESSION` y responde
   `204` aunque no haya sesión.
+- `POST /api/sesiones-vinculadas/cerrar` actúa sobre las sesiones JDBC que
+  tienen el mismo `usuarioId` y `sesionTipo=vinculada`; no invalida la
+  sesión principal ni sesiones de otro usuario. Una sesión vinculada no
+  puede iniciar el cierre masivo. La operación exige CSRF y devuelve
+  `204` al completarse. La web ofrece esta acción solo en una sesión
+  principal.
 - La web muestra «Entrar con Google» (navega a
   `/oauth2/authorization/google`) cuando `GET /api/sesion` devuelve
   `usuario: null`, y el email con «Cerrar sesión» cuando hay usuario;
@@ -668,7 +680,8 @@ issue #15 (ADR 0006):
   `POST /api/vinculacion/{codigo}/aprobar`; también materializa la
   sesión vinculada en la consulta que consume el código),
   `VincularPageController` (forward de `GET /vincular/{codigo}` a la
-  página estática), `ApiExceptionHandler` y `dto/`
+  página estática), `SesionesVinculadasController`
+  (`POST /api/sesiones-vinculadas/cerrar`), `ApiExceptionHandler` y `dto/`
   (`CreateLinkRequest`, `CsrfTokenResponse`, `ApiErrorResponse`,
   `SesionActualResponse`, `UsuarioSesion`, `ElegirNamespaceRequest`,
   `NamespaceSugerenciaResponse`, `CodigoVinculacionResponse`,
@@ -689,8 +702,9 @@ issue #15 (ADR 0006):
   `elegirNamespace` (validación, unicidad y persistencia del namespace),
   `sugerenciaDeNamespace` (adaptación de la parte local del email) y los
   de la vinculación por QR: `crearVinculacion`, `presentarVinculacion`,
-  `aprobarVinculacion` y `consumirVinculacion`.
-  La inyección es `@Autowired` en campos, incluido el `EntityManager`.
+  `aprobarVinculacion` y `consumirVinculacion`, y
+  `cerrarSesionesVinculadas` (invalida las sesiones indexadas del usuario
+  cuyo tipo es `vinculada`). La inyección es `@Autowired` en campos, incluido el `EntityManager`.
   También viven acá el record de resultado
   `EnlaceCreado`, `InvalidDestinationException`,
   `InvalidNamespaceException` e `InvalidAliasPersonalizadoException`,
