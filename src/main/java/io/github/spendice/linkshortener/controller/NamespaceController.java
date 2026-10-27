@@ -26,8 +26,8 @@ import java.util.Map;
  * Elección y cambio del namespace (issues #20 y #24). La operación exige
  * una sesión con usuario: sin sesión responde {@code 401} con el mismo
  * formato de error del contrato, y la web solo muestra la pantalla a
- * quien inició sesión. Los rechazos de formato, nombre reservado, nombre
- * tomado y usuario que ya eligió salen del service con código propio.
+ * quien inició sesión. Los rechazos de formato, nombre reservado y
+ * nombre tomado salen del service con código propio.
  */
 @RestController
 class NamespaceController {

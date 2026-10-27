@@ -106,7 +106,6 @@ namespaceForm.addEventListener("submit", async (event) => {
     cerrarSesionesVinculadas.hidden = false;
     sesionesVinculadasNotice.hidden = false;
     cargarNamespacesAnteriores();
-    aliasPersonal.hidden = false;
     // Recién elegido el namespace ya se pueden crear enlaces personales.
     aliasPersonal.hidden = false;
 });

@@ -3,10 +3,19 @@ package io.github.spendice.linkshortener;
 import com.fasterxml.jackson.databind.JsonNode;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.builder.SpringApplicationBuilder;
+import org.springframework.boot.web.context.WebServerApplicationContext;
+import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.context.annotation.Import;
 
+import java.net.URI;
 import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpRequest.BodyPublishers;
 import java.net.http.HttpResponse;
+import java.net.http.HttpResponse.BodyHandlers;
+import java.sql.Timestamp;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.concurrent.CyclicBarrier;
@@ -32,22 +41,45 @@ class CambioNamespaceHttpTest extends HttpApiFixture {
         HttpClient juan = usuario("google-sub-gracia-juan", "juan@ejemplo.com", "juan");
         HttpClient pedro = sesionDe("google-sub-gracia-pedro", "pedro@ejemplo.com");
 
+        // juan -> juani a las 12:00: «juan» queda reservado hasta las 13:00
+        // y nadie más puede tomarlo mientras tanto.
         assertThat(cambiar(juan, "juani").statusCode()).isEqualTo(200);
         assertError(cambiar(pedro, "juan"), 409, "NAMESPACE_TAKEN");
-        assertThat(cambiar(juan, "juanito").statusCode()).isEqualTo(200);
-        JsonNode lista = json.readTree(get(juan, "/api/namespace/anteriores").body());
-        assertThat(lista.get("namespaces").size()).isEqualTo(2);
-        assertThat(lista.get("namespaces").get(0).get("graceEndsAt").asText())
-                .isEqualTo("2026-10-05T13:00:00Z");
 
-        assertThat(cambiar(juan, "juan").statusCode()).isEqualTo(200);
+        // juani -> juanito media hora después: «juani» se reserva con su
+        // propio fin de gracia sin tocar el de «juan».
+        clock.set(T0.plusSeconds(1800));
+        assertThat(cambiar(juan, "juanito").statusCode()).isEqualTo(200);
+        JsonNode lista = json.readTree(get(juan, "/api/namespace/anteriores").body())
+                .get("namespaces");
+        assertThat(lista.size()).isEqualTo(2);
+        assertThat(lista.get(0).get("namespace").asText()).isEqualTo("juan");
+        assertThat(lista.get(0).get("graceEndsAt").asText())
+                .isEqualTo("2026-10-05T13:00:00Z");
+        assertThat(lista.get(1).get("namespace").asText()).isEqualTo("juani");
+        assertThat(lista.get(1).get("graceEndsAt").asText())
+                .isEqualTo("2026-10-05T13:30:00Z");
+
+        // A las 13:00 la gracia de «juan» ya terminó y la de «juani» sigue:
+        // Pedro puede tomar el primero y no el segundo.
+        clock.set(T0.plusSeconds(3600));
+        assertThat(cambiar(pedro, "juan").statusCode()).isEqualTo(200);
+        assertError(cambiar(pedro, "juani"), 409, "NAMESPACE_TAKEN");
+
+        // Su usuario sí vuelve a «juani» dentro de la gracia, y «juanito»
+        // pasa a anterior con una gracia nueva calculada en ese instante.
+        assertThat(cambiar(juan, "juani").statusCode()).isEqualTo(200);
         assertThat(db.queryForList("SELECT namespace FROM namespace_anterior ORDER BY namespace",
-                String.class)).containsExactly("juani", "juanito");
-        assertThat(json.readTree(get(juan, "/api/namespace/anteriores").body())
-                .get("namespaces").size()).isEqualTo(2);
+                String.class)).containsExactly("juanito");
+        JsonNode restantes = json.readTree(get(juan, "/api/namespace/anteriores").body())
+                .get("namespaces");
+        assertThat(restantes.size()).isEqualTo(1);
+        assertThat(restantes.get(0).get("graceEndsAt").asText())
+                .isEqualTo("2026-10-05T14:00:00Z");
         assertThat(db.queryForList(
-                "SELECT namespace FROM nombre_namespace WHERE grace_ends_at IS NULL",
-                String.class)).containsExactly("juan");
+                "SELECT namespace FROM nombre_namespace WHERE grace_ends_at IS NULL"
+                        + " ORDER BY namespace",
+                String.class)).containsExactly("juan", "juani");
     }
 
     @Test
@@ -167,6 +199,105 @@ class CambioNamespaceHttpTest extends HttpApiFixture {
         assertThat(db.queryForObject(
                 "SELECT namespace FROM usuario WHERE google_sub = 'google-sub-gracia-validacion'",
                 String.class)).isEqualTo("juan");
+    }
+
+    /**
+     * El listado de anteriores es parte de la sesión del usuario: sin
+     * sesión responde {@code 401} con el formato de error del contrato.
+     */
+    @Test
+    void anterioresSinSesionResponde401() throws Exception {
+        assertError(get(nuevoClienteDispositivo(), "/api/namespace/anteriores"),
+                401, "NOT_AUTHENTICATED");
+    }
+
+    /**
+     * El fin de gracia se calcula una sola vez, al hacer el cambio
+     * (issue #24): un segundo contexto sobre la misma base — la maniobra
+     * de {@link SesionReinicioHttpTest} — levantado con otro
+     * {@code cuenta.namespace-grace-period} no altera la reserva en
+     * curso, y el cambio que él hace sí usa el período nuevo. El reloj
+     * se iguala al real porque el segundo contexto no conoce el
+     * {@link MutableClock} de la suite.
+     */
+    @Test
+    void cambiarLaConfiguracionNoAlteraLasGraciasEnCurso() throws Exception {
+        clock.set(Instant.now());
+        HttpClient juan = usuario("google-sub-gracia-config", "config@ejemplo.com", "juan");
+        assertThat(cambiar(juan, "juani").statusCode()).isEqualTo(200);
+        Timestamp finOriginal = db.queryForObject(
+                "SELECT grace_ends_at FROM namespace_anterior WHERE namespace = 'juan'",
+                Timestamp.class);
+        assertThat(finOriginal).isNotNull();
+
+        ConfigurableApplicationContext otra =
+                startAppCon("--cuenta.namespace-grace-period=PT6H");
+        try {
+            String base = "http://localhost:"
+                    + ((WebServerApplicationContext) otra).getWebServer().getPort();
+            JsonNode anteriores = json.readTree(
+                    getEn(juan, base, "/api/namespace/anteriores").body())
+                    .get("namespaces");
+            assertThat(anteriores.size()).isEqualTo(1);
+            assertThat(anteriores.get(0).get("namespace").asText()).isEqualTo("juan");
+            assertThat(Instant.parse(anteriores.get(0).get("graceEndsAt").asText()))
+                    .isEqualTo(finOriginal.toInstant());
+
+            assertThat(cambiar(juan, base, "juanito").statusCode()).isEqualTo(200);
+            assertThat(db.queryForObject(
+                    "SELECT grace_ends_at FROM namespace_anterior WHERE namespace = 'juan'",
+                    Timestamp.class)).isEqualTo(finOriginal);
+            Timestamp finJuani = db.queryForObject(
+                    "SELECT grace_ends_at FROM namespace_anterior WHERE namespace = 'juani'",
+                    Timestamp.class);
+            // Con PT6H el fin nuevo cae unas cinco horas después del que
+            // quedó calculado con el default PT1H.
+            assertThat(finJuani).isNotNull();
+            assertThat(Duration.between(finOriginal.toInstant(), finJuani.toInstant()))
+                    .isGreaterThan(Duration.ofHours(4));
+        } finally {
+            otra.close();
+        }
+    }
+
+    /** Segundo contexto sobre la misma base, como en SesionReinicioHttpTest. */
+    private ConfigurableApplicationContext startAppCon(String... extraArgs) {
+        String[] fijos = {
+                "--server.port=0",
+                "--spring.datasource.url=" + TestHost.jdbcUrl(POSTGRES),
+                "--spring.datasource.username=" + POSTGRES.getUsername(),
+                "--spring.datasource.password=" + POSTGRES.getPassword(),
+                "--shortener.public-base-url=" + PUBLIC_BASE,
+                "--spring.security.oauth2.client.provider.google.issuer-uri="
+                        + GoogleSimulado.issuerUri(),
+                "--spring.security.oauth2.client.registration.google.client-id="
+                        + GoogleSimulado.CLIENT_ID,
+                "--spring.security.oauth2.client.registration.google.client-secret="
+                        + GoogleSimulado.CLIENT_SECRET,
+        };
+        String[] args = new String[fijos.length + extraArgs.length];
+        System.arraycopy(fijos, 0, args, 0, fijos.length);
+        System.arraycopy(extraArgs, 0, args, fijos.length, extraArgs.length);
+        return new SpringApplicationBuilder(LinkShortenerApplication.class).run(args);
+    }
+
+    private HttpResponse<String> getEn(HttpClient cliente, String base, String path)
+            throws Exception {
+        HttpRequest request = HttpRequest.newBuilder(URI.create(base + path))
+                .GET().timeout(Duration.ofSeconds(15)).build();
+        return cliente.send(request, BodyHandlers.ofString());
+    }
+
+    private HttpResponse<String> cambiar(HttpClient cliente, String base, String namespace)
+            throws Exception {
+        String csrf = Csrf.obtener(cliente, base);
+        HttpRequest request = Csrf.aplicar(cliente,
+                        HttpRequest.newBuilder(URI.create(base + "/api/namespace")), csrf)
+                .header("Content-Type", "application/json")
+                .timeout(Duration.ofSeconds(15))
+                .POST(BodyPublishers.ofString("{\"namespace\":\"" + namespace + "\"}"))
+                .build();
+        return cliente.send(request, BodyHandlers.ofString());
     }
 
     private HttpClient usuario(String sub, String email, String namespace) throws Exception {

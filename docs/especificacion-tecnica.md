@@ -727,10 +727,13 @@ creaciones simultáneas sin duplicar la vigente y el campo vacío como
 enlace acortado.
 
 El cambio de namespace (issue #24) se verifica en `CambioNamespaceHttpTest`
-con PostgreSQL real, OIDC simulado y `MutableClock`: cambios encadenados,
-recuperación de un namespace propio, reservas ajenas, liberación al fin de
-gracia, listado con fin UTC, validación de formato y nombres reservados,
-exclusión ante solicitudes simultáneas y conservación del vencimiento personal.
+con PostgreSQL real, OIDC simulado y `MutableClock`: cambios encadenados
+en instantes distintos con una gracia por nombre, recuperación de un
+namespace propio, reservas ajenas, liberación al fin de gracia, listado
+con fin UTC y `401` sin sesión, validación de formato y nombres
+reservados, exclusión ante solicitudes simultáneas, conservación del
+vencimiento personal y un segundo contexto con otro
+`cuenta.namespace-grace-period` que no altera la gracia en curso.
 
 No implementa esta especificación: consola de
 gestión, estadísticas de visitas ni purga del historial (analizados en

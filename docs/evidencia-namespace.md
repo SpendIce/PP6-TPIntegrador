@@ -50,19 +50,22 @@ el nombre, igual que la reserva de alias de `ConcurrenciaHttpTest`.
   distinguir mayúsculas, repetición idempotente, `401` sin sesión y
   carrera simultánea de dos usuarios.
 - `CambioNamespaceHttpTest`: cambio con gracia y recuperación del nombre
-  anterior, encadenamiento de gracias por nombre, y el solapamiento real
-  de dos cambios forzado con `InspeccionNombreNamespace` — el perdedor
-  recibe `NAMESPACE_TAKEN` (`409`).
+  anterior, encadenamiento en instantes distintos con una gracia que
+  vence mientras la otra sigue, `401` sin sesión en el listado de
+  anteriores, un segundo contexto con otro `namespace-grace-period` que
+  no altera la reserva en curso, y el solapamiento real de dos cambios
+  forzado con `InspeccionNombreNamespace` — el perdedor recibe
+  `NAMESPACE_TAKEN` (`409`).
 - `CuentaPropertiesTest`: normalización y obligatoriedad de la lista de
   nombres reservados, y período de gracia positivo.
 
 ## Ejecutado
 
-Corrida del 2026-10-26 con el oráculo del Project:
+Corrida del 2026-10-27 con el oráculo del Project:
 
 ```text
 ./gradlew --no-daemon --console=plain test
-BUILD SUCCESSFUL   (103 pruebas, 0 fallos, 20 suites)
+BUILD SUCCESSFUL   (126 pruebas, 0 fallos, 22 suites)
 
 cd src/test/js && node --test    -> pass 5
 cd extensiones && node --test    -> pass 42

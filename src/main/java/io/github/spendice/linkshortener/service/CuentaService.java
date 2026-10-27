@@ -308,15 +308,29 @@ public class CuentaService {
                 return true;
             }
             String mensaje = actual.getMessage();
-            if (mensaje != null) {
-                String minusculas = mensaje.toLowerCase(Locale.ROOT);
-                if (minusculas.contains("nombre_namespace")
-                        || minusculas.contains("namespace_anterior")) {
-                    return true;
-                }
+            if (mensaje != null && esViolacionUnicaDelRegistroDeNombres(mensaje)) {
+                return true;
             }
         }
         return false;
+    }
+
+    /**
+     * Solo las violaciones de unicidad del registro de nombres son la
+     * carrera que hay que traducir: una violación de clave foránea (p.
+     * ej. {@code fk_namespace_anterior_usuario}) es un defecto de
+     * integridad y no puede disfrazarse de {@code NAMESPACE_TAKEN}.
+     * Postgres nombra la restricción ({@code nombre_namespace_pkey}) y
+     * HSQLDB nombra la tabla cuando la clave primaria tiene nombre
+     * generado, así que el mensaje se reconoce por la unicidad y la
+     * tabla, no por la tabla sola.
+     */
+    private static boolean esViolacionUnicaDelRegistroDeNombres(String mensaje) {
+        String minusculas = mensaje.toLowerCase(Locale.ROOT);
+        boolean unica = minusculas.contains("unique")
+                || minusculas.contains("duplicate");
+        return unica && (minusculas.contains("nombre_namespace")
+                || minusculas.contains("uq_namespace_anterior_namespace"));
     }
 
     private static String normalizarNamespace(String propuesta) {
