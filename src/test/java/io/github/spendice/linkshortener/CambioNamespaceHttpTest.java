@@ -15,13 +15,16 @@ import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-@Import(ClockTestConfiguration.class)
+@Import({ClockTestConfiguration.class, InspeccionNombreNamespaceConfiguration.class})
 class CambioNamespaceHttpTest extends HttpApiFixture {
 
     private static final Instant T0 = Instant.parse("2026-10-05T12:00:00Z");
 
     @Autowired
     MutableClock clock;
+
+    @Autowired
+    InspeccionNombreNamespace inspeccion;
 
     @Test
     void cambiaNamespaceReservaCadaNombreYPermiteRecuperarlo() throws Exception {
@@ -71,27 +74,36 @@ class CambioNamespaceHttpTest extends HttpApiFixture {
                 java.sql.Timestamp.class)).isEqualTo(vencimiento);
     }
 
+    /**
+     * La carrera que la clave primaria de {@code nombre_namespace} tiene
+     * que serializar: la barrera del inspector detiene a cada transacción
+     * en su {@code insert}, así que las dos quedan abiertas dentro de la
+     * sección crítica — cada una verificó «libre» disponible mientras la
+     * otra seguía sin insertar — y chocan en la PK en vez de resolverse
+     * en secuencia por suerte del scheduler. Gana una; la otra recibe
+     * {@code NAMESPACE_TAKEN}.
+     */
     @Test
     void dosUsuariosQuePidenALaVezUnNamespaceLibreNoLoComparten() throws Exception {
         HttpClient uno = sesionDe("google-sub-gracia-race-uno", "race-uno@ejemplo.com");
         HttpClient dos = sesionDe("google-sub-gracia-race-dos", "race-dos@ejemplo.com");
-        var barrera = new CyclicBarrier(2);
         var pool = Executors.newFixedThreadPool(2);
+        inspeccion.armar(new CyclicBarrier(2));
         try {
-            var primera = pool.submit(() -> {
-                barrera.await(10, TimeUnit.SECONDS);
-                return cambiar(uno, "libre").statusCode();
-            });
-            var segunda = pool.submit(() -> {
-                barrera.await(10, TimeUnit.SECONDS);
-                return cambiar(dos, "libre").statusCode();
-            });
-            assertThat(List.of(primera.get(20, TimeUnit.SECONDS),
-                    segunda.get(20, TimeUnit.SECONDS))).containsExactlyInAnyOrder(200, 409);
+            var primera = pool.submit(() -> cambiar(uno, "libre"));
+            var segunda = pool.submit(() -> cambiar(dos, "libre"));
+            HttpResponse<String> respuestaUno = primera.get(20, TimeUnit.SECONDS);
+            HttpResponse<String> respuestaDos = segunda.get(20, TimeUnit.SECONDS);
+            assertThat(List.of(respuestaUno.statusCode(), respuestaDos.statusCode()))
+                    .containsExactlyInAnyOrder(200, 409);
+            HttpResponse<String> perdedora =
+                    respuestaUno.statusCode() == 409 ? respuestaUno : respuestaDos;
+            assertError(perdedora, 409, "NAMESPACE_TAKEN");
             assertThat(db.queryForObject(
                     "SELECT COUNT(*) FROM nombre_namespace WHERE namespace = 'libre'", Long.class))
                     .isEqualTo(1);
         } finally {
+            inspeccion.desarmar();
             pool.shutdownNow();
         }
     }
