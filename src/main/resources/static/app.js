@@ -14,6 +14,8 @@ const namespaceSection = document.getElementById("namespace");
 const namespaceForm = document.getElementById("namespace-form");
 const namespaceInput = document.getElementById("namespace-input");
 const namespaceError = document.getElementById("namespace-error");
+const aliasPersonal = document.getElementById("alias-personal");
+const aliasInput = document.getElementById("alias-personalizado");
 
 // Sesión actual (issue #19): sin sesión se ofrece el acceso con Google;
 // con sesión principal se muestra el email del usuario y el cierre. Si
@@ -35,6 +37,10 @@ const namespaceError = document.getElementById("namespace-error");
         if (!sesion.usuario.namespace) {
             namespaceInput.value = sesion.usuario.sugerencia || "";
             namespaceSection.hidden = false;
+        } else {
+            // Con namespace elegido el formulario suma el campo opcional
+            // del alias personalizado (issue #21).
+            aliasPersonal.hidden = false;
         }
     } catch (error) {
         console.warn("No se pudo consultar la sesión actual", error);
@@ -78,6 +84,8 @@ namespaceForm.addEventListener("submit", async (event) => {
     }
     mostrarUsuario(body.usuario);
     namespaceSection.hidden = true;
+    // Recién elegido el namespace ya se pueden crear enlaces personales.
+    aliasPersonal.hidden = false;
 });
 
 function mostrarUsuario(usuario) {
@@ -127,6 +135,9 @@ form.addEventListener("submit", async (event) => {
     // campo mientras llega el token CSRF, se acorta lo que envió al pulsar
     // «Acortar», no lo que quedó escrito después.
     const destination = input.value;
+    // Vacío (o el campo oculto sin sesión/namespace) pide el enlace
+    // acortado de siempre; el servidor lo trata igual que omitirlo.
+    const aliasPersonalizado = aliasPersonal.hidden ? "" : aliasInput.value;
 
     let response;
     try {
@@ -144,7 +155,7 @@ form.addEventListener("submit", async (event) => {
                 "Content-Type": "application/json",
                 "X-XSRF-TOKEN": csrf.token
             },
-            body: JSON.stringify({ destination })
+            body: JSON.stringify({ destination, aliasPersonalizado })
         });
     } catch (e) {
         showError("No se pudo contactar al servicio.");
@@ -154,6 +165,10 @@ form.addEventListener("submit", async (event) => {
     const body = await response.json().catch(() => null);
     if (!response.ok) {
         showError(body && body.message ? body.message : "La dirección fue rechazada.");
+        // Los rechazos del alias personalizado apuntan a su propio campo.
+        if (body && (body.error === "ALIAS_INVALID" || body.error === "ALIAS_TAKEN")) {
+            aliasInput.focus();
+        }
         return;
     }
 

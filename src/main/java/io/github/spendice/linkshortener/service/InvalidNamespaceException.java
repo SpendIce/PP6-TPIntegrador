@@ -3,8 +3,8 @@ package io.github.spendice.linkshortener.service;
 /**
  * Rechazo de un namespace propuesto. El {@link Reason} coincide con los
  * códigos de error publicados en el contrato OpenAPI: cada motivo
- * (formato inválido, nombre reservado, nombre tomado o usuario que ya
- * eligió) responde con su propio código.
+ * (formato inválido, nombre reservado, nombre tomado, usuario que ya
+ * eligió o usuario que todavía no eligió) responde con su propio código.
  */
 public final class InvalidNamespaceException extends RuntimeException {
 
@@ -12,7 +12,8 @@ public final class InvalidNamespaceException extends RuntimeException {
         NAMESPACE_INVALID,
         NAMESPACE_RESERVED,
         NAMESPACE_TAKEN,
-        NAMESPACE_ALREADY_CHOSEN
+        NAMESPACE_ALREADY_CHOSEN,
+        NAMESPACE_NOT_CHOSEN
     }
 
     private final Reason reason;

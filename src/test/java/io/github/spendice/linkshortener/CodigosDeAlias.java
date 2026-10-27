@@ -44,6 +44,36 @@ final class CodigosDeAlias {
     }
 
     /**
+     * Índice del código en la enumeración, la inversa de
+     * {@link #codigoEn}: suma los tramos completos de las longitudes
+     * anteriores más el desplazamiento del código dentro del suyo.
+     */
+    static long indiceDe(String codigo) {
+        long indice = 0;
+        for (int l = 1; l < codigo.length(); l++) {
+            indice += potencia(ALFABETO.length(), l);
+        }
+        for (int i = 0; i < codigo.length(); i++) {
+            int posicion = ALFABETO.indexOf(codigo.charAt(i));
+            if (posicion < 0) {
+                throw new IllegalArgumentException(
+                        "El código '" + codigo + "' no es del alfabeto por defecto");
+            }
+            indice += (long) posicion
+                    * potencia(ALFABETO.length(), codigo.length() - 1 - i);
+        }
+        return indice;
+    }
+
+    private static long potencia(int base, int exponente) {
+        long resultado = 1;
+        for (int i = 0; i < exponente; i++) {
+            resultado *= base;
+        }
+        return resultado;
+    }
+
+    /**
      * Primer índice, a partir de {@code desde}, cuyo código no está
      * entre los {@code reservados} configurados en el contexto de prueba.
      */

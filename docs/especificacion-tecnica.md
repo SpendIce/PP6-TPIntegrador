@@ -4,8 +4,9 @@ Estado: decisiones técnicas fijadas para el issue #2, extendidas con la
 evidencia de vencimiento y reinicio del issue #3, la reutilización de
 alias del issue #5, las garantías de concurrencia del issue #6, la capa
 de seguridad con CSRF del issue #18, el inicio de sesión con Google con
-sesión principal persistida del issue #19 y la elección del namespace del
-primer login del issue #20. La
+sesión principal persistida del issue #19, la elección del namespace del
+primer login del issue #20 y los enlaces personales con alias
+personalizado del issue #21. La
 estructura descrita refleja el refactor al esquema de clase del issue
 #15 (service único con `EntityManager` y HQL sobre las entities de
 `mappings`, [ADR 0006](adr/0006-service-unico-hql-mappings.md)). Cierra
@@ -20,19 +21,40 @@ producto de [requisitos de etapa 1](requisitos-etapa-1.md).
 
 El contrato REST de creación y resolución está en [openapi.yaml](../openapi.yaml):
 
-- `POST /api/links` recibe `{"destination": "<url>"}` y devuelve `201` con
-  `shortUrl`, `alias`, `expiresAt` y `reuseNotice`. Los rechazos de entrada son
-  `400` con `{error, message}`; los códigos de `error` posibles figuran en el
-  contrato (`EMPTY_DESTINATION`, `DESTINATION_TOO_LONG`, `MALFORMED_DESTINATION`,
-  `UNSUPPORTED_SCHEME`, `OWN_ORIGIN`, `INVALID_REQUEST`). Un token CSRF ausente
-  o inválido se rechaza con `403` y el mismo formato (`CSRF_TOKEN_INVALID`);
-  ver «Seguridad y CSRF».
+- `POST /api/links` recibe `{"destination": "<url>"}` con el
+  `aliasPersonalizado` opcional del issue #21 y devuelve `201` con
+  `shortUrl`, `alias`, `expiresAt` y `reuseNotice`. Sin
+  `aliasPersonalizado` (ausente, `null` o vacío, también con sesión) la
+  creación es la de la etapa 1. Con `aliasPersonalizado` crea el enlace
+  personal `/{namespace}/{alias personalizado}` del usuario de la sesión:
+  de 1 a 50 caracteres `a-z`, `0-9` y `-`, sin distinguir mayúsculas (se
+  normaliza y guarda en minúsculas). El formato inválido responde `400`
+  con `ALIAS_INVALID`; sin sesión responde `401` con `NOT_AUTHENTICATED`;
+  con sesión y sin namespace elegido responde `409` con
+  `NAMESPACE_NOT_CHOSEN`; y repetir un alias personalizado vigente del
+  mismo usuario responde `409` con `ALIAS_TAKEN` (al vencer puede
+  reusarlo, y otro usuario siempre puede usar el mismo texto en su propio
+  namespace). Los rechazos de entrada son `400` con `{error, message}`;
+  los códigos de `error` posibles figuran en el contrato
+  (`EMPTY_DESTINATION`, `DESTINATION_TOO_LONG`, `MALFORMED_DESTINATION`,
+  `UNSUPPORTED_SCHEME`, `OWN_ORIGIN`, `INVALID_REQUEST`). Un token CSRF
+  ausente o inválido se rechaza con `403` y el mismo formato
+  (`CSRF_TOKEN_INVALID`); ver «Seguridad y CSRF».
 - `GET /api/csrf` emite el token CSRF: fija la cookie legible `XSRF-TOKEN` y
   devuelve el mismo valor en `{"token": "..."}` para los clientes que no pueden
   leer `Set-Cookie` (las extensiones). Responde `Cache-Control: no-store`.
 - `GET /{alias}` devuelve `302` con `Location` al destino conservado y
   `Cache-Control: no-store` cuando hay asignación vigente; `404` con la página
   «Este enlace no existe o venció» y `Cache-Control: no-store` en caso contrario.
+- `GET /{namespace}/{aliasPersonalizado}` (issue #21) resuelve el enlace
+  personal del usuario dueño del namespace: `302` con `Location` al
+  destino y `Cache-Control: no-store` mientras la asignación está
+  vigente, y `404` con la misma página y `no-store` si el namespace no
+  existe, el enlace no existe o ya venció. Ambos segmentos se comparan
+  sin distinguir mayúsculas (el alias se guarda en minúsculas y el
+  namespace ya nace normalizado). La ruta de un segmento no cambia:
+  `/juan` sigue resolviendo el alias `juan` de la etapa 1 aunque el
+  texto coincida con el namespace de un usuario, nunca un perfil.
 - `GET /api/sesion` devuelve `{"usuario": null}` sin sesión o sin usuario
   en la sesión, y `{"usuario": {"email", "namespace", "tipo", "sugerencia"}}`
   con sesión iniciada: `email` de la cuenta de Google, `namespace` vacío
@@ -82,8 +104,13 @@ la respuesta `400` de `openapi.yaml`):
   `public-base-url`, los equivalentes loopback del mismo puerto y los
   orígenes declarados en `own-origins`; otro puerto u otro host LAN no es
   origen propio.
+- El alias personalizado se valida antes de persistir: vacío, ausente o
+  `null` no es un formato inválido, pide el enlace acortado de siempre;
+  cualquier otro valor se normaliza a minúsculas y exige de 1 a 50
+  caracteres `a-z`, `0-9` y `-`.
 - Ningún rechazo crea asignación ni consume un alias: la validación ocurre
-  antes de la reserva dentro de la transacción de `acortar`.
+  antes de la reserva dentro de la transacción de `acortar`, y la de los
+  enlaces personales antes de persistir dentro de `crearEnlacePersonal`.
 
 ## Seguridad y CSRF
 
@@ -91,9 +118,12 @@ La capa de seguridad (issue #18, en `config/SecurityConfig`; el issue #19
 suma el login con Google y las sesiones persistidas) mantiene el flujo
 anónimo de la etapa 1:
 
-- Todo el contrato sigue sin autenticación: `GET /{alias}`, la página 404, la
-  web, los estáticos y las rutas reservadas no piden credenciales, y crear
-  enlaces acortados no exige sesión.
+- Todo el contrato sigue sin autenticación salvo la creación de enlaces
+  personales: `GET /{alias}`, `GET /{namespace}/{aliasPersonalizado}`,
+  la página 404, la web, los estáticos y las rutas reservadas no piden
+  credenciales, y crear enlaces acortados no exige sesión. `POST
+  /api/links` con `aliasPersonalizado` sí exige la sesión principal del
+  usuario y sin ella responde `401` con `NOT_AUTHENTICATED`.
 - Se usa el firewall por defecto de Spring Security (`DefaultHttpFirewall`), no
   el estricto: el estricto rechaza con `400` el `;` en la ruta y el doble
   slash, y la etapa 1 resolvía `/abc;utm=x` y `//abc` como `/abc`. Conservar
@@ -291,6 +321,19 @@ restricción también impone la unicidad sin distinguir mayúsculas. En
 PostgreSQL los múltiples `NULL` de los usuarios que todavía no eligieron
 no colisionan.
 
+La migración `V5__asignacion_personal.sql` (issue #21) agrega
+`asignacion_personal (id BIGINT GENERATED BY DEFAULT AS IDENTITY PK,
+usuario_id BIGINT FK -> usuario.id, alias_personalizado VARCHAR(50) NOT
+NULL, destino TEXT NOT NULL, creada_en TIMESTAMPTZ NOT NULL, vence_en
+TIMESTAMPTZ NOT NULL)` con el índice `ix_asignacion_personal_usuario_alias`
+sobre `(usuario_id, alias_personalizado)`. La asignación pertenece al
+usuario y no al texto del namespace: un cambio de namespace mueve la
+resolución sin tocar la fila. No lleva restricción única sobre
+`(usuario_id, alias_personalizado)` porque el historial conserva todas
+las asignaciones (ADR 0003) y el mismo usuario puede reusar el alias al
+vencer: la unicidad de la vigente la garantiza la serialización por
+usuario (ver «Coordinación transaccional»).
+
 El perfil `hsqldb` traduce esas tablas a mano en
 `db/hsqldb/schema.sql` (mismos nombres y columnas; `BYTEA` se vuelve
 `LONGVARBINARY`), como manda el ADR 0005. La restricción del namespace se
@@ -386,6 +429,19 @@ vencidos sin emitir códigos nuevos, expansión que agota los vencidos
 cortos antes de emitir más largos, atomicidad de los rechazos en carga
 mixta, resolución durante la reasignación y reintento sin idempotencia.
 
+La creación de enlaces personales (issue #21) sigue la misma disciplina
+con la fila del usuario como punto de serialización:
+`crearEnlacePersonal` bloquea `usuario` con `PESSIMISTIC_WRITE` antes de
+consultar la asignación vigente del alias y persistir la nueva. Dos
+creaciones simultáneas del mismo usuario y el mismo alias personalizado
+nunca terminan con dos vigentes: la que espera lee la confirmada por la
+otra y recibe `ALIAS_TAKEN`. No hay restricción única que una tercera
+transacción pudiera violar, porque la unicidad es sobre la vigencia en
+el instante del servidor y no sobre la tabla (el historial conserva las
+vencidas). La resolución de dos segmentos corre en `readOnly` sin
+bloqueos, como `resolver`: ubica al usuario por su namespace, que es
+único, y lee su asignación vigente de ese alias.
+
 ## Configuración de despliegue
 
 Prefijo `shortener` (`ShortenerProperties`). Cada clave se declara en
@@ -403,7 +459,8 @@ caer en silencio a otro valor:
   deriva de la solicitud ni se fija a localhost. Para la demo LAN se
   configura la dirección LAN, p. ej. `http://192.168.1.50:8080`.
 - `link-duration` (`Duration`, `LINK_DURATION`, default `PT60M`):
-  duración de las nuevas asignaciones; como mínimo un minuto (un número
+  duración de las nuevas asignaciones, acortadas y personales; como
+  mínimo un minuto (un número
   sin unidad son milisegundos y corta el arranque). El experimento de adaptación la
   cambia sin tocar las asignaciones existentes, cuyo `vence_en` ya está
   persistido. Evidencia ejecutada y análisis de los demás cambios
@@ -460,8 +517,9 @@ misma regla del entorno/`.env` pero sin default en el primer caso:
 `io.github.spendice.linkshortener`, reorganizado al esquema de clase del
 issue #15 (ADR 0006):
 
-- `controller`: `LinkApiController` (`POST /api/links`),
-  `RedirectController` (`GET /{alias}`), `CsrfController`
+- `controller`: `LinkApiController` (`POST /api/links`, creación de
+  enlaces acortados y personales), `RedirectController` (`GET /{alias}`
+  y `GET /{namespace}/{aliasPersonalizado}`), `CsrfController`
   (`GET /api/csrf`), `SesionController` (`GET /api/sesion`,
   `POST /api/logout`), `NamespaceController` (`POST /api/namespace`,
   `GET /api/namespace/sugerencia`), `ApiExceptionHandler` y `dto/`
@@ -471,22 +529,25 @@ issue #15 (ADR 0006):
   traducen la request, llaman al método del service y devuelven su
   resultado; el `201` serializa el record `EnlaceCreado` directo como
   body.
-- `service`: `AcortadorService` con los casos de uso `acortar` y
-  `resolver` como métodos públicos y todas las reglas de negocio como
+- `service`: `AcortadorService` con los casos de uso `acortar`,
+  `resolver`, `crearEnlacePersonal` y `resolverEnlacePersonal` como
+  métodos públicos y todas las reglas de negocio como
   helpers privados del mismo archivo (validación de
   destino, cálculo de vencimiento, enumeración de códigos, elección del
-  reciclable, orígenes propios), y `CuentaService` (ADR 0008) con los
+  reciclable, orígenes propios, formato y normalización del alias
+  personalizado), y `CuentaService` (ADR 0008) con los
   casos de uso de la cuenta: `usuarioDeLogin` (alta por `sub` o reúso y
   refresco del email), `usuarioDeSesion` (usuario de la sesión actual),
   `elegirNamespace` (validación, unicidad y persistencia del namespace) y
   `sugerenciaDeNamespace` (adaptación de la parte local del email).
   La inyección es `@Autowired` en campos, incluido el `EntityManager`.
   También viven acá el record de resultado
-  `EnlaceCreado`, `InvalidDestinationException` e
-  `InvalidNamespaceException`, cuyos `Reason` son los contratos de
-  errores de la API.
+  `EnlaceCreado`, `InvalidDestinationException`,
+  `InvalidNamespaceException` e `InvalidAliasPersonalizadoException`,
+  cuyos `Reason` son los contratos de errores de la API.
 - `mappings`: entities JPA públicas `Alias`, `Asignacion`,
-  `GeneradorAlias` y `Usuario`, el modelo del servicio. El service las consulta y
+  `AsignacionPersonal`, `GeneradorAlias` y `Usuario`, el modelo del
+  servicio. El service las consulta y
   persiste con `EntityManager` y HQL, sin repositorios Spring Data ni
   clases de dominio paralelas que traducir. Las tablas y columnas son
   las mismas del esquema versionado.
@@ -551,7 +612,10 @@ consulta compara `clock.instant()` con el `vence_en` persistido de la
 asignación actual del alias. No hay tarea de limpieza: las asignaciones
 vencidas permanecen en `asignacion` y `alias.asignacion_actual_id` puede
 seguir apuntándolas hasta la próxima reutilización. Las visitas no
-modifican la asignación: resolver no renueva el vencimiento.
+modifican la asignación: resolver no renueva el vencimiento. Las
+asignaciones personales siguen la misma regla: `resolverEnlacePersonal`
+filtra por `venceEn > instante del servidor` y las vencidas quedan en
+`asignacion_personal` para el historial y la reutilización.
 
 En las pruebas de integración el reloj es un bean primario mutable
 (`MutableClock` vía `ClockTestConfiguration`, solo en `src/test`), lo que
@@ -629,12 +693,26 @@ dos usuarios por el mismo nombre, donde exactamente uno confirma y el
 otro recibe `NAMESPACE_TAKEN`. `CuentaPropertiesTest` cubre la
 normalización y la obligatoriedad de la lista reservada.
 
-No implementa esta especificación: alias personalizados, consola de
+Los enlaces personales con alias personalizado (issue #21) se verifican
+en `EnlacePersonalHttpTest`, también sobre PostgreSQL real y el
+proveedor OIDC simulado: creación con sesión y namespace y persistencia
+del alias, destino, creación y vencimiento pertenecientes al usuario,
+formato y normalización a minúsculas con su código propio, validación
+del destino con las reglas de la etapa 1, `401` sin sesión y
+`NAMESPACE_NOT_CHOSEN` sin namespace, `409` del alias vigente del mismo
+usuario, reutilización tras el vencimiento con el historial conservado,
+el mismo texto en namespaces de usuarios distintos, resolución de dos
+segmentos `302`/`404` con `no-store` y la página acordada, el alias de
+un segmento resolviendo aunque coincida con un namespace, dos
+creaciones simultáneas sin duplicar la vigente y el campo vacío como
+enlace acortado.
+
+No implementa esta especificación: consola de
 gestión, estadísticas de visitas ni purga del historial (analizados en
 [evidencia-evolucion.md](evidencia-evolucion.md)). Tampoco las piezas de
 la etapa 2 que dependen del login: cambio de namespace, sesiones
-vinculadas por QR, período de gracia, enlaces personales del usuario ni
-otros proveedores de identidad. Los complementos
+vinculadas por QR, período de gracia, gestión de los enlaces personales
+(listado, edición, borrado) ni otros proveedores de identidad. Los complementos
 Chrome y Firefox se entregan en `extensiones/` (issue #8) y el QR de la
 web se resuelve en el cliente (ver «QR del enlace»). El contrato OpenAPI
 ya contempla el aviso de reutilización (`reuseNotice`) para que la web lo

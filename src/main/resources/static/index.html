@@ -44,6 +44,18 @@
                    placeholder="https://ejemplo.com/documento-muy-largo">
             <button type="submit">Acortar</button>
         </div>
+        <!-- Alias personalizado (issue #21): con sesión principal y
+             namespace elegido. Completo crea un enlace personal
+             /{namespace}/{alias}; vacío crea un enlace acortado igual
+             que en la etapa 1. -->
+        <div id="alias-personal" hidden>
+            <label for="alias-personalizado">Alias personalizado (opcional)</label>
+            <div class="field-row">
+                <input id="alias-personalizado" name="aliasPersonalizado" type="text"
+                       autocomplete="off" spellcheck="false" maxlength="50"
+                       placeholder="mi-doc">
+            </div>
+        </div>
     </form>
     <p id="error" class="error" hidden></p>
     <section id="result" hidden>

@@ -1,6 +1,7 @@
 package io.github.spendice.linkshortener.controller;
 
 import io.github.spendice.linkshortener.controller.dto.ApiErrorResponse;
+import io.github.spendice.linkshortener.service.InvalidAliasPersonalizadoException;
 import io.github.spendice.linkshortener.service.InvalidDestinationException;
 import io.github.spendice.linkshortener.service.InvalidNamespaceException;
 import org.springframework.http.HttpStatus;
@@ -20,13 +21,31 @@ class ApiExceptionHandler {
 
     /**
      * Un namespace con formato inválido o reservado es un error de la
-     * solicitud ({@code 400}); uno tomado o un usuario que ya eligió es
-     * un conflicto con el estado actual ({@code 409}).
+     * solicitud ({@code 400}); uno tomado, un usuario que ya eligió o un
+     * usuario que todavía no eligió (al pedir un enlace personal) es un
+     * conflicto con el estado actual ({@code 409}).
      */
     @ExceptionHandler(InvalidNamespaceException.class)
     ResponseEntity<ApiErrorResponse> invalidNamespace(InvalidNamespaceException exception) {
         HttpStatus status = switch (exception.reason()) {
-            case NAMESPACE_TAKEN, NAMESPACE_ALREADY_CHOSEN -> HttpStatus.CONFLICT;
+            case NAMESPACE_TAKEN, NAMESPACE_ALREADY_CHOSEN, NAMESPACE_NOT_CHOSEN ->
+                    HttpStatus.CONFLICT;
+            default -> HttpStatus.BAD_REQUEST;
+        };
+        return ResponseEntity.status(status)
+                .body(new ApiErrorResponse(exception.reason().name(), exception.getMessage()));
+    }
+
+    /**
+     * Un alias personalizado fuera de formato es un error de la
+     * solicitud ({@code 400}); uno ya vigente para el mismo usuario es
+     * un conflicto con el estado actual ({@code 409}).
+     */
+    @ExceptionHandler(InvalidAliasPersonalizadoException.class)
+    ResponseEntity<ApiErrorResponse> invalidAliasPersonalizado(
+            InvalidAliasPersonalizadoException exception) {
+        HttpStatus status = switch (exception.reason()) {
+            case ALIAS_TAKEN -> HttpStatus.CONFLICT;
             default -> HttpStatus.BAD_REQUEST;
         };
         return ResponseEntity.status(status)
