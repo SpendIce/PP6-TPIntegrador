@@ -17,7 +17,8 @@ info:
     #20 suma la elección del namespace del primer login: `POST
     /api/namespace` lo registra. El issue #24 permite cambiarlo con
     período de gracia y lista los anteriores en `GET
-    /api/namespace/anteriores`. `GET /api/namespace/sugerencia` propone
+    /api/namespace/anteriores`. `GET
+    /api/namespace/sugerencia` propone
     un nombre derivado de la parte local del email. El issue #21 suma los
     enlaces personales: `POST /api/links` acepta un `aliasPersonalizado`
     opcional (con sesión y namespace elegido) y `GET
@@ -283,8 +284,7 @@ paths:
       description: >
         Registra el namespace si el usuario todavía no tiene uno, o lo
         cambia si ya tiene. La repetición del mismo nombre es idempotente.
-        El
-        nombre se normaliza a minúsculas antes de validar y guardar, así
+        El nombre se normaliza a minúsculas antes de validar y guardar, así
         que `Juan` es válido y ocupa `juan`. El formato es de 3 a 30
         caracteres `a-z`, `0-9` y `-`, sin guion inicial ni final; los
         nombres reservados por configuración (`NAMESPACE_RESERVED_NAMES`,
@@ -296,6 +296,9 @@ paths:
         decide y el perdedor recibe `NAMESPACE_TAKEN`. Al cambiar, el
         namespace anterior queda reservado hasta su fin de gracia y el
         usuario puede recuperarlo desde la lista de namespaces anteriores.
+        `NAMESPACE_GRACE_PERIOD` (`PT1H` por defecto) fija el instante de
+        liberación al hacer cada cambio; modificarla no altera reservas
+        ya iniciadas.
         Exige el token CSRF
         del doble envío, como todo POST.
       operationId: cambiarNamespace
@@ -843,7 +846,6 @@ components:
             - NAMESPACE_INVALID
             - NAMESPACE_RESERVED
             - NAMESPACE_TAKEN
-            - NAMESPACE_ALREADY_CHOSEN
             - NAMESPACE_NOT_CHOSEN
             - ALIAS_INVALID
             - ALIAS_TAKEN

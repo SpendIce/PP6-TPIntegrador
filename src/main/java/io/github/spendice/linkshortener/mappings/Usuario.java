@@ -11,8 +11,8 @@ import jakarta.persistence.Table;
  * Persona identificada por su cuenta de Google que inició sesión en el
  * servicio (CONTEXT.md). La identidad es el {@code sub} de Google: se
  * crea en el primer login y se reutiliza en los siguientes. El
- * {@code namespace} queda vacío hasta que el usuario lo elija (Change
- * posterior de la etapa 2).
+ * {@code namespace} queda vacío hasta que el usuario lo elija; después
+ * puede cambiarlo según el Change #24.
  */
 @Entity
 @Table(name = "usuario")

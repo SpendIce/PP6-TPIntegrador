@@ -14,6 +14,13 @@ const namespaceSection = document.getElementById("namespace");
 const namespaceForm = document.getElementById("namespace-form");
 const namespaceInput = document.getElementById("namespace-input");
 const namespaceError = document.getElementById("namespace-error");
+const namespaceTitle = document.getElementById("namespace-title");
+const namespaceSubmit = document.getElementById("namespace-submit");
+const miNamespace = document.getElementById("mi-namespace");
+const namespaceActual = document.getElementById("namespace-actual");
+const namespacesAnteriores = document.getElementById("namespaces-anteriores");
+const cerrarSesionesVinculadas = document.getElementById("cerrar-sesiones-vinculadas");
+const sesionesVinculadasNotice = document.getElementById("sesiones-vinculadas-notice");
 const aliasPersonal = document.getElementById("alias-personal");
 const aliasInput = document.getElementById("alias-personalizado");
 
@@ -41,6 +48,14 @@ const aliasInput = document.getElementById("alias-personalizado");
             // Con namespace elegido el formulario suma el campo opcional
             // del alias personalizado (issue #21).
             aliasPersonal.hidden = false;
+            namespaceTitle.textContent = "Cambiar mi namespace";
+            namespaceSubmit.textContent = "Cambiar";
+            namespaceSection.hidden = false;
+            miNamespace.hidden = false;
+            cerrarSesionesVinculadas.hidden = false;
+            sesionesVinculadasNotice.hidden = false;
+            namespaceActual.textContent = "Actual: " + sesion.usuario.namespace;
+            cargarNamespacesAnteriores();
         }
     } catch (error) {
         console.warn("No se pudo consultar la sesión actual", error);
@@ -83,10 +98,61 @@ namespaceForm.addEventListener("submit", async (event) => {
         return;
     }
     mostrarUsuario(body.usuario);
-    namespaceSection.hidden = true;
+    namespaceInput.value = "";
+    namespaceTitle.textContent = "Cambiar mi namespace";
+    namespaceSubmit.textContent = "Cambiar";
+    namespaceActual.textContent = "Actual: " + body.usuario.namespace;
+    miNamespace.hidden = false;
+    cerrarSesionesVinculadas.hidden = false;
+    sesionesVinculadasNotice.hidden = false;
+    cargarNamespacesAnteriores();
+    aliasPersonal.hidden = false;
     // Recién elegido el namespace ya se pueden crear enlaces personales.
     aliasPersonal.hidden = false;
 });
+
+async function cargarNamespacesAnteriores() {
+    namespacesAnteriores.replaceChildren();
+    try {
+        const respuesta = await fetch("/api/namespace/anteriores", {
+            headers: { "Accept": "application/json" }
+        });
+        if (!respuesta.ok) return;
+        const body = await respuesta.json();
+        for (const anterior of body.namespaces) {
+            const item = document.createElement("li");
+            const nombre = document.createElement("strong");
+            nombre.textContent = anterior.namespace;
+            const restante = document.createElement("span");
+            restante.className = "grace-remaining";
+            restante.dataset.endsAt = anterior.graceEndsAt;
+            const volver = document.createElement("button");
+            volver.type = "button";
+            volver.textContent = "Volver a este";
+            volver.addEventListener("click", () => {
+                namespaceInput.value = anterior.namespace;
+                namespaceForm.requestSubmit();
+            });
+            item.append(nombre, " · ", restante, " ", volver);
+            namespacesAnteriores.append(item);
+        }
+        actualizarTiempoRestante();
+    } catch (error) {
+        console.warn("No se pudieron consultar los namespaces anteriores", error);
+    }
+}
+
+function actualizarTiempoRestante() {
+    for (const elemento of namespacesAnteriores.querySelectorAll(".grace-remaining")) {
+        const milisegundos = Math.max(0, Date.parse(elemento.dataset.endsAt) - Date.now());
+        const minutos = Math.ceil(milisegundos / 60000);
+        const horas = Math.floor(minutos / 60);
+        const minutosRestantes = minutos % 60;
+        elemento.textContent = horas ? `${horas} h ${minutosRestantes} min` : `${minutos} min`;
+    }
+}
+
+setInterval(actualizarTiempoRestante, 30000);
 
 function mostrarUsuario(usuario) {
     cuentaUsuario.textContent = usuario.namespace

@@ -137,6 +137,7 @@ recorre con `bash scripts/wizard-funnel-google.sh`.
 | `GOOGLE_CLIENT_ID` `GOOGLE_CLIENT_SECRET` | `spring.security.oauth2.client.registration.google.*` | sin default | Credenciales OIDC de la app en Google Cloud; su ausencia corta el arranque nombrando la variable. Registro y URI de vuelta en `docs/despliegue-funnel-google.md`. |
 | `MAIN_SESSION_IDLE_TIMEOUT` | `cuenta.main-session-idle-timeout` | `P30D` | Inactividad máxima de la sesión principal persistida (ISO-8601); se aplica al iniciar sesión con Google. |
 | `NAMESPACE_RESERVED_NAMES` | `cuenta.namespace-reserved-names` | `api,login,logout,vincular,oauth2,error` | Nombres que ningún usuario puede elegir como namespace porque chocan con rutas del propio servicio (CSV, se normalizan a minúsculas). |
+| `NAMESPACE_GRACE_PERIOD` | `cuenta.namespace-grace-period` | `PT1H` | Período durante el que cada namespace anterior queda reservado para su usuario. Se calcula al cambiar; cambiar esta configuración no afecta las reservas existentes. |
 | `DB_HOST` `DB_PORT` `DB_NAME` `DB_USER` `DB_PASSWORD` | `spring.datasource.*` | `localhost` `5432` `acortador` | Conexión a PostgreSQL. |
 
 Las variables se pueden pasar en el entorno del proceso o declarar en un

@@ -21,21 +21,21 @@ class CuentaPropertiesTest {
 
     @Test
     void aceptaDuracionesRepresentables() {
-        assertThat(new CuentaProperties(Duration.ofDays(30), RESERVADOS)
+        assertThat(new CuentaProperties(Duration.ofDays(30), RESERVADOS, Duration.ofHours(1))
                 .mainSessionIdleTimeout())
                 .isEqualTo(Duration.ofDays(30));
     }
 
     @Test
     void rechazaDuracionesQueNoLleganAUnSegundo() {
-        assertThatThrownBy(() -> new CuentaProperties(Duration.ofMillis(500), RESERVADOS))
+        assertThatThrownBy(() -> new CuentaProperties(Duration.ofMillis(500), RESERVADOS, Duration.ofHours(1)))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("entre 1 segundo");
     }
 
     @Test
     void rechazaDuracionesQueDesbordanLosSegundosEnteros() {
-        assertThatThrownBy(() -> new CuentaProperties(Duration.ofDays(24_856), RESERVADOS))
+        assertThatThrownBy(() -> new CuentaProperties(Duration.ofDays(24_856), RESERVADOS, Duration.ofHours(1)))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("entre 1 segundo");
     }
@@ -43,15 +43,23 @@ class CuentaPropertiesTest {
     @Test
     void normalizaLosNombresReservadosAMinusculas() {
         CuentaProperties propiedades = new CuentaProperties(
-                Duration.ofDays(30), List.of(" API ", "Login", "api", ""));
+                Duration.ofDays(30), List.of(" API ", "Login", "api", ""), Duration.ofHours(1));
 
         assertThat(propiedades.namespaceReservedNames()).containsExactly("api", "login");
     }
 
     @Test
     void exigeAlMenosUnNombreReservado() {
-        assertThatThrownBy(() -> new CuentaProperties(Duration.ofDays(30), List.of()))
+        assertThatThrownBy(() -> new CuentaProperties(Duration.ofDays(30), List.of(), Duration.ofHours(1)))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("namespace-reserved-names");
+    }
+
+    @Test
+    void exigeUnPeriodoDeGraciaPositivo() {
+        assertThatThrownBy(() -> new CuentaProperties(
+                Duration.ofDays(30), RESERVADOS, Duration.ZERO))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("namespace-grace-period");
     }
 }

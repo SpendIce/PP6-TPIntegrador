@@ -2,6 +2,8 @@ package io.github.spendice.linkshortener.service;
 
 import io.github.spendice.linkshortener.config.CuentaProperties;
 import io.github.spendice.linkshortener.mappings.Usuario;
+import io.github.spendice.linkshortener.mappings.NamespaceAnterior;
+import io.github.spendice.linkshortener.mappings.NombreNamespace;
 import io.github.spendice.linkshortener.service.InvalidNamespaceException.Reason;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.LockModeType;
@@ -16,6 +18,8 @@ import org.springframework.transaction.support.TransactionTemplate;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
+import java.time.Clock;
+import java.time.Instant;
 
 /**
  * Service del área de cuentas (ADR 0008): concentra los casos de uso de
@@ -71,6 +75,9 @@ public class CuentaService {
 
     @Autowired
     CuentaProperties properties;
+
+    @Autowired
+    Clock clock;
 
     /**
      * Caso de uso del login: devuelve el usuario de la identidad de
@@ -149,70 +156,121 @@ public class CuentaService {
     }
 
     /**
-     * Caso de uso de la elección de namespace en el primer login (issue
-     * #20): valida formato y nombres reservados, comprueba que el nombre
-     * esté libre sin distinguir mayúsculas y lo guarda normalizado.
+     * Caso de uso de elección o cambio de namespace (issues #20 y #24).
      *
      * <p>La elección corre en su propia transacción con la fila del
-     * usuario bloqueada (dos pedidos del mismo usuario no se pisan) y la
-     * unicidad final la impone {@code uq_usuario_namespace}. Si dos
-     * usuarios piden el mismo nombre a la vez, el perdedor recibe la
-     * violación de la restricción y se traduce a {@code
-     * NAMESPACE_TAKEN}: nunca terminan ambos con él. Un usuario que ya
-     * tiene namespace solo puede repetir el mismo; cualquier otro nombre
-     * se rechaza con {@code NAMESPACE_ALREADY_CHOSEN} porque el cambio
-     * llega en otro Change.</p>
+     * usuario bloqueada y la unicidad final la impone la clave primaria
+     * de {@code nombre_namespace}, compartida por nombres actuales y
+     * anteriores. Al cambiar, los enlaces personales no se modifican.
      */
     public Usuario elegirNamespace(Long usuarioId, String propuesta) {
         String namespace = normalizarNamespace(propuesta);
         try {
-            return transacciones.execute(status -> asignarNamespace(usuarioId, namespace));
+            return transacciones.execute(status -> cambiarNamespace(usuarioId, namespace));
         } catch (DataIntegrityViolationException | PersistenceException carrera) {
-            if (!esCarreraDeNamespace(carrera)) {
+            if (!esCarreraDeNombreNamespace(carrera)
+                    && !esCarreraDeNamespace(carrera)) {
                 throw carrera;
             }
             throw namespaceTomado(namespace);
         }
     }
 
-    private Usuario asignarNamespace(Long usuarioId, String namespace) {
+    private Usuario cambiarNamespace(Long usuarioId, String namespace) {
         Usuario usuario = em.find(Usuario.class, usuarioId, LockModeType.PESSIMISTIC_WRITE);
         if (usuario == null) {
             throw new IllegalStateException(
                     "El usuario " + usuarioId + " de la sesión ya no existe");
         }
-        String actual = usuario.getNamespace();
-        if (actual != null) {
-            // El usuario ya eligió: repetir el mismo nombre es idempotente y
-            // cualquier otro se rechaza antes de validar su formato, porque
-            // por esta vía no hay cambio de namespace.
-            if (actual.equalsIgnoreCase(namespace)) {
-                return usuario;
-            }
-            throw new InvalidNamespaceException(Reason.NAMESPACE_ALREADY_CHOSEN,
-                    "Ya elegiste el namespace '" + actual
-                            + "'; cambiarlo llega en otro ticket.");
-        }
         validarFormatoNamespace(namespace);
         validarNamespaceReservado(namespace);
-        if (estaTomado(namespace)) {
+        NamespaceAnterior propio = anteriorEnGracia(usuario, namespace);
+        if (namespace.equals(usuario.getNamespace())) {
+            return usuario;
+        }
+        if (estaTomado(namespace, usuarioId)) {
             throw namespaceTomado(namespace);
         }
+        boolean recuperarAnterior = propio != null;
+        if (recuperarAnterior) {
+            em.createQuery("delete from NamespaceAnterior n where n.namespace = :namespace")
+                    .setParameter("namespace", namespace)
+                    .executeUpdate();
+            em.flush();
+        } else {
+            em.createQuery("delete from NamespaceAnterior n where n.namespace = :namespace "
+                            + "and n.graceEndsAt <= :ahora")
+                    .setParameter("namespace", namespace)
+                    .setParameter("ahora", clock.instant())
+                    .executeUpdate();
+            em.flush();
+            em.createQuery("delete from NombreNamespace n where n.namespace = :namespace "
+                            + "and n.graceEndsAt <= :ahora")
+                    .setParameter("namespace", namespace)
+                    .setParameter("ahora", clock.instant())
+                    .executeUpdate();
+            em.flush();
+        }
+        String actual = usuario.getNamespace();
+        if (actual != null) {
+            Instant finGracia = clock.instant().plus(properties.namespaceGracePeriod());
+            NombreNamespace nombreActual = em.find(NombreNamespace.class, actual);
+            if (nombreActual == null) {
+                em.persist(new NombreNamespace(actual, usuario, finGracia));
+            } else {
+                nombreActual.setGraceEndsAt(finGracia);
+            }
+            em.persist(new NamespaceAnterior(usuario, actual, finGracia));
+        } else if (!recuperarAnterior) {
+            em.persist(new NombreNamespace(namespace, usuario, null));
+        }
         usuario.setNamespace(namespace);
-        // El flush dentro de la transacción hace saltar la restricción
-        // única antes del commit, para poder traducir la carrera.
+        if (recuperarAnterior) {
+            em.createQuery("update NombreNamespace n set n.graceEndsAt = null "
+                            + "where n.namespace = :namespace and n.usuario.id = :usuarioId")
+                    .setParameter("namespace", namespace)
+                    .setParameter("usuarioId", usuarioId)
+                    .executeUpdate();
+            em.flush();
+        }
         em.flush();
         return usuario;
     }
 
-    private boolean estaTomado(String namespace) {
+    private NamespaceAnterior anteriorEnGracia(Usuario usuario, String namespace) {
+        List<NamespaceAnterior> resultados = em.createQuery(
+                        "select n from NamespaceAnterior n where n.usuario.id = :usuarioId "
+                                + "and n.namespace = :namespace and n.graceEndsAt > :ahora",
+                        NamespaceAnterior.class)
+                .setParameter("usuarioId", usuario.getId())
+                .setParameter("namespace", namespace)
+                .setParameter("ahora", clock.instant())
+                .setMaxResults(1)
+                .getResultList();
+        return resultados.isEmpty() ? null : resultados.get(0);
+    }
+
+    private boolean estaTomado(String namespace, Long usuarioId) {
         return !em.createQuery(
-                        "select u.id from Usuario u where lower(u.namespace) = :namespace",
+                        "select n.usuario.id from NombreNamespace n where n.namespace = :namespace "
+                                + "and n.usuario.id <> :usuarioId "
+                                + "and (n.graceEndsAt is null or n.graceEndsAt > :ahora)",
                         Long.class)
                 .setParameter("namespace", namespace)
+                .setParameter("ahora", clock.instant())
+                .setParameter("usuarioId", usuarioId)
                 .setMaxResults(1)
                 .getResultList()
                 .isEmpty();
+    }
+
+    @Transactional(readOnly = true)
+    public List<NamespaceAnterior> namespacesAnteriores(Long usuarioId) {
+        return em.createQuery("select n from NamespaceAnterior n where n.usuario.id = :usuarioId "
+                        + "and n.graceEndsAt > :ahora order by n.graceEndsAt", NamespaceAnterior.class)
+                .setParameter("usuarioId", usuarioId)
+                .setParameter("ahora", clock.instant())
+                .getResultList();
     }
 
     private static InvalidNamespaceException namespaceTomado(String namespace) {
@@ -220,7 +278,7 @@ public class CuentaService {
                 "El namespace '" + namespace + "' ya está tomado; probá con otro.");
     }
 
-    /** ¿La excepción es la violación única de {@code uq_usuario_namespace}? */
+    /** ¿La excepción es la violación única del namespace actual heredado? */
     private static boolean esCarreraDeNamespace(Throwable error) {
         for (Throwable actual = error; actual != null; actual = actual.getCause()) {
             if (actual instanceof ConstraintViolationException violacion
@@ -231,6 +289,20 @@ public class CuentaService {
             // HSQLDB devuelve el nombre del constraint en mayúsculas.
             if (mensaje != null
                     && mensaje.toLowerCase(Locale.ROOT).contains("uq_usuario_namespace")) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean esCarreraDeNombreNamespace(Throwable error) {
+        for (Throwable actual = error; actual != null; actual = actual.getCause()) {
+            if (actual instanceof ConstraintViolationException violacion
+                    && "nombre_namespace_pkey".equalsIgnoreCase(violacion.getConstraintName())) {
+                return true;
+            }
+            String mensaje = actual.getMessage();
+            if (mensaje != null && mensaje.toLowerCase(Locale.ROOT).contains("nombre_namespace")) {
                 return true;
             }
         }

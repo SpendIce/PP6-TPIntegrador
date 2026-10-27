@@ -25,7 +25,8 @@ import java.util.Locale;
  */
 @ConfigurationProperties(prefix = "cuenta")
 public record CuentaProperties(Duration mainSessionIdleTimeout,
-                               List<String> namespaceReservedNames) {
+                               List<String> namespaceReservedNames,
+                               Duration namespaceGracePeriod) {
 
     public CuentaProperties {
         if (mainSessionIdleTimeout == null) {
@@ -64,6 +65,11 @@ public record CuentaProperties(Duration mainSessionIdleTimeout,
             throw new IllegalArgumentException(
                     "cuenta.namespace-reserved-names no puede quedar vacía"
                             + " (NAMESPACE_RESERVED_NAMES)");
+        }
+        if (namespaceGracePeriod == null || namespaceGracePeriod.isNegative()
+                || namespaceGracePeriod.isZero()) {
+            throw new IllegalArgumentException(
+                    "cuenta.namespace-grace-period debe ser positiva (NAMESPACE_GRACE_PERIOD, p. ej. PT1H)");
         }
     }
 }

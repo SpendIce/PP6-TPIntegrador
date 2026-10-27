@@ -28,7 +28,7 @@ class ApiExceptionHandler {
     @ExceptionHandler(InvalidNamespaceException.class)
     ResponseEntity<ApiErrorResponse> invalidNamespace(InvalidNamespaceException exception) {
         HttpStatus status = switch (exception.reason()) {
-            case NAMESPACE_TAKEN, NAMESPACE_ALREADY_CHOSEN, NAMESPACE_NOT_CHOSEN ->
+            case NAMESPACE_TAKEN, NAMESPACE_NOT_CHOSEN ->
                     HttpStatus.CONFLICT;
             default -> HttpStatus.BAD_REQUEST;
         };
