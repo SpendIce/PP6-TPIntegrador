@@ -140,6 +140,47 @@ class VinculacionQrHttpTest extends HttpApiFixture {
     }
 
     @Test
+    void unDispositivoConSesionLaReemplazaPorLaVinculadaDelAprobador() throws Exception {
+        // La computadora tiene una sesión principal de Juan y aun así es
+        // la que espera por el código: el consumo reemplaza su sesión por
+        // la vinculada del usuario que aprobó.
+        HttpClient computadora = sesionDe(SUB_JUAN, EMAIL_JUAN);
+        String sesionAnterior = Dispositivos.cookieDeSesion(computadora);
+        HttpClient celular = sesionDe("google-sub-vinculacion-ana", "ana@ejemplo.com");
+        String codigo = pedirCodigoVinculacion(computadora);
+        verConfirmacion(celular, codigo);
+        Dispositivos.postVacio(celular, baseUrl(), "/api/vinculacion/" + codigo + "/aprobar");
+
+        HttpResponse<String> aprobada =
+                Dispositivos.get(computadora, baseUrl(), "/api/vinculacion/" + codigo);
+        assertThat(aprobada.statusCode()).isEqualTo(200);
+        assertThat(json.readTree(aprobada.body()).get("estado").asText())
+                .isEqualTo("aprobada");
+
+        // La sesión que quedó es la vinculada de Ana —usuario, tipo e
+        // índice la representan a ella— y la principal que traía ya no
+        // existe en la tabla de sesiones.
+        String sesionId = Dispositivos.cookieDeSesion(computadora);
+        assertThat(sesionId).isNotNull().isNotEqualTo(sesionAnterior);
+        JsonNode usuario = json.readTree(
+                Dispositivos.get(computadora, baseUrl(), "/api/sesion").body()).get("usuario");
+        assertThat(usuario.get("email").asText()).isEqualTo("ana@ejemplo.com");
+        assertThat(usuario.get("tipo").asText()).isEqualTo("vinculada");
+        Long anaId = db.queryForObject(
+                "SELECT id FROM usuario WHERE google_sub = ?",
+                Long.class, "google-sub-vinculacion-ana");
+        assertThat(db.queryForObject(
+                "SELECT principal_name FROM spring_session WHERE session_id = ?",
+                String.class, sesionId)).isEqualTo(anaId.toString());
+        assertThat(db.queryForObject(
+                "SELECT max_inactive_interval FROM spring_session WHERE session_id = ?",
+                Integer.class, sesionId)).isEqualTo(VINCULADA_INACTIVIDAD_SEGUNDOS);
+        assertThat(db.queryForObject(
+                "SELECT COUNT(*) FROM spring_session WHERE session_id = ?",
+                Long.class, sesionAnterior)).isZero();
+    }
+
+    @Test
     void unCodigoVencidoNoAbreNingunaSesion() throws Exception {
         HttpClient computadora = Dispositivos.nuevo();
         HttpClient celular = sesionDe(SUB_JUAN, EMAIL_JUAN);

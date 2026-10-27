@@ -278,9 +278,8 @@ desde la sesión principal del celular, al estilo de WhatsApp:
   código no se reparten la aprobación. Las consultas con código
   pendiente, vencido o inexistente usan `getSession(false)` y no crean
   una cookie de sesión. Si el dispositivo que consulta ya trae una
-  sesión con usuario, el código se consume igual —es de un solo uso—
-  pero no se abre otra sesión: la suya no se degrada a vinculada y la
-  respuesta es `vencida`.
+  sesión con usuario, la vinculación la reemplaza: queda invalidada en
+  la misma transacción y se abre la sesión vinculada del que aprobó.
   El vencimiento se evalúa en el instante del servidor, como las
   asignaciones: un código aprobado pero ya vencido responde `vencida` y
   no abre nada; usado, vencido e inexistente nunca abren sesión.
@@ -873,7 +872,8 @@ de cookies separadas (la computadora que espera y el celular que
 aprueba), el QR con la URL de confirmación sobre la dirección pública,
 la consulta pendiente que no abre sesión, la aprobación explícita que
 la siguiente consulta consume abriendo la sesión vinculada con el
-usuario que aprobó, `tipo` `vinculada` y la inactividad `PT12H` leída de
+usuario que aprobó —también cuando el dispositivo ya traía una sesión,
+que queda reemplazada—, `tipo` `vinculada` y la inactividad `PT12H` leída de
 `spring_session`, el código de un solo uso que repetir responde
 `vencida`, el código vencido por `MutableClock` o inexistente que no
 abre ninguna sesión, la aprobación rechazada desde una sesión vinculada
@@ -886,7 +886,7 @@ el namespace o el email que muestra la confirmación.
 `VinculacionQrHsqldbTest` recorre el mismo recorrido sobre el perfil
 `hsqldb` en memoria, sin Docker, con la aprobación sembrada en la fila:
 incluye el consumo desde un dispositivo que ya trae sesión (la consume
-sin degradarla) y el reintento tras un fallo al grabar
+reemplazándola por la vinculada del aprobador) y el reintento tras un fallo al grabar
 `spring_session_attributes`, que en ambas bases deja el código
 `APROBADA` porque corre en la transacción del pedido.
 

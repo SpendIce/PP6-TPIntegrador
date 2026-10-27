@@ -479,9 +479,9 @@ public class CuentaService {
      * garantiza que solo una consulta consume la aprobación.
      *
      * <p>Si el dispositivo que consulta ya trae una sesión con usuario,
-     * el código se consume igual —es de un solo uso— pero no se abre
-     * otra sesión y la respuesta es {@code VENCIDA}: la sesión existente
-     * no se degrada a {@code vinculada}.</p>
+     * la vinculación la reemplaza: queda invalidada y se abre la sesión
+     * vinculada del aprobador, cuyos atributos de usuario, tipo e índice
+     * son los de esa sesión. Una sesión anónima se reutiliza.</p>
      */
     public ResultadoVinculacion consumirVinculacion(String codigo, HttpServletRequest request,
                                                      HttpSession sesion,
@@ -497,11 +497,19 @@ public class CuentaService {
                 return new ResultadoVinculacion(estado, null);
             }
             vinculacion.setEstado(CodigoVinculacion.Estado.CONSUMIDA);
-            if (sesion != null && sesion.getAttribute(ATRIBUTO_USUARIO_ID) != null) {
-                return new ResultadoVinculacion(EstadoVinculacion.VENCIDA, null);
+            HttpSession sesionVinculada = sesion;
+            if (sesionVinculada != null
+                    && sesionVinculada.getAttribute(ATRIBUTO_USUARIO_ID) != null) {
+                // La sesión que traía ya tenía usuario: se invalida (su
+                // baja corre en la misma transacción del pedido) y la
+                // reemplaza la vinculada del que aprobó.
+                sesionVinculada.invalidate();
+                sesionVinculada = null;
+            }
+            if (sesionVinculada == null) {
+                sesionVinculada = request.getSession();
             }
             Usuario aprobador = em.find(Usuario.class, vinculacion.getUsuarioId());
-            HttpSession sesionVinculada = sesion == null ? request.getSession() : sesion;
             registrarSesion(sesionVinculada, aprobador, TIPO_VINCULADA, inactividadMaxima);
             return new ResultadoVinculacion(EstadoVinculacion.APROBADA, aprobador);
         });

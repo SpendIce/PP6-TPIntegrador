@@ -24,8 +24,9 @@ import static org.assertj.core.api.Assertions.assertThat;
  * consulta pendiente que no abre sesión, el consumo que materializa la
  * sesión vinculada con su inactividad configurada y el tipo informado por
  * {@code /api/sesion}, el código de un solo uso y el vencimiento moviendo
- * el {@link MutableClock}, el dispositivo con sesión que consume sin
- * degradarla y el reintento tras un fallo de persistencia de la sesión
+ * el {@link MutableClock}, el dispositivo cuya sesión el consumo reemplaza
+ * por la vinculada del aprobador y el reintento tras un fallo de
+ * persistencia de la sesión
  * (el consumo corre en la transacción del pedido). La aprobación llega
  * por una fila sembrada (estado {@code APROBADA} + usuario), porque la
  * danza OIDC necesita el proveedor de Testcontainers; el camino aprobado
@@ -130,35 +131,47 @@ class VinculacionQrHsqldbTest {
     }
 
     @Test
-    void unDispositivoConSesionConsumeElCodigoPeroNoDegradaSuSesion() throws Exception {
+    void unDispositivoConSesionLaReemplazaPorLaVinculadaDelAprobador() throws Exception {
         // La computadora ya quedó con su sesión vinculada de Juan.
         HttpClient vinculada = Dispositivos.nuevo();
         String primerCodigo = pedirCodigo(vinculada);
         aprobarSembrado(primerCodigo, sembrarUsuario("google-sub-juan", "juan@ejemplo.com"));
         Dispositivos.get(vinculada, baseUrl(), "/api/vinculacion/" + primerCodigo);
-        String sesionId = Dispositivos.cookieDeSesion(vinculada);
-        assertThat(sesionId).isNotNull();
+        String sesionAnterior = Dispositivos.cookieDeSesion(vinculada);
+        assertThat(sesionAnterior).isNotNull();
 
-        // El mismo dispositivo presenta otro código aprobado por Ana: el
-        // código es de un solo uso y se consume, pero su sesión no se
-        // toca —abrir otra la degradaría— y la respuesta es vencida.
+        // El mismo dispositivo consulta otro código aprobado por Ana: el
+        // código se consume y la sesión que traía se reemplaza por la
+        // vinculada de la que aprobó.
         String segundoCodigo = pedirCodigo(Dispositivos.nuevo());
-        aprobarSembrado(segundoCodigo, sembrarUsuario("google-sub-ana", "ana@ejemplo.com"));
+        Long ana = sembrarUsuario("google-sub-ana", "ana@ejemplo.com");
+        aprobarSembrado(segundoCodigo, ana);
 
         HttpResponse<String> consulta =
                 Dispositivos.get(vinculada, baseUrl(), "/api/vinculacion/" + segundoCodigo);
         assertThat(consulta.statusCode()).isEqualTo(200);
-        assertThat(json.readTree(consulta.body()).get("estado").asText()).isEqualTo("vencida");
-        assertThat(Dispositivos.cookieDeSesion(vinculada)).isEqualTo(sesionId);
+        assertThat(json.readTree(consulta.body()).get("estado").asText()).isEqualTo("aprobada");
+        String sesionId = Dispositivos.cookieDeSesion(vinculada);
+        assertThat(sesionId).isNotNull().isNotEqualTo(sesionAnterior);
         assertThat(db.queryForObject(
                 "SELECT estado FROM codigo_vinculacion WHERE codigo = ?",
                 String.class, segundoCodigo)).isEqualTo("CONSUMIDA");
 
-        // La sesión sigue siendo la vinculada de Juan, no la de Ana.
+        // La sesión que quedó representa la vinculada de Ana —usuario,
+        // tipo e índice son de ella— y la anterior ya no existe.
         JsonNode usuario = json.readTree(
                 Dispositivos.get(vinculada, baseUrl(), "/api/sesion").body()).get("usuario");
-        assertThat(usuario.get("email").asText()).isEqualTo("juan@ejemplo.com");
+        assertThat(usuario.get("email").asText()).isEqualTo("ana@ejemplo.com");
         assertThat(usuario.get("tipo").asText()).isEqualTo("vinculada");
+        assertThat(db.queryForObject(
+                "SELECT max_inactive_interval FROM spring_session WHERE session_id = ?",
+                Integer.class, sesionId)).isEqualTo(VINCULADA_INACTIVIDAD_SEGUNDOS);
+        assertThat(db.queryForObject(
+                "SELECT principal_name FROM spring_session WHERE session_id = ?",
+                String.class, sesionId)).isEqualTo(ana.toString());
+        assertThat(db.queryForObject(
+                "SELECT COUNT(*) FROM spring_session WHERE session_id = ?",
+                Long.class, sesionAnterior)).isZero();
     }
 
     @Test

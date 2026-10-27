@@ -535,9 +535,9 @@ paths:
         máxima de `cuenta.linked-session-idle-timeout`, 12 horas por
         defecto). Una consulta posterior con el mismo
         código responde `vencida` y no abre ninguna sesión. Un
-        dispositivo que ya trae una sesión con usuario consume el código
-        pero no abre otra sesión (responde `vencida`). Un código que
-        no existe responde `404`.
+        dispositivo que ya trae una sesión con usuario la pierde: el
+        consumo la invalida y abre la sesión vinculada del que aprobó.
+        Un código que no existe responde `404`.
       operationId: estadoVinculacion
       parameters:
         - name: codigo
