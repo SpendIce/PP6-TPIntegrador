@@ -9,12 +9,15 @@ import jakarta.persistence.PersistenceException;
 import org.hibernate.exception.ConstraintViolationException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.session.FindByIndexNameSessionRepository;
+import org.springframework.session.Session;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Optional;
 
 /**
@@ -40,13 +43,16 @@ public class CuentaService {
     public static final String ATRIBUTO_USUARIO_ID = "usuarioId";
 
     /**
-     * Atributo de sesión con el tipo de sesión («principal» hoy; la
-     * vinculación por QR registrará «vinculada»).
+     * Atributo de sesión con el tipo de sesión ({@code principal} o
+     * {@code vinculada}).
      */
     public static final String ATRIBUTO_SESION_TIPO = "sesionTipo";
 
     /** Tipo de la sesión abierta con login directo de Google. */
     public static final String TIPO_PRINCIPAL = "principal";
+
+    /** Tipo de la sesión abierta mediante vinculación por QR. */
+    public static final String TIPO_VINCULADA = "vinculada";
 
     /** Largo mínimo y máximo del namespace (issue #20). */
     private static final int NAMESPACE_MIN = 3;
@@ -71,6 +77,9 @@ public class CuentaService {
 
     @Autowired
     CuentaProperties properties;
+
+    @Autowired
+    FindByIndexNameSessionRepository<?> sesiones;
 
     /**
      * Caso de uso del login: devuelve el usuario de la identidad de
@@ -307,5 +316,16 @@ public class CuentaService {
             return Optional.empty();
         }
         return Optional.ofNullable(em.find(Usuario.class, usuarioId));
+    }
+
+    /** Invalida las sesiones vinculadas del usuario, conservando las principales. */
+    public void cerrarSesionesVinculadas(Long usuarioId) {
+        Map<String, ?> sesionesDelUsuario = sesiones.findByPrincipalName(usuarioId.toString());
+        for (Object valor : sesionesDelUsuario.values()) {
+            if (valor instanceof Session sesion
+                    && TIPO_VINCULADA.equals(sesion.getAttribute(ATRIBUTO_SESION_TIPO))) {
+                sesiones.deleteById(sesion.getId());
+            }
+        }
     }
 }

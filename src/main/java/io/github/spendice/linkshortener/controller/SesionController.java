@@ -44,7 +44,7 @@ class SesionController {
                 .body(new SesionActualResponse(usuario));
     }
 
-    /** Solo el login directo abre sesiones hoy: el tipo es principal. */
+    /** Usa principal como default para una sesión anterior sin tipo guardado. */
     private String tipoDe(HttpSession sesion) {
         String tipo = (String) sesion.getAttribute(CuentaService.ATRIBUTO_SESION_TIPO);
         return tipo == null ? CuentaService.TIPO_PRINCIPAL : tipo;

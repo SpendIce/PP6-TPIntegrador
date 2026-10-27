@@ -244,9 +244,9 @@ paths:
         proveedor vuelve por `/login/oauth2/code/google`, que deja una
         sesión principal persistida (sobrevive a los reinicios del
         servicio y vence tras la inactividad máxima configurada, 30 días
-        por defecto). `tipo` identifica cómo se abrió la sesión: hoy solo
-        existe `principal` (login directo con Google); la vinculación por
-        QR sumará `vinculada`.
+        por defecto). `tipo` identifica cómo se abrió la sesión:
+        `principal` para el login directo con Google y `vinculada` para
+        una sesión abierta mediante QR.
       operationId: sesionActual
       responses:
         '200':
