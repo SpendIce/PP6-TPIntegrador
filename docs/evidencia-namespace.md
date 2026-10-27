@@ -47,14 +47,14 @@ el nombre, igual que la reserva de alias de `ConcurrenciaHttpTest`.
 - `NamespaceHttpTest` (extiende `HttpApiFixture`, PostgreSQL real y
   `mock-oauth2-server` en Testcontainers): sugerencia desde el email,
   formato inválido, reservados sin distinguir mayúsculas, tomado sin
-  distinguir mayúsculas, repetición idempotente, cambio con gracia y
-  recuperación del nombre anterior, `401` sin sesión y carrera
-  simultánea de dos usuarios.
-- `CambioNamespaceHttpTest`: el solapamiento real de dos cambios se
-  fuerza con `InspeccionNombreNamespace` y el perdedor recibe
-  `NAMESPACE_TAKEN` (`409`).
+  distinguir mayúsculas, repetición idempotente, `401` sin sesión y
+  carrera simultánea de dos usuarios.
+- `CambioNamespaceHttpTest`: cambio con gracia y recuperación del nombre
+  anterior, encadenamiento de gracias por nombre, y el solapamiento real
+  de dos cambios forzado con `InspeccionNombreNamespace` — el perdedor
+  recibe `NAMESPACE_TAKEN` (`409`).
 - `CuentaPropertiesTest`: normalización y obligatoriedad de la lista de
-  nombres reservados.
+  nombres reservados, y período de gracia positivo.
 
 ## Ejecutado
 
