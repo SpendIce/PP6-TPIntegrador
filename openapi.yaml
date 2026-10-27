@@ -642,9 +642,10 @@ components:
             de la red local no es origen propio y se acepta.
         aliasPersonalizado:
           type: string
-          minLength: 1
+          # Vacío equivale a ausente (enlace acortado): el patrón admite la
+          # cadena vacía además de 1 a 50 caracteres válidos.
           maxLength: 50
-          pattern: '^[a-zA-Z0-9-]{1,50}$'
+          pattern: '^([a-zA-Z0-9-]{1,50})?$'
           description: >
             Alias que el usuario elige para su enlace personal (issue
             #21). Opcional: ausente, vacío o nulo produce un enlace
