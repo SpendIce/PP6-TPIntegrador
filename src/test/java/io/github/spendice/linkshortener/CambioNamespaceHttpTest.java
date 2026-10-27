@@ -42,6 +42,9 @@ class CambioNamespaceHttpTest extends HttpApiFixture {
                 String.class)).containsExactly("juani", "juanito");
         assertThat(json.readTree(get(juan, "/api/namespace/anteriores").body())
                 .get("namespaces").size()).isEqualTo(2);
+        assertThat(db.queryForList(
+                "SELECT namespace FROM nombre_namespace WHERE grace_ends_at IS NULL",
+                String.class)).containsExactly("juan");
     }
 
     @Test
@@ -91,6 +94,57 @@ class CambioNamespaceHttpTest extends HttpApiFixture {
         } finally {
             pool.shutdownNow();
         }
+    }
+
+    /**
+     * La carrera que el registro de nombres tiene que serializar: Juan
+     * suelta «medio» — adoptado por un cambio, no por la primera
+     * elección — al mismo tiempo que Pedro intenta tomarlo. Pedro no
+     * puede ganarlo ni antes del commit de Juan («medio» sigue siendo el
+     * actual de Juan) ni después («medio» quedó reservado como anterior
+     * en gracia).
+     */
+    @Test
+    void elNombreQueDejaUnCambioSigueReservadoAnteUnaAdopcionConcurrente() throws Exception {
+        clock.set(T0);
+        HttpClient juan = usuario("google-sub-gracia-carrera-juan",
+                "carrera-juan@ejemplo.com", "juan-inicial");
+        HttpClient pedro = usuario("google-sub-gracia-carrera-pedro",
+                "carrera-pedro@ejemplo.com", "pedro-inicial");
+        assertThat(cambiar(juan, "medio").statusCode()).isEqualTo(200);
+
+        var barrera = new CyclicBarrier(2);
+        var pool = Executors.newFixedThreadPool(2);
+        try {
+            var suelta = pool.submit(() -> {
+                barrera.await(10, TimeUnit.SECONDS);
+                return cambiar(juan, "juan-final");
+            });
+            var intenta = pool.submit(() -> {
+                barrera.await(10, TimeUnit.SECONDS);
+                return cambiar(pedro, "medio");
+            });
+            HttpResponse<String> deJuan = suelta.get(20, TimeUnit.SECONDS);
+            HttpResponse<String> dePedro = intenta.get(20, TimeUnit.SECONDS);
+            assertThat(deJuan.statusCode()).isEqualTo(200);
+            assertError(dePedro, 409, "NAMESPACE_TAKEN");
+        } finally {
+            pool.shutdownNow();
+        }
+        assertThat(db.queryForObject(
+                "SELECT namespace FROM usuario WHERE google_sub = 'google-sub-gracia-carrera-pedro'",
+                String.class)).isEqualTo("pedro-inicial");
+        assertThat(db.queryForObject(
+                "SELECT u.google_sub FROM nombre_namespace n JOIN usuario u ON u.id = n.usuario_id"
+                        + " WHERE n.namespace = 'medio' AND n.grace_ends_at IS NOT NULL",
+                String.class)).isEqualTo("google-sub-gracia-carrera-juan");
+        assertThat(db.queryForObject(
+                "SELECT COUNT(*) FROM nombre_namespace WHERE namespace = 'medio'", Long.class))
+                .isEqualTo(1);
+        assertThat(db.queryForObject(
+                "SELECT COUNT(*) FROM namespace_anterior WHERE namespace = 'medio'"
+                        + " AND grace_ends_at = TIMESTAMPTZ '2026-10-05T13:00:00Z'",
+                Long.class)).isEqualTo(1);
     }
 
     @Test

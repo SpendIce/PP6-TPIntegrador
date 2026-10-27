@@ -161,7 +161,11 @@ public class CuentaService {
      * <p>La elección corre en su propia transacción con la fila del
      * usuario bloqueada y la unicidad final la impone la clave primaria
      * de {@code nombre_namespace}, compartida por nombres actuales y
-     * anteriores. Al cambiar, los enlaces personales no se modifican.
+     * anteriores. Todo nombre adoptado — en la primera elección o en un
+     * cambio — queda registrado ahí con {@code grace_ends_at} nulo, y solo
+     * recibe el fin de gracia cuando el usuario lo deja: la fila es lo
+     * que serializa la carrera con quien intente tomarlo mientras tanto.
+     * Al cambiar, los enlaces personales no se modifican.
      */
     public Usuario elegirNamespace(Long usuarioId, String propuesta) {
         String namespace = normalizarNamespace(propuesta);
@@ -221,18 +225,18 @@ public class CuentaService {
                 nombreActual.setGraceEndsAt(finGracia);
             }
             em.persist(new NamespaceAnterior(usuario, actual, finGracia));
-        } else if (!recuperarAnterior) {
+        }
+        // Todo nombre adoptado queda registrado con grace nulo: es lo que
+        // estaTomado reconoce como actual, así que un cambio también lo
+        // escribe — si no, el registro del nombre que se suelta no sería
+        // visible para quien intente adoptarlo durante la gracia.
+        NombreNamespace nombreNuevo = em.find(NombreNamespace.class, namespace);
+        if (nombreNuevo == null) {
             em.persist(new NombreNamespace(namespace, usuario, null));
+        } else {
+            nombreNuevo.setGraceEndsAt(null);
         }
         usuario.setNamespace(namespace);
-        if (recuperarAnterior) {
-            em.createQuery("update NombreNamespace n set n.graceEndsAt = null "
-                            + "where n.namespace = :namespace and n.usuario.id = :usuarioId")
-                    .setParameter("namespace", namespace)
-                    .setParameter("usuarioId", usuarioId)
-                    .executeUpdate();
-            em.flush();
-        }
         em.flush();
         return usuario;
     }
@@ -298,12 +302,18 @@ public class CuentaService {
     private static boolean esCarreraDeNombreNamespace(Throwable error) {
         for (Throwable actual = error; actual != null; actual = actual.getCause()) {
             if (actual instanceof ConstraintViolationException violacion
-                    && "nombre_namespace_pkey".equalsIgnoreCase(violacion.getConstraintName())) {
+                    && ("nombre_namespace_pkey".equalsIgnoreCase(violacion.getConstraintName())
+                            || "uq_namespace_anterior_namespace"
+                                    .equalsIgnoreCase(violacion.getConstraintName()))) {
                 return true;
             }
             String mensaje = actual.getMessage();
-            if (mensaje != null && mensaje.toLowerCase(Locale.ROOT).contains("nombre_namespace")) {
-                return true;
+            if (mensaje != null) {
+                String minusculas = mensaje.toLowerCase(Locale.ROOT);
+                if (minusculas.contains("nombre_namespace")
+                        || minusculas.contains("namespace_anterior")) {
+                    return true;
+                }
             }
         }
         return false;
