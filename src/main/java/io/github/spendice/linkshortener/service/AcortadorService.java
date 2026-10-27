@@ -53,7 +53,8 @@ public class AcortadorService {
      * guion. La entrada se normaliza a minúsculas antes de validar, así
      * que «Mi-Doc» es un alias válido que se guarda como «mi-doc».
      */
-    private static final String ALIAS_PERSONALIZADO_VALIDO = "[a-z0-9-]{1,50}";
+    /** Lo que entra: sólo ASCII. `toLowerCase` mapea Unicode a ASCII (p. ej. KELVIN SIGN → k). */
+    private static final String ALIAS_PERSONALIZADO_ENTRADA = "[A-Za-z0-9-]{1,50}";
     private static final int ALIAS_PERSONALIZADO_MAX = 50;
 
     @Autowired
@@ -205,14 +206,15 @@ public class AcortadorService {
 
     /** El alias personalizado normalizado y verificado contra el formato. */
     private String normalizarAliasPersonalizado(String propuesta) {
-        String alias = propuesta == null ? null : propuesta.toLowerCase(Locale.ROOT);
-        if (alias == null || !alias.matches(ALIAS_PERSONALIZADO_VALIDO)) {
+        // Se valida el original, no su minúscula: `toLowerCase` convierte
+        // caracteres Unicode en ASCII (KELVIN SIGN pasa a `k`) y los aceptaría.
+        if (propuesta == null || !propuesta.matches(ALIAS_PERSONALIZADO_ENTRADA)) {
             throw new InvalidAliasPersonalizadoException(
                     InvalidAliasPersonalizadoException.Reason.ALIAS_INVALID,
                     "El alias personalizado debe tener entre 1 y " + ALIAS_PERSONALIZADO_MAX
                             + " caracteres a-z, 0-9 y -.");
         }
-        return alias;
+        return propuesta.toLowerCase(Locale.ROOT);
     }
 
     /** ¿El usuario ya tiene una asignación vigente de ese alias personalizado? */

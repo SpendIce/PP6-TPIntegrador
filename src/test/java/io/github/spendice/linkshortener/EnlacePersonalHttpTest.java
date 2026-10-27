@@ -115,7 +115,10 @@ class EnlacePersonalHttpTest extends HttpApiFixture {
                 "con.punto",
                 "eñe",
                 "a/b",
-                "?");
+                "?",
+                // KELVIN SIGN: toLowerCase lo convierte en "k" ASCII, así que
+                // validar la minúscula lo aceptaría.
+                "\u212A");
 
         for (String invalido : invalidos) {
             assertError(crearPersonal(juan, "https://ejemplo.com/ok", invalido),
