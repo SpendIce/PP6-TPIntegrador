@@ -118,24 +118,12 @@ async function cargarNamespacesAnteriores() {
         });
         if (!respuesta.ok) return;
         const body = await respuesta.json();
-        for (const anterior of body.namespaces) {
-            const item = document.createElement("li");
-            const nombre = document.createElement("strong");
-            nombre.textContent = anterior.namespace;
-            const restante = document.createElement("span");
-            restante.className = "grace-remaining";
-            restante.dataset.endsAt = anterior.graceEndsAt;
-            const volver = document.createElement("button");
-            volver.type = "button";
-            volver.textContent = "Volver a este";
-            volver.addEventListener("click", () => {
-                namespaceInput.value = anterior.namespace;
-                namespaceForm.requestSubmit();
-            });
-            item.append(nombre, " · ", restante, " ", volver);
-            namespacesAnteriores.append(item);
-        }
-        actualizarTiempoRestante();
+        NamespaceGracia.renderAnteriores(
+                document, namespacesAnteriores, body.namespaces, Date.now(),
+                (namespace) => {
+                    namespaceInput.value = namespace;
+                    namespaceForm.requestSubmit();
+                });
     } catch (error) {
         console.warn("No se pudieron consultar los namespaces anteriores", error);
     }
@@ -143,11 +131,8 @@ async function cargarNamespacesAnteriores() {
 
 function actualizarTiempoRestante() {
     for (const elemento of namespacesAnteriores.querySelectorAll(".grace-remaining")) {
-        const milisegundos = Math.max(0, Date.parse(elemento.dataset.endsAt) - Date.now());
-        const minutos = Math.ceil(milisegundos / 60000);
-        const horas = Math.floor(minutos / 60);
-        const minutosRestantes = minutos % 60;
-        elemento.textContent = horas ? `${horas} h ${minutosRestantes} min` : `${minutos} min`;
+        elemento.textContent = NamespaceGracia.tiempoRestante(
+                elemento.dataset.endsAt, Date.now());
     }
 }
 
