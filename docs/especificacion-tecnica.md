@@ -742,7 +742,9 @@ QR y el cliente no recibe entities JPA: consume solo el record
   claro que el alias puede reasignarse y no es permanente. El mismo
   módulo codifica la `confirmacionUrl` de la vinculación por QR (issue
   #22): `renderQrVinculacion` la muestra en `img#vinculacion-qr` de la
-  pantalla de acceso.
+  pantalla de acceso, y si el PNG no se puede generar lo informa en
+  `p#vinculacion-estado` y reintenta con un código nuevo en vez de
+  consultar el estado de un código que nadie puede escanear.
 
 Verificación automatizable (`src/test/js/`): `qr-code.test.mjs` genera
 el PNG con el propio `QrPng` y lo decodifica con bibliotecas

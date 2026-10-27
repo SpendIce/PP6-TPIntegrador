@@ -157,6 +157,48 @@ test("el código se renueva antes de su vencimiento y el estado consulta el vige
             "la consulta siguiente usa el código vigente");
 });
 
+test("un QR que no se puede generar informa el error y reintenta sin consultar", async (t) => {
+    let fallas = 1;
+    globalThis.QrPng = {
+        ...QrPng,
+        encode: (factory, texto) => {
+            if (fallas-- > 0) throw new Error("png fallido");
+            return QrPng.encode(factory, texto);
+        }
+    };
+    t.after(() => { globalThis.QrPng = QrPng; });
+
+    const pedidos = { total: 0 };
+    const consultas = [];
+    const { documento } = instalarEntorno(t, resolverBase(pedidos, consultas,
+            () => respuesta(200, { estado: "pendiente" })));
+
+    require(APP);
+    await drenar();
+    assert.equal(pedidos.total, 1);
+
+    const estado = documento.getElementById("vinculacion-estado");
+    assert.match(estado.textContent, /QR/, "el fallo del QR se informa en la pantalla");
+    assert.equal(documento.getElementById("vinculacion-qr").src, "",
+            "sin PNG el QR no queda con una imagen rota");
+
+    t.mock.timers.tick(4000);
+    await drenar();
+    assert.equal(consultas.length, 0,
+            "no se consulta el estado de un código que nadie puede escanear");
+
+    t.mock.timers.tick(1000);
+    await drenar();
+    assert.equal(pedidos.total, 2, "a los 5 s reintenta con un código nuevo");
+    assert.ok(documento.getElementById("vinculacion-qr").src.startsWith("blob:"),
+            "el reintento sí genera el QR");
+    assert.equal(estado.textContent, "");
+
+    t.mock.timers.tick(2000);
+    await drenar();
+    assert.deepEqual(consultas, ["COD2"], "el código nuevo sí se consulta");
+});
+
 test("una consulta que encuentra el código inválido pide otro", async (t) => {
     const pedidos = { total: 0 };
     instalarEntorno(t, resolverBase(pedidos, [],

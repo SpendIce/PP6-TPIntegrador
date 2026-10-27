@@ -285,7 +285,16 @@ async function pedirCodigoVinculacion() {
     }
 
     vinculacionCodigo = creado.codigo;
-    renderQrVinculacion(creado.confirmacionUrl);
+    if (!renderQrVinculacion(creado.confirmacionUrl)) {
+        // Sin QR no hay cómo aprobar este código: consultarlo es trabajo
+        // perdido. Se informa y se reintenta con un código nuevo.
+        vinculacionCodigo = null;
+        vinculacionEstado.textContent =
+                "No se pudo generar el QR de vinculación; reintentando.";
+        vinculacionRenovacion = setTimeout(pedirCodigoVinculacion,
+                VINCULACION_RENOVACION_MS);
+        return;
+    }
     vinculacionEstado.textContent = "";
 
     vinculacionTimer = setInterval(
@@ -330,6 +339,9 @@ async function consultarEstadoVinculacion(codigo) {
     // `pendiente`: la siguiente consulta del intervalo vuelve a mirar.
 }
 
+// true si el QR de vinculación quedó mostrado; false si no se pudo
+// generar, para que el flujo se detenga y reintente en vez de consultar
+// un código que nadie puede escanear.
 function renderQrVinculacion(confirmacionUrl) {
     if (vinculacionQrUrl !== null) {
         URL.revokeObjectURL(vinculacionQrUrl);
@@ -341,7 +353,8 @@ function renderQrVinculacion(confirmacionUrl) {
             "No se pudo generar el QR de vinculación.");
     if (vinculacionQrUrl === null) {
         vinculacionQr.removeAttribute("src");
-        return;
+        return false;
     }
     vinculacionQr.src = vinculacionQrUrl;
+    return true;
 }
