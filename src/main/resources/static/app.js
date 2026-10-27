@@ -290,14 +290,12 @@ async function pedirCodigoVinculacion() {
 
     vinculacionTimer = setInterval(
             () => consultarEstadoVinculacion(creado.codigo), VINCULACION_CONSULTA_MS);
-    // La renovación se programa contra el reloj del servidor (encabezado
-    // `Date`): con el reloj del dispositivo adelantado, usar Date.now()
-    // renovaría el código cada segundo aunque siga vigente. Sin `Date`, el
-    // piso de 5 s acota el peor caso.
-    const ahoraServidor = Date.parse(alta?.headers?.get("date") || "");
-    const referencia = Number.isFinite(ahoraServidor) ? ahoraServidor : Date.now();
-    const esperaMs = Date.parse(creado.expiresAt) - referencia - VINCULACION_RENOVACION_MS;
-    vinculacionRenovacion = setTimeout(pedirCodigoVinculacion, Math.max(esperaMs, 5000));
+    // Contra el reloj del servidor y con piso de una consulta: la lógica
+    // vive en vinculacion-timers.js para poder probarla con node --test.
+    vinculacionRenovacion = setTimeout(pedirCodigoVinculacion,
+            VinculacionTimers.proximaRenovacionMs(creado.expiresAt,
+                    alta?.headers?.get("date"),
+                    VINCULACION_CONSULTA_MS, VINCULACION_RENOVACION_MS));
 }
 
 async function consultarEstadoVinculacion(codigo) {

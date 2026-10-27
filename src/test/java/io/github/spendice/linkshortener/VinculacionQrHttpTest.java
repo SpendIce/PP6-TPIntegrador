@@ -305,6 +305,24 @@ class VinculacionQrHttpTest {
     }
 
     @Test
+    void laPaginaDeConfirmacionCargaSusRecursos() throws Exception {
+        // Con rutas relativas el navegador pediría /vincular/styles.css y
+        // /vincular/vincular.js, que no son estáticos: la página se quedaba
+        // en «Consultando el código…» sin botón de aprobación.
+        HttpClient computadora = Dispositivos.nuevo();
+        HttpClient juan = usuarioConNamespace(SUB_JUAN, EMAIL_JUAN, "juan");
+        String codigo = pedirCodigoVinculacion(computadora);
+
+        HttpResponse<String> pagina = Dispositivos.get(juan, baseUrl(), "/vincular/" + codigo);
+
+        assertThat(pagina.statusCode()).isEqualTo(200);
+        assertThat(pagina.body()).contains("href=\"/styles.css\"");
+        assertThat(pagina.body()).contains("src=\"/vincular.js\"");
+        assertThat(Dispositivos.get(juan, baseUrl(), "/vincular.js").statusCode()).isEqualTo(200);
+        assertThat(Dispositivos.get(juan, baseUrl(), "/vinculacion-timers.js").statusCode()).isEqualTo(200);
+    }
+
+    @Test
     void laConfirmacionMuestraElNamespaceOElEmail() throws Exception {
         // Juan ya eligió su namespace: la confirmación lo muestra.
         HttpClient computadora = Dispositivos.nuevo();
