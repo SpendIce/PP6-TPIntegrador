@@ -27,18 +27,12 @@ class SesionesVinculadasController {
                     .body(new ApiErrorResponse("NOT_AUTHENTICATED",
                             "Iniciá sesión con Google para cerrar las sesiones vinculadas."));
         }
-        if (!CuentaService.TIPO_PRINCIPAL.equals(tipoDe(sesion))) {
+        if (!CuentaService.TIPO_PRINCIPAL.equals(CuentaService.tipoDeSesion(sesion))) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN)
                     .body(new ApiErrorResponse("SESSION_NOT_PRIMARY",
                             "Solo una sesión principal puede cerrar las sesiones vinculadas."));
         }
         cuentas.cerrarSesionesVinculadas(usuarioId);
         return ResponseEntity.noContent().build();
-    }
-
-    /** Usa principal como default para una sesión anterior sin tipo guardado. */
-    private static String tipoDe(HttpSession sesion) {
-        String tipo = (String) sesion.getAttribute(CuentaService.ATRIBUTO_SESION_TIPO);
-        return tipo == null ? CuentaService.TIPO_PRINCIPAL : tipo;
     }
 }

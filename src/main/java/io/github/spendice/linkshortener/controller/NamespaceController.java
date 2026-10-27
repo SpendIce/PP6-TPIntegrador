@@ -58,7 +58,7 @@ class NamespaceController {
                 .body(new SesionActualResponse(new UsuarioSesion(
                         elegido.getEmail(),
                         elegido.getNamespace(),
-                        tipoDe(sesion),
+                        CuentaService.tipoDeSesion(sesion),
                         "")));
     }
 
@@ -68,11 +68,6 @@ class NamespaceController {
         }
         Long usuarioId = (Long) sesion.getAttribute(CuentaService.ATRIBUTO_USUARIO_ID);
         return cuentas.usuarioDeSesion(usuarioId).orElse(null);
-    }
-
-    private static String tipoDe(HttpSession sesion) {
-        String tipo = (String) sesion.getAttribute(CuentaService.ATRIBUTO_SESION_TIPO);
-        return tipo == null ? CuentaService.TIPO_PRINCIPAL : tipo;
     }
 
     private static ResponseEntity<ApiErrorResponse> sinSesion() {

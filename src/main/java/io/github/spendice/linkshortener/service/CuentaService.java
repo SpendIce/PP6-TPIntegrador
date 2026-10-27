@@ -6,6 +6,7 @@ import io.github.spendice.linkshortener.service.InvalidNamespaceException.Reason
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.LockModeType;
 import jakarta.persistence.PersistenceException;
+import jakarta.servlet.http.HttpSession;
 import org.hibernate.exception.ConstraintViolationException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -304,6 +305,17 @@ public class CuentaService {
         }
         return sugerencia.length() < NAMESPACE_MIN
                 ? SUGERENCIA_POR_DEFECTO : sugerencia.toString();
+    }
+
+    /**
+     * Tipo efectivo de una sesión autenticada: cuando el atributo no
+     * está guardado (sesiones creadas antes del tipo) la sesión se
+     * interpreta {@code principal} igual en toda la superficie del
+     * contrato.
+     */
+    public static String tipoDeSesion(HttpSession sesion) {
+        String tipo = (String) sesion.getAttribute(ATRIBUTO_SESION_TIPO);
+        return tipo == null ? TIPO_PRINCIPAL : tipo;
     }
 
     /**

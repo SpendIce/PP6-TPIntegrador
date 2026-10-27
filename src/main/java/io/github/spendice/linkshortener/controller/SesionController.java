@@ -34,7 +34,7 @@ class SesionController {
                     return new UsuarioSesion(
                             u.getEmail(),
                             namespace,
-                            tipoDe(sesion),
+                            CuentaService.tipoDeSesion(sesion),
                             namespace.isEmpty()
                                     ? cuentas.sugerenciaDeNamespace(u.getEmail()) : "");
                 })
@@ -42,11 +42,5 @@ class SesionController {
         return ResponseEntity.ok()
                 .cacheControl(CacheControl.noStore())
                 .body(new SesionActualResponse(usuario));
-    }
-
-    /** Usa principal como default para una sesión anterior sin tipo guardado. */
-    private String tipoDe(HttpSession sesion) {
-        String tipo = (String) sesion.getAttribute(CuentaService.ATRIBUTO_SESION_TIPO);
-        return tipo == null ? CuentaService.TIPO_PRINCIPAL : tipo;
     }
 }
