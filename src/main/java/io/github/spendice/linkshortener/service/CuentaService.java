@@ -353,8 +353,10 @@ public class CuentaService {
         String codigo = Base64.getUrlEncoder().withoutPadding().encodeToString(aleatorio);
         Instant creadaEn = clock.instant();
         Instant venceEn = creadaEn.plus(properties.linkCodeTtl());
-        transacciones.executeWithoutResult(status ->
-                em.persist(new CodigoVinculacion(codigo, creadaEn, venceEn)));
+        transacciones.executeWithoutResult(status -> {
+            em.persist(new CodigoVinculacion(codigo, creadaEn, venceEn));
+            em.flush();
+        });
         return new CodigoVinculacionCreado(codigo, direccionBase() + "/vincular/" + codigo,
                 venceEn);
     }
