@@ -99,7 +99,8 @@ public record CuentaProperties(Duration mainSessionIdleTimeout,
         // La página de aviso embebe la demora en segundos enteros (meta
         // refresh y cuenta regresiva): fuera de ese rango no se puede
         // servir una demora válida.
-        validarDuracion("cuenta.namespace-notice-delay", "NAMESPACE_NOTICE_DELAY",
+        namespaceNoticeDelay = validarDuracion(
+                "cuenta.namespace-notice-delay", "NAMESPACE_NOTICE_DELAY",
                 namespaceNoticeDelay, "PT5S");
     }
 

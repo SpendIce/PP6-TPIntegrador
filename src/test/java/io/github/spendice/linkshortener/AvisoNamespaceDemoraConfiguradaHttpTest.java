@@ -20,27 +20,17 @@ class AvisoNamespaceDemoraConfiguradaHttpTest extends HttpApiFixture {
 
     @Test
     void laDemoraDelAvisoEsLaConfigurada() throws Exception {
-        HttpClient juan = sesionDe("aviso-demora", "aviso-demora@ejemplo.com");
-        assertThat(postJson(juan, "/api/namespace", "{\"namespace\":\"juan\"}").statusCode())
-                .isEqualTo(200);
-        assertThat(postJson(juan, "/api/links",
-                "{\"destination\":\"https://ejemplo.com/doc\",\"aliasPersonalizado\":\"mi-doc\"}")
+        HttpClient juan = usuarioConNamespace(
+                "aviso-demora", "aviso-demora@ejemplo.com", "juan");
+        assertThat(postEnlacePersonal(juan, "https://ejemplo.com/doc", "mi-doc")
                 .statusCode()).isEqualTo(201);
-        assertThat(postJson(juan, "/api/namespace", "{\"namespace\":\"juani\"}").statusCode())
-                .isEqualTo(200);
+        assertThat(postNamespace(juan, "juani").statusCode()).isEqualTo(200);
 
         HttpResponse<String> aviso = get("/juan/mi-doc");
 
         assertThat(aviso.statusCode()).isEqualTo(200);
         assertThat(aviso.body())
                 .contains("content=\"12;url=" + PUBLIC_BASE + "/juani/mi-doc\"")
-                .contains("data-demora=\"PT12S\"")
                 .contains("<span id=\"cuenta\">12</span>");
-    }
-
-    private HttpClient sesionDe(String sub, String email) throws Exception {
-        HttpClient dispositivo = nuevoClienteDispositivo();
-        GoogleSimulado.login(dispositivo, baseUrl(), sub, email);
-        return dispositivo;
     }
 }

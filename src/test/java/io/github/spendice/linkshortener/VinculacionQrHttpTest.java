@@ -6,12 +6,8 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Import;
 
-import java.net.URI;
 import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpRequest.BodyPublishers;
 import java.net.http.HttpResponse;
-import java.net.http.HttpResponse.BodyHandlers;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
@@ -471,29 +467,6 @@ class VinculacionQrHttpTest extends HttpApiFixture {
         HttpResponse<String> respuesta = Dispositivos.get(dispositivo, baseUrl(), "/api/vinculacion/" + codigo);
         assertThat(respuesta.statusCode()).isEqualTo(200);
         return json.readTree(respuesta.body());
-    }
-
-    /** Inicia sesión principal con Google simulado en un dispositivo. */
-    private HttpClient sesionDe(String sub, String email) throws Exception {
-        HttpClient dispositivo = Dispositivos.nuevo();
-        GoogleSimulado.login(dispositivo, baseUrl(), sub, email);
-        return dispositivo;
-    }
-
-    /** Sesión del usuario con su namespace ya elegido. */
-    private HttpClient usuarioConNamespace(String sub, String email, String namespace)
-            throws Exception {
-        HttpClient dispositivo = sesionDe(sub, email);
-        String csrf = Csrf.obtener(dispositivo, baseUrl());
-        HttpRequest alta = Csrf.aplicar(dispositivo,
-                        HttpRequest.newBuilder(URI.create(baseUrl() + "/api/namespace")), csrf)
-                .header("Content-Type", "application/json")
-                .timeout(Duration.ofSeconds(15))
-                .POST(BodyPublishers.ofString("{\"namespace\":\"" + namespace + "\"}"))
-                .build();
-        HttpResponse<String> respuesta = dispositivo.send(alta, BodyHandlers.ofString());
-        assertThat(respuesta.statusCode()).as("alta del namespace %s", namespace).isEqualTo(200);
-        return dispositivo;
     }
 
     private long contarSesiones() {

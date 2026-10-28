@@ -9,7 +9,7 @@
 /** Elemento con lo que los scripts tocan: visibilidad, texto y eventos. */
 export function crearElemento() {
     const listeners = new Map();
-    return {
+    const elemento = {
         hidden: true,
         textContent: "",
         value: "",
@@ -25,7 +25,7 @@ export function crearElemento() {
         },
         async emit(tipo, evento = {}) {
             for (const fn of listeners.get(tipo) || []) {
-                await fn(evento);
+                await fn.call(elemento, evento);
             }
         },
         removeAttribute() {},
@@ -33,6 +33,7 @@ export function crearElemento() {
         querySelectorAll() { return []; },
         focus() {}
     };
+    return elemento;
 }
 
 /** `document.getElementById` que crea el elemento la primera vez. */

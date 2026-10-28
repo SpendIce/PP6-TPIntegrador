@@ -111,10 +111,10 @@ class RedirectController {
     /**
      * La página de aviso lleva la nueva dirección completa, la hora
      * límite (la primera entre el fin de la gracia y el vencimiento del
-     * enlace) y la demora en segundos y en ISO-8601. «Ir ahora» es un
-     * enlace real a la nueva dirección, que conduce al destino sin
-     * JavaScript; el {@code meta refresh} y la cuenta regresiva repiten
-     * la redirección automática tras la demora.
+     * enlace) y la demora en segundos. «Ir ahora» es un enlace real a la
+     * nueva dirección, que conduce al destino sin JavaScript; el
+     * {@code meta refresh} repite la redirección automática tras la
+     * demora y {@code /aviso.js} la cuenta regresiva y el copiado.
      */
     private String paginaAviso(AvisoNamespaceAnterior aviso) {
         long segundos = aviso.demora().getSeconds();
@@ -140,7 +140,7 @@ class RedirectController {
                         button { padding: .6rem 1.2rem; }
                     </style>
                 </head>
-                <body data-demora="%s">
+                <body>
                     <main>
                         <h1>Esta dirección cambió</h1>
                         <p>Esta dirección deja de funcionar a las
@@ -154,37 +154,12 @@ class RedirectController {
                             <button id="copiar" type="button">Copiar la nueva dirección</button>
                         </p>
                     </main>
-                    <script>
-                        (function () {
-                            var destino = document.getElementById("ir-ahora").href;
-                            var cuenta = document.getElementById("cuenta");
-                            var restante = %d;
-                            var reloj = setInterval(function () {
-                                restante -= 1;
-                                cuenta.textContent = restante;
-                                if (restante <= 0) {
-                                    clearInterval(reloj);
-                                    window.location.href = destino;
-                                }
-                            }, 1000);
-                            document.getElementById("copiar").addEventListener("click", function () {
-                                var boton = this;
-                                var copiar = navigator.clipboard
-                                        ? navigator.clipboard.writeText(destino)
-                                        : Promise.reject();
-                                copiar.then(function () {
-                                    boton.textContent = "Copiada";
-                                }, function () {
-                                    window.prompt("Copiá la nueva dirección:", destino);
-                                });
-                            });
-                        }());
-                    </script>
+                    <script src="/aviso.js"></script>
                 </body>
                 </html>
-                """.formatted(segundos, nueva, aviso.demora(), aviso.horaLimite(),
+                """.formatted(segundos, nueva, aviso.horaLimite(),
                         HORA_UTC.format(aviso.horaLimite()), falta,
-                        nueva, nueva, segundos, nueva, segundos);
+                        nueva, nueva, segundos, nueva);
     }
 
     private static ResponseEntity<String> noEncontrado() {

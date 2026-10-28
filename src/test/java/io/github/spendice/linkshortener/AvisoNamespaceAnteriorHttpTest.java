@@ -35,13 +35,13 @@ class AvisoNamespaceAnteriorHttpTest extends HttpApiFixture {
     @Test
     void elNamespaceAnteriorEnGraciaSirveElAvisoEnVezDeRedirigir() throws Exception {
         clock.set(T0);
-        HttpClient juan = usuario("aviso-juan", "aviso-juan@ejemplo.com", "juan");
-        crearPersonal(juan, "https://ejemplo.com/doc", "mi-doc");
+        HttpClient juan = usuarioConNamespace("aviso-juan", "aviso-juan@ejemplo.com", "juan");
+        postEnlacePersonal(juan, "https://ejemplo.com/doc", "mi-doc");
 
         // A las 12:10 cambia a juani: la gracia de «juan» termina 13:10 y
         // el enlace vence 13:00; el límite del aviso es el vencimiento.
         clock.set(T0.plusSeconds(600));
-        assertThat(cambiar(juan, "juani").statusCode()).isEqualTo(200);
+        assertThat(postNamespace(juan, "juani").statusCode()).isEqualTo(200);
 
         HttpResponse<String> aviso = get("/juan/mi-doc");
         assertThat(aviso.statusCode()).isEqualTo(200);
@@ -52,11 +52,15 @@ class AvisoNamespaceAnteriorHttpTest extends HttpApiFixture {
         String html = aviso.body();
         assertThat(html).contains(nueva);
         assertThat(html).contains("datetime=\"2026-10-05T13:00:00Z\"");
-        // La demora por defecto (PT5S) llega al HTML en los tres formatos
-        // que la página consume: meta refresh, atributo y cuenta regresiva.
+        // La demora por defecto (PT5S) llega al HTML en los dos formatos
+        // que la página consume: meta refresh y cuenta regresiva.
         assertThat(html).contains("content=\"5;url=" + nueva + "\"");
-        assertThat(html).contains("data-demora=\"PT5S\"");
+        assertThat(html).contains("<span id=\"cuenta\">5</span>");
         assertThat(html).contains("Ir ahora");
+
+        // La cuenta regresiva y el copiado viven en el script estático
+        // que la página carga: tiene que servirse.
+        assertThat(get("/aviso.js").statusCode()).isEqualTo(200);
 
         // El nombre actual sigue redirigiendo directamente.
         HttpResponse<String> actual = get("/juani/mi-doc");
@@ -69,13 +73,13 @@ class AvisoNamespaceAnteriorHttpTest extends HttpApiFixture {
     void unEnlaceCreadoDespuesDelCambioRespondeConElAvisoYElLimiteEsElFinDeLaGracia()
             throws Exception {
         clock.set(T0);
-        HttpClient juan = usuario("aviso-tarde", "aviso-tarde@ejemplo.com", "juan");
-        assertThat(cambiar(juan, "juani").statusCode()).isEqualTo(200);
+        HttpClient juan = usuarioConNamespace("aviso-tarde", "aviso-tarde@ejemplo.com", "juan");
+        assertThat(postNamespace(juan, "juani").statusCode()).isEqualTo(200);
 
         // El enlace nace como juani/tarde a las 12:20 (vence 13:20): la
         // gracia de «juan» termina antes (13:00) y es la hora límite.
         clock.set(T0.plusSeconds(1200));
-        assertThat(crearPersonal(juan, "https://ejemplo.com/tarde", "tarde").statusCode())
+        assertThat(postEnlacePersonal(juan, "https://ejemplo.com/tarde", "tarde").statusCode())
                 .isEqualTo(201);
 
         HttpResponse<String> aviso = get("/juan/tarde");
@@ -88,11 +92,11 @@ class AvisoNamespaceAnteriorHttpTest extends HttpApiFixture {
     @Test
     void conCambiosEncadenadosTodosLosAnterioresLlevanAlNamespaceActual() throws Exception {
         clock.set(T0);
-        HttpClient juan = usuario("aviso-cadena", "aviso-cadena@ejemplo.com", "juan");
-        crearPersonal(juan, "https://ejemplo.com/doc", "mi-doc");
-        assertThat(cambiar(juan, "juani").statusCode()).isEqualTo(200);
+        HttpClient juan = usuarioConNamespace("aviso-cadena", "aviso-cadena@ejemplo.com", "juan");
+        postEnlacePersonal(juan, "https://ejemplo.com/doc", "mi-doc");
+        assertThat(postNamespace(juan, "juani").statusCode()).isEqualTo(200);
         clock.set(T0.plusSeconds(1800));
-        assertThat(cambiar(juan, "juanito").statusCode()).isEqualTo(200);
+        assertThat(postNamespace(juan, "juanito").statusCode()).isEqualTo(200);
 
         // juan (gracia hasta 13:00) y juani (hasta 13:30) anuncian el
         // mismo destino con el namespace actual; el enlace vence 13:00 y
@@ -114,10 +118,10 @@ class AvisoNamespaceAnteriorHttpTest extends HttpApiFixture {
     @Test
     void alTerminarLaGraciaOConElEnlaceVencidoOInexistenteResponde404() throws Exception {
         clock.set(T0);
-        HttpClient juan = usuario("aviso-404", "aviso-404@ejemplo.com", "juan");
-        crearPersonal(juan, "https://ejemplo.com/doc", "mi-doc");
+        HttpClient juan = usuarioConNamespace("aviso-404", "aviso-404@ejemplo.com", "juan");
+        postEnlacePersonal(juan, "https://ejemplo.com/doc", "mi-doc");
         clock.set(T0.plusSeconds(600));
-        assertThat(cambiar(juan, "juani").statusCode()).isEqualTo(200);
+        assertThat(postNamespace(juan, "juani").statusCode()).isEqualTo(200);
 
         // Alias inexistente bajo el nombre anterior en gracia: 404 ya.
         assertNoEncontrado(get("/juan/nada"));
@@ -134,17 +138,17 @@ class AvisoNamespaceAnteriorHttpTest extends HttpApiFixture {
     @Test
     void terminadaLaGraciaElNombreTomadoPorOtroConduceASuDestino() throws Exception {
         clock.set(T0);
-        HttpClient juan = usuario("aviso-duenio-j", "aviso-duenio-j@ejemplo.com", "juan");
-        crearPersonal(juan, "https://ejemplo.com/de-juan", "mi-doc");
-        assertThat(cambiar(juan, "juani").statusCode()).isEqualTo(200);
+        HttpClient juan = usuarioConNamespace("aviso-duenio-j", "aviso-duenio-j@ejemplo.com", "juan");
+        postEnlacePersonal(juan, "https://ejemplo.com/de-juan", "mi-doc");
+        assertThat(postNamespace(juan, "juani").statusCode()).isEqualTo(200);
         HttpClient pedro = sesionDe("aviso-duenio-p", "aviso-duenio-p@ejemplo.com");
 
         // La gracia terminó y Pedro toma «juan»: el mismo alias
         // personalizado de Pedro es una asignación distinta que conduce
         // a su destino, como cualquier namespace actual.
         clock.set(T0.plusSeconds(3700));
-        assertThat(cambiar(pedro, "juan").statusCode()).isEqualTo(200);
-        assertThat(crearPersonal(pedro, "https://ejemplo.com/de-pedro", "mi-doc").statusCode())
+        assertThat(postNamespace(pedro, "juan").statusCode()).isEqualTo(200);
+        assertThat(postEnlacePersonal(pedro, "https://ejemplo.com/de-pedro", "mi-doc").statusCode())
                 .isEqualTo(201);
 
         HttpResponse<String> resolucion = get("/juan/mi-doc");
@@ -156,15 +160,15 @@ class AvisoNamespaceAnteriorHttpTest extends HttpApiFixture {
     @Test
     void unNombreRecuperadoPorSuUsuarioVuelveARedirigirDirectamente() throws Exception {
         clock.set(T0);
-        HttpClient juan = usuario("aviso-recupera", "aviso-recupera@ejemplo.com", "juan");
-        crearPersonal(juan, "https://ejemplo.com/doc", "mi-doc");
-        assertThat(cambiar(juan, "juani").statusCode()).isEqualTo(200);
+        HttpClient juan = usuarioConNamespace("aviso-recupera", "aviso-recupera@ejemplo.com", "juan");
+        postEnlacePersonal(juan, "https://ejemplo.com/doc", "mi-doc");
+        assertThat(postNamespace(juan, "juani").statusCode()).isEqualTo(200);
         assertThat(get("/juan/mi-doc").statusCode()).isEqualTo(200);
 
         // La resolución busca primero entre los namespaces actuales:
         // al recuperar «juan» dentro de la gracia vuelve a ser actual y
         // la dirección conduce al destino con 302, sin aviso.
-        assertThat(cambiar(juan, "juan").statusCode()).isEqualTo(200);
+        assertThat(postNamespace(juan, "juan").statusCode()).isEqualTo(200);
         HttpResponse<String> resolucion = get("/juan/mi-doc");
         assertThat(resolucion.statusCode()).isEqualTo(302);
         assertThat(resolucion.headers().firstValue("Location"))
@@ -174,9 +178,9 @@ class AvisoNamespaceAnteriorHttpTest extends HttpApiFixture {
     @Test
     void sinJavaScriptSeLlegaAlDestinoConElEnlaceIrAhora() throws Exception {
         clock.set(T0);
-        HttpClient juan = usuario("aviso-ir", "aviso-ir@ejemplo.com", "juan");
-        crearPersonal(juan, "https://ejemplo.com/doc", "mi-doc");
-        assertThat(cambiar(juan, "juani").statusCode()).isEqualTo(200);
+        HttpClient juan = usuarioConNamespace("aviso-ir", "aviso-ir@ejemplo.com", "juan");
+        postEnlacePersonal(juan, "https://ejemplo.com/doc", "mi-doc");
+        assertThat(postNamespace(juan, "juani").statusCode()).isEqualTo(200);
 
         // «Ir ahora» es un enlace real a la nueva dirección: sin
         // JavaScript se la puede seguir y conduce al destino con 302.
@@ -196,30 +200,4 @@ class AvisoNamespaceAnteriorHttpTest extends HttpApiFixture {
         assertThat(respuesta.headers().firstValue("Cache-Control")).contains("no-store");
     }
 
-    /** Inicia sesión con Google simulado y deja la cookie en el cliente. */
-    private HttpClient sesionDe(String sub, String email) throws Exception {
-        HttpClient dispositivo = nuevoClienteDispositivo();
-        GoogleSimulado.login(dispositivo, baseUrl(), sub, email);
-        return dispositivo;
-    }
-
-    /** Sesión del usuario con su namespace ya elegido. */
-    private HttpClient usuario(String sub, String email, String namespace) throws Exception {
-        HttpClient dispositivo = sesionDe(sub, email);
-        assertThat(cambiar(dispositivo, namespace).statusCode())
-                .as("alta del namespace %s", namespace).isEqualTo(200);
-        return dispositivo;
-    }
-
-    private HttpResponse<String> cambiar(HttpClient cliente, String namespace)
-            throws Exception {
-        return postJson(cliente, "/api/namespace", "{\"namespace\":\"" + namespace + "\"}");
-    }
-
-    private HttpResponse<String> crearPersonal(HttpClient cliente, String destino,
-                                               String alias) throws Exception {
-        return postJson(cliente, "/api/links",
-                "{\"destination\":\"" + destino + "\",\"aliasPersonalizado\":\""
-                        + alias + "\"}");
-    }
 }

@@ -199,13 +199,6 @@ class NamespaceHttpTest extends HttpApiFixture {
         }
     }
 
-    /** Inicia sesión con Google simulado y deja la cookie en el cliente. */
-    private HttpClient sesionDe(String sub, String email) throws Exception {
-        HttpClient dispositivo = nuevoClienteDispositivo();
-        GoogleSimulado.login(dispositivo, baseUrl(), sub, email);
-        return dispositivo;
-    }
-
     /** Sugerencia que la web recibe para el email indicado. */
     private String sugerenciaDe(String email) throws Exception {
         HttpClient dispositivo = sesionDe("google-sub-sugerencia-" + email, email);

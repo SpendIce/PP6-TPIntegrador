@@ -149,6 +149,38 @@ abstract class HttpApiFixture {
         return cliente.send(request, BodyHandlers.ofString());
     }
 
+    /** Inicia sesión con Google simulado y deja la cookie en el cliente. */
+    HttpClient sesionDe(String sub, String email) throws Exception {
+        HttpClient dispositivo = nuevoClienteDispositivo();
+        GoogleSimulado.login(dispositivo, baseUrl(), sub, email);
+        return dispositivo;
+    }
+
+    /** Sesión del usuario con su namespace ya elegido. */
+    HttpClient usuarioConNamespace(String sub, String email, String namespace)
+            throws Exception {
+        HttpClient dispositivo = sesionDe(sub, email);
+        assertThat(postNamespace(dispositivo, namespace).statusCode())
+                .as("alta del namespace %s", namespace).isEqualTo(200);
+        return dispositivo;
+    }
+
+    /** POST del alta o el cambio de namespace de la sesión. */
+    HttpResponse<String> postNamespace(HttpClient cliente, String namespace)
+            throws Exception {
+        return postJson(cliente, "/api/namespace",
+                "{\"namespace\":\"" + namespace + "\"}");
+    }
+
+    /** POST de creación de un enlace personal con destino y alias propio. */
+    HttpResponse<String> postEnlacePersonal(HttpClient cliente, String destino,
+                                            String aliasPersonalizado)
+            throws Exception {
+        return postJson(cliente, "/api/links",
+                "{\"destination\":\"" + destino + "\",\"aliasPersonalizado\":\""
+                        + aliasPersonalizado + "\"}");
+    }
+
     /** POST sin cuerpo ni Content-Type: el contrato lo rechaza. */
     HttpResponse<String> postSinCuerpo() throws Exception {
         String csrf = Csrf.obtener(client, baseUrl());

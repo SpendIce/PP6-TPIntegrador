@@ -790,8 +790,9 @@ issue #15 (ADR 0006):
 - `resources/static`: web `index.html`, `app.js`, `styles.css`,
   `vincular.html` y `vincular.js` (confirmación de la vinculación),
   módulos `qr-code.js` (ver «QR del enlace»), `vinculacion-timers.js` y
-  `namespace-grace.js` (lista y tiempo restante de «Mi namespace»), y
-  biblioteca vendorizada `vendor/qrcode.js`.
+  `namespace-grace.js` (lista y tiempo restante de «Mi namespace»),
+  `aviso.js` (cuenta regresiva y copiado de la página de aviso del
+  issue #25) y biblioteca vendorizada `vendor/qrcode.js`.
 
 ## QR del enlace (issue #7)
 

@@ -58,9 +58,16 @@ en [evidencia-namespace.md](evidencia-namespace.md).
   el destino.
 - `AvisoNamespaceDemoraConfiguradaHttpTest`: con otro
   `cuenta.namespace-notice-delay` (`PT12S`) la página lo refleja en el
-  `meta refresh`, el atributo `data-demora` y la cuenta regresiva.
+  `meta refresh` y la cuenta regresiva.
+- `src/test/js/aviso.test.mjs` (`node --test`): `aviso.js` corre sobre
+  el stub de DOM con temporizadores falsos — la cuenta regresiva
+  descuenta y navega al llegar a cero, el botón copia la dirección al
+  portapapeles y, sin API de portapapeles, la ofrece en un prompt.
 - `CuentaPropertiesTest`: obligatoriedad y positividad de
   `namespace-notice-delay` junto a las demás duraciones de `cuenta`.
+- Los helpers de sesión y namespace de las suites (`sesionDe`,
+  `usuarioConNamespace`, `postNamespace`, `postEnlacePersonal`) viven
+  una sola vez en `HttpApiFixture`.
 
 ## Ejecutado
 
@@ -70,11 +77,11 @@ Corrida del 2026-10-28:
 ./gradlew --no-daemon --console=plain test
 BUILD SUCCESSFUL   (163 pruebas, 0 fallos, 27 suites)
 
-cd src/test/js && node --test    -> pass 35
+cd src/test/js && node --test    -> pass 38
 cd extensiones && node --test    -> pass 42
 ```
 
 Cubre las suites HTTP de las etapas anteriores y las nuevas del aviso,
 contra PostgreSQL real. No se desactivó ni adaptó ninguna prueba al
-entorno; `web-stub.mjs` sumó `replaceChildren` y `querySelectorAll` al
-elemento falso, que `app.js` usa desde el issue #24.
+entorno; `web-stub.mjs` sumó `replaceChildren`, `querySelectorAll` y el
+`this` del listener al elemento falso, que `app.js` y `aviso.js` usan.
