@@ -7,7 +7,8 @@ de seguridad con CSRF del issue #18, el inicio de sesión con Google con
 sesión principal persistida del issue #19, la elección del namespace del
 primer login del issue #20, los enlaces personales con alias
 personalizado del issue #21, la vinculación de dispositivos por QR del
-issue #22 y el cambio de namespace con período de gracia del issue #24. La
+issue #22, el cambio de namespace con período de gracia del issue #24 y el
+aviso en el namespace anterior durante la gracia del issue #25. La
 estructura descrita refleja el refactor al esquema de clase del issue
 #15 (service único con `EntityManager` y HQL sobre las entities de
 `mappings`, [ADR 0006](adr/0006-service-unico-hql-mappings.md)). Cierra
@@ -47,15 +48,33 @@ El contrato REST de creación y resolución está en [openapi.yaml](../openapi.y
 - `GET /{alias}` devuelve `302` con `Location` al destino conservado y
   `Cache-Control: no-store` cuando hay asignación vigente; `404` con la página
   «Este enlace no existe o venció» y `Cache-Control: no-store` en caso contrario.
-- `GET /{namespace}/{aliasPersonalizado}` (issue #21) resuelve el enlace
-  personal del usuario dueño del namespace: `302` con `Location` al
-  destino y `Cache-Control: no-store` mientras la asignación está
-  vigente, y `404` con la misma página y `no-store` si el namespace no
-  existe, el enlace no existe o ya venció. Ambos segmentos se comparan
-  sin distinguir mayúsculas (el alias se guarda en minúsculas y el
-  namespace ya nace normalizado). La ruta de un segmento no cambia:
-  `/juan` sigue resolviendo el alias `juan` de la etapa 1 aunque el
-  texto coincida con el namespace de un usuario, nunca un perfil.
+- `GET /{namespace}/{aliasPersonalizado}` (issues #21 y #25) resuelve el
+  enlace personal del usuario dueño del namespace. La resolución busca
+  primero entre los namespaces actuales y después entre los anteriores en
+  gracia. Con un namespace actual, `302` con `Location` al destino y
+  `Cache-Control: no-store` mientras la asignación está vigente. Con un
+  namespace anterior en gracia, `200` con `Cache-Control: no-store` y la
+  página de aviso en vez de redirigir: lleva la nueva dirección completa
+  (`dirección base` + `/{namespace actual}/{aliasPersonalizado}`), la hora
+  límite —la que ocurra primero entre el fin de la gracia de ese nombre y
+  el vencimiento del enlace—, la demora de la redirección automática
+  (`cuenta.namespace-notice-delay`, `PT5S` por defecto), una cuenta
+  regresiva, un botón para copiar la dirección y un enlace «Ir ahora» que
+  funciona sin JavaScript; un `meta refresh` repite la redirección
+  automática. Cualquier enlace personal vigente del usuario responde así
+  bajo el nombre anterior, incluidos los creados después del cambio, y con
+  cambios encadenados todos los anteriores llevan al namespace actual. Un
+  nombre recuperado por su usuario vuelve a ser actual y redirige
+  directamente. En los demás casos —namespace inexistente, gracia
+  terminada, enlace inexistente o vencido— `404` con la misma página y
+  `no-store`; al terminar la gracia el nombre queda libre y, si otro
+  usuario lo toma y crea el mismo alias personalizado, la dirección
+  conduce a su destino con `302` como cualquier namespace actual. Ambos
+  segmentos se comparan sin distinguir mayúsculas (el alias se guarda en
+  minúsculas y el namespace ya nace normalizado). La ruta de un segmento
+  no cambia: `/juan` sigue resolviendo el alias `juan` de la etapa 1
+  aunque el texto coincida con el namespace de un usuario, nunca un
+  perfil.
 - `GET /api/sesion` devuelve `{"usuario": null}` sin sesión o sin usuario
   en la sesión, y `{"usuario": {"email", "namespace", "tipo", "sugerencia"}}`
   con sesión iniciada: `email` de la cuenta de Google, `namespace` vacío
@@ -482,6 +501,11 @@ anterior conserva su propio fin, por lo que los cambios encadenados mantienen
 períodos independientes. `grace_ends_at IS NULL` representa el nombre actual;
 un instante representa una reserva anterior y queda fijado al cambiar.
 
+El issue #25 no agrega tablas: el aviso del namespace anterior se compone
+en cada resolución a partir de `namespace_anterior` (el nombre y su
+`grace_ends_at`), `usuario.namespace` (la nueva dirección) y
+`asignacion_personal` (el enlace y su vencimiento), sin estado propio.
+
 El perfil `hsqldb` traduce esas tablas a mano en
 `db/hsqldb/schema.sql` (mismos nombres y columnas; `BYTEA` se vuelve
 `LONGVARBINARY`), como manda el ADR 0005. Lo que el `CREATE TABLE IF NOT
@@ -591,7 +615,12 @@ transacción pudiera violar, porque la unicidad es sobre la vigencia en
 el instante del servidor y no sobre la tabla (el historial conserva las
 vencidas). La resolución de dos segmentos corre en `readOnly` sin
 bloqueos, como `resolver`: ubica al usuario por su namespace, que es
-único, y lee su asignación vigente de ese alias.
+único, y lee su asignación vigente de ese alias. La variante del aviso
+(issue #25) tampoco bloquea: cuando el nombre no es un namespace actual,
+`avisoDeEnlacePersonalAnterior` busca la fila de `namespace_anterior` con
+gracia vigente en el instante del servidor y lee la misma asignación
+vigente del usuario, que cualquiera de sus alias anteriores conduce porque
+pertenece al usuario y no al nombre.
 
 El cambio de namespace (issue #24) agrega un segundo punto de
 serialización sobre la fila del nombre: `elegirNamespace` bloquea al
@@ -690,6 +719,10 @@ misma regla del entorno/`.env` pero sin default en el primer caso:
 - `cuenta.namespace-grace-period` (`NAMESPACE_GRACE_PERIOD`, default `PT1H`,
   `CuentaProperties`): duración aplicada al cambiar. Su instante de fin queda
   guardado en cada namespace anterior y no cambia al modificar configuración.
+- `cuenta.namespace-notice-delay` (`Duration`, `NAMESPACE_NOTICE_DELAY`,
+  default `PT5S`, `CuentaProperties`): demora de la redirección automática
+  de la página de aviso que sirve la dirección anterior durante la gracia;
+  se lee en cada resolución.
 
 ## Estructura de paquetes
 
@@ -720,7 +753,8 @@ issue #15 (ADR 0006):
   resultado; el `201` serializa el record `EnlaceCreado` directo como
   body.
 - `service`: `AcortadorService` con los casos de uso `acortar`,
-  `resolver`, `crearEnlacePersonal` y `resolverEnlacePersonal` como
+  `resolver`, `crearEnlacePersonal`, `resolverEnlacePersonal` y
+  `avisoDeEnlacePersonalAnterior` como
   métodos públicos y todas las reglas de negocio como
   helpers privados del mismo archivo (validación de
   destino, cálculo de vencimiento, enumeración de códigos, elección del
@@ -735,8 +769,8 @@ issue #15 (ADR 0006):
   `aprobarVinculacion` y `consumirVinculacion`, y
   `cerrarSesionesVinculadas` (invalida las sesiones indexadas del usuario
   cuyo tipo es `vinculada`). La inyección es `@Autowired` en campos, incluido el `EntityManager`.
-  También viven acá el record de resultado
-  `EnlaceCreado`, `InvalidDestinationException`,
+  También viven acá los records de resultado
+  `EnlaceCreado` y `AvisoNamespaceAnterior`, `InvalidDestinationException`,
   `InvalidNamespaceException` e `InvalidAliasPersonalizadoException`,
   cuyos `Reason` son los contratos de errores de la API, y los de la
   vinculación: `CodigoVinculacionCreado`, `ResultadoVinculacion` y los
@@ -819,7 +853,11 @@ seguir apuntándolas hasta la próxima reutilización. Las visitas no
 modifican la asignación: resolver no renueva el vencimiento. Las
 asignaciones personales siguen la misma regla: `resolverEnlacePersonal`
 filtra por `venceEn > instante del servidor` y las vencidas quedan en
-`asignacion_personal` para el historial y la reutilización. El código de
+`asignacion_personal` para el historial y la reutilización. La gracia del
+namespace anterior se evalúa igual, al resolver: `graceEndsAt > instante
+del servidor` decide si el nombre anterior todavía conduce al aviso, y la
+hora límite mostrada es el mínimo entre ese fin y el `venceEn` del enlace.
+El código de
 vinculación también lo evalúa el servidor al consultarlo: un `vence_en`
 alcanzado lo vuelve `vencida` aunque esté persistido en otro estado.
 
@@ -948,6 +986,20 @@ de un nombre que otra transacción confirma mientras la primera lo
 intenta tomar—, conservación del vencimiento personal y un segundo
 contexto con otro `cuenta.namespace-grace-period` que no altera la
 gracia en curso.
+
+El aviso en el namespace anterior (issue #25) se verifica en
+`AvisoNamespaceAnteriorHttpTest` con PostgreSQL real, OIDC simulado y
+`MutableClock`: el `200` con `no-store` y la página que lleva la nueva
+dirección completa, la hora límite como el mínimo entre el fin de la
+gracia y el vencimiento del enlace y la demora configurada, el enlace
+creado después del cambio respondiendo igual bajo el nombre anterior, los
+cambios encadenados `juan → juani → juanito` mostrando siempre el nombre
+actual, el `404` con la página acordada al terminar la gracia o con el
+enlace vencido o inexistente, la conducción con `302` al destino del nuevo
+dueño del nombre terminada la gracia, la preferencia del namespace actual
+ante un nombre recuperado y el enlace «Ir ahora» alcanzable sin
+JavaScript. `AvisoNamespaceDemoraConfiguradaHttpTest` verifica la demora
+con otro valor de `cuenta.namespace-notice-delay`.
 
 No implementa esta especificación: consola de
 gestión, estadísticas de visitas ni purga del historial (analizados en

@@ -140,6 +140,7 @@ recorre con `bash scripts/wizard-funnel-google.sh`.
 | `LINK_CODE_TTL` | `cuenta.link-code-ttl` | `PT60S` | Vigencia del código de vinculación de un solo uso (ISO-8601); la web lo renueva antes de que venza. Mínimo `PT5S`: por debajo el código vence antes de que la web consulte su estado una vez. |
 | `NAMESPACE_RESERVED_NAMES` | `cuenta.namespace-reserved-names` | `api,login,logout,vincular,oauth2,error` | Nombres que ningún usuario puede elegir como namespace porque chocan con rutas del propio servicio (CSV, se normalizan a minúsculas). |
 | `NAMESPACE_GRACE_PERIOD` | `cuenta.namespace-grace-period` | `PT1H` | Período durante el que cada namespace anterior queda reservado para su usuario. Se calcula al cambiar; cambiar esta configuración no afecta las reservas existentes. |
+| `NAMESPACE_NOTICE_DELAY` | `cuenta.namespace-notice-delay` | `PT5S` | Demora de la redirección automática de la página de aviso que sirve la dirección del namespace anterior durante la gracia (ISO-8601). |
 | `DB_HOST` `DB_PORT` `DB_NAME` `DB_USER` `DB_PASSWORD` | `spring.datasource.*` | `localhost` `5432` `acortador` | Conexión a PostgreSQL. |
 
 En una pantalla sin sesión, la web solicita un código de vinculación y
