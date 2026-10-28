@@ -72,3 +72,6 @@ cuenta:
   # Duración de la reserva al cambiar de namespace (issue #24). Se copia
   # como instante al cambiar; modificar esta opción no altera reservas activas.
   namespace-grace-period: ${NAMESPACE_GRACE_PERIOD:PT1H}
+  # Demora de la redirección automática de la página de aviso que sirve la
+  # dirección anterior durante la gracia (issue #25).
+  namespace-notice-delay: ${NAMESPACE_NOTICE_DELAY:PT5S}
