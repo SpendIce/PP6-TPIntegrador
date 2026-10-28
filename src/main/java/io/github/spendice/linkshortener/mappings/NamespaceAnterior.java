@@ -40,6 +40,10 @@ public class NamespaceAnterior {
         this.graceEndsAt = graceEndsAt;
     }
 
+    public Usuario getUsuario() {
+        return usuario;
+    }
+
     public String getNamespace() {
         return namespace;
     }

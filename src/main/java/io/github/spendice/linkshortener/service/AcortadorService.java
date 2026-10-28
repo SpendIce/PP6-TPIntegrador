@@ -1,10 +1,12 @@
 package io.github.spendice.linkshortener.service;
 
+import io.github.spendice.linkshortener.config.CuentaProperties;
 import io.github.spendice.linkshortener.config.ShortenerProperties;
 import io.github.spendice.linkshortener.mappings.Alias;
 import io.github.spendice.linkshortener.mappings.Asignacion;
 import io.github.spendice.linkshortener.mappings.AsignacionPersonal;
 import io.github.spendice.linkshortener.mappings.GeneradorAlias;
+import io.github.spendice.linkshortener.mappings.NamespaceAnterior;
 import io.github.spendice.linkshortener.mappings.Usuario;
 import io.github.spendice.linkshortener.service.InvalidDestinationException.Reason;
 import jakarta.annotation.PostConstruct;
@@ -63,6 +65,9 @@ public class AcortadorService {
 
     @Autowired
     ShortenerProperties properties;
+
+    @Autowired
+    CuentaProperties cuenta;
 
     @Autowired
     Clock clock;
@@ -190,6 +195,57 @@ public class AcortadorService {
         if (usuarios.isEmpty()) {
             return Optional.empty();
         }
+        return asignacionPersonalVigente(usuarios.get(0).getId(),
+                propuestaAlias.toLowerCase(Locale.ROOT), clock.instant());
+    }
+
+    /**
+     * Caso de uso del aviso en el namespace anterior (issue #25): si el
+     * nombre no resolvió como namespace actual pero es un anterior dentro
+     * de su período de gracia, cualquier enlace personal vigente del mismo
+     * usuario —incluidos los creados después del cambio— produce los datos
+     * del aviso: la nueva dirección completa con el namespace actual, la
+     * hora límite (la primera entre el fin de la gracia de ese nombre y el
+     * vencimiento del enlace) y la demora configurada. Vacío cuando no hay
+     * anterior en gracia o el enlace no existe o venció: la dirección
+     * responde el 404 acordado. Con cambios encadenados cada nombre
+     * conserva su propia fila y su propio fin, y todos llevan al namespace
+     * actual del usuario.
+     */
+    @Transactional(readOnly = true)
+    public Optional<AvisoNamespaceAnterior> avisoDeEnlacePersonalAnterior(
+            String namespace, String propuestaAlias) {
+        Instant ahora = clock.instant();
+        List<NamespaceAnterior> anteriores = em.createQuery(
+                "select n from NamespaceAnterior n"
+                        + " where n.namespace = :namespace"
+                        + " and n.graceEndsAt > :instante",
+                NamespaceAnterior.class)
+                .setParameter("namespace", namespace.toLowerCase(Locale.ROOT))
+                .setParameter("instante", ahora)
+                .setMaxResults(1)
+                .getResultList();
+        if (anteriores.isEmpty()) {
+            return Optional.empty();
+        }
+        NamespaceAnterior anterior = anteriores.get(0);
+        String alias = propuestaAlias.toLowerCase(Locale.ROOT);
+        Optional<AsignacionPersonal> asignacion =
+                asignacionPersonalVigente(anterior.getUsuario().getId(), alias, ahora);
+        if (asignacion.isEmpty()) {
+            return Optional.empty();
+        }
+        Instant limite = asignacion.get().getVenceEn().isBefore(anterior.getGraceEndsAt())
+                ? asignacion.get().getVenceEn() : anterior.getGraceEndsAt();
+        String nueva = direccionBase + "/" + anterior.getUsuario().getNamespace() + "/" + alias;
+        return Optional.of(new AvisoNamespaceAnterior(
+                nueva, limite, cuenta.namespaceNoticeDelay()));
+    }
+
+    /** La asignación vigente del usuario para ese alias, si la hay. */
+    private Optional<AsignacionPersonal> asignacionPersonalVigente(Long usuarioId,
+                                                                 String alias,
+                                                                 Instant instante) {
         return em.createQuery(
                 "select a from AsignacionPersonal a"
                         + " where a.usuarioId = :usuario"
@@ -197,9 +253,9 @@ public class AcortadorService {
                         + " and a.venceEn > :instante"
                         + " order by a.id desc",
                 AsignacionPersonal.class)
-                .setParameter("usuario", usuarios.get(0).getId())
-                .setParameter("alias", propuestaAlias.toLowerCase(Locale.ROOT))
-                .setParameter("instante", clock.instant())
+                .setParameter("usuario", usuarioId)
+                .setParameter("alias", alias)
+                .setParameter("instante", instante)
                 .setMaxResults(1)
                 .getResultList()
                 .stream().findFirst();
