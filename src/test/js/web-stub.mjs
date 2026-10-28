@@ -29,6 +29,8 @@ export function crearElemento() {
             }
         },
         removeAttribute() {},
+        replaceChildren() {},
+        querySelectorAll() { return []; },
         focus() {}
     };
 }

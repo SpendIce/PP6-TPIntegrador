@@ -619,8 +619,8 @@ bloqueos, como `resolver`: ubica al usuario por su namespace, que es
 (issue #25) tampoco bloquea: cuando el nombre no es un namespace actual,
 `avisoDeEnlacePersonalAnterior` busca la fila de `namespace_anterior` con
 gracia vigente en el instante del servidor y lee la misma asignación
-vigente del usuario, que cualquiera de sus alias anteriores conduce porque
-pertenece al usuario y no al nombre.
+vigente del usuario: como la asignación pertenece al usuario y no al
+nombre, la alcanza cualquiera de sus anteriores en gracia.
 
 El cambio de namespace (issue #24) agrega un segundo punto de
 serialización sobre la fila del nombre: `elegirNamespace` bloquea al
