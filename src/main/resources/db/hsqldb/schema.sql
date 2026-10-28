@@ -1,6 +1,5 @@
 -- Esquema del perfil hsqldb: equivalente a las migraciones de db/migration,
--- incluida V8__namespace_anterior_gracia.sql (V6 y V7 pertenecen al issue
--- #23), en
+-- incluida V8__namespace_anterior_gracia.sql, en
 -- dialecto HSQLDB (VARCHAR(8192) en lugar de TEXT, TIMESTAMP en lugar de
 -- TIMESTAMPTZ, LONGVARBINARY en lugar de BYTEA).
 -- El perfil corre sin Flyway, por eso este script lo aplica
@@ -24,10 +23,9 @@ CREATE TABLE IF NOT EXISTS alias (
 );
 
 -- Ciclo de claves: esta FK solo puede declararse cuando ya existen ambas
--- tablas, y ALTER no admite IF NOT EXISTS. En reinicios el ALTER falla con
--- "constraint already exists" y sql.init.continue-on-error lo omite.
+-- tablas. El IF NOT EXISTS la deja idempotente para los reinicios.
 ALTER TABLE asignacion
-    ADD CONSTRAINT fk_asignacion_alias
+    ADD CONSTRAINT IF NOT EXISTS fk_asignacion_alias
     FOREIGN KEY (alias_codigo) REFERENCES alias (codigo);
 
 -- Avance persistente de la generacion secuencial de codigos nuevos:
@@ -53,11 +51,10 @@ CREATE TABLE IF NOT EXISTS usuario (
     CONSTRAINT uq_usuario_google_sub UNIQUE (google_sub)
 );
 
--- Namespace elegido en el primer login (V4). Se agrega con ALTER para
--- que tambien aplique a bases ya creadas; en reinicios la restriccion ya
--- existe y continue-on-error omite el ALTER (ADR 0005).
+-- Namespace elegido en el primer login (V4). Se agrega con ALTER
+-- idempotente para que tambien aplique a bases ya creadas (ADR 0005).
 ALTER TABLE usuario
-    ADD CONSTRAINT uq_usuario_namespace UNIQUE (namespace);
+    ADD CONSTRAINT IF NOT EXISTS uq_usuario_namespace UNIQUE (namespace);
 
 -- Asignaciones de enlaces personales (V5): pertenecen al usuario, no al
 -- texto del namespace; el historial se conserva (ADR 0003).
@@ -75,6 +72,30 @@ CREATE TABLE IF NOT EXISTS asignacion_personal (
 CREATE INDEX IF NOT EXISTS ix_asignacion_personal_usuario_alias
     ON asignacion_personal (usuario_id, alias_personalizado);
 
+-- Codigos de vinculacion por QR (V6): un solo uso, vencen a los 60
+-- segundos; el usuario_id es el que aprobo desde su sesion principal.
+CREATE TABLE IF NOT EXISTS codigo_vinculacion (
+    codigo     VARCHAR(64) PRIMARY KEY,
+    estado     VARCHAR(16) NOT NULL,
+    creada_en  TIMESTAMP   NOT NULL,
+    vence_en   TIMESTAMP   NOT NULL,
+    usuario_id BIGINT,
+    CONSTRAINT fk_codigo_vinculacion_usuario
+        FOREIGN KEY (usuario_id) REFERENCES usuario (id)
+);
+
+-- presentado_a (V7) registra a que usuario se le mostro la confirmacion:
+-- solo el puede aprobarla. La columna y su FK se agregan con ALTER
+-- idempotente, asi aplican una sola vez tanto en bases nuevas como en
+-- las ya creadas antes de V7 (ADR 0005).
+ALTER TABLE codigo_vinculacion
+    ADD COLUMN IF NOT EXISTS presentado_a BIGINT;
+ALTER TABLE codigo_vinculacion
+    ADD CONSTRAINT IF NOT EXISTS fk_codigo_vinculacion_presentado
+    FOREIGN KEY (presentado_a) REFERENCES usuario (id);
+
+-- Gracia del namespace (V8): el namespace anterior queda reservado para
+-- su dueno durante NAMESPACE_GRACE_PERIOD tras un cambio.
 CREATE TABLE IF NOT EXISTS nombre_namespace (
     namespace     VARCHAR(30) PRIMARY KEY,
     usuario_id    BIGINT NOT NULL,

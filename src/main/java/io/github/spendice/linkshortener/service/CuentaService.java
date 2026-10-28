@@ -1,6 +1,8 @@
 package io.github.spendice.linkshortener.service;
 
 import io.github.spendice.linkshortener.config.CuentaProperties;
+import io.github.spendice.linkshortener.config.ShortenerProperties;
+import io.github.spendice.linkshortener.mappings.CodigoVinculacion;
 import io.github.spendice.linkshortener.mappings.Usuario;
 import io.github.spendice.linkshortener.mappings.NamespaceAnterior;
 import io.github.spendice.linkshortener.mappings.NombreNamespace;
@@ -8,15 +10,25 @@ import io.github.spendice.linkshortener.service.InvalidNamespaceException.Reason
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.LockModeType;
 import jakarta.persistence.PersistenceException;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpSession;
 import org.hibernate.exception.ConstraintViolationException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.session.FindByIndexNameSessionRepository;
+import org.springframework.session.Session;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
 
+import java.security.SecureRandom;
+import java.time.Clock;
+import java.time.Duration;
+import java.time.Instant;
+import java.util.Base64;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Optional;
 import java.time.Clock;
 import java.time.Instant;
@@ -31,7 +43,11 @@ import java.time.Instant;
  * <p>El inicio de sesión con Google ({@link #usuarioDeLogin}) lo llama el
  * success handler de la cadena de seguridad; la sesión actual
  * ({@link #usuarioDeSesion}) alimenta el endpoint {@code GET
- * /api/sesion}.</p>
+ * /api/sesion}; la vinculación por QR (issue #22) son
+ * {@link #crearVinculacion()},
+ * {@link #presentarVinculacion(String, Long, boolean)},
+ * {@link #aprobarVinculacion(String, Long)} y
+ * {@link #consumirVinculacion(String, HttpServletRequest, HttpSession, Duration)}.</p>
  */
 @Service
 public class CuentaService {
@@ -44,13 +60,17 @@ public class CuentaService {
     public static final String ATRIBUTO_USUARIO_ID = "usuarioId";
 
     /**
-     * Atributo de sesión con el tipo de sesión («principal» hoy; la
-     * vinculación por QR registrará «vinculada»).
+     * Atributo de sesión con el tipo de sesión: {@link #TIPO_PRINCIPAL}
+     * del login directo o {@link #TIPO_VINCULADA} de la vinculación por
+     * QR.
      */
     public static final String ATRIBUTO_SESION_TIPO = "sesionTipo";
 
     /** Tipo de la sesión abierta con login directo de Google. */
     public static final String TIPO_PRINCIPAL = "principal";
+
+    /** Tipo de la sesión abierta por la vinculación por QR. */
+    public static final String TIPO_VINCULADA = "vinculada";
 
     /** Largo mínimo y máximo del namespace (issue #20). */
     private static final int NAMESPACE_MIN = 3;
@@ -67,6 +87,10 @@ public class CuentaService {
     /** Sugerencia de reemplazo cuando la parte local no llega al mínimo. */
     private static final String SUGERENCIA_POR_DEFECTO = "usuario";
 
+    /** Entropía de los códigos de vinculación: 32 bytes por emisión. */
+    private static final SecureRandom ALEATORIO = new SecureRandom();
+    private static final int CODIGO_BYTES = 32;
+
     @Autowired
     EntityManager em;
 
@@ -77,7 +101,14 @@ public class CuentaService {
     CuentaProperties properties;
 
     @Autowired
+    ShortenerProperties shortener;
+
+    @Autowired
     Clock clock;
+
+    @Autowired
+    FindByIndexNameSessionRepository<?> sesiones;
+
 
     /**
      * Caso de uso del login: devuelve el usuario de la identidad de
@@ -391,6 +422,17 @@ public class CuentaService {
     }
 
     /**
+     * Tipo efectivo de una sesión autenticada: cuando el atributo no
+     * está guardado (sesiones creadas antes del tipo) la sesión se
+     * interpreta {@code principal} igual en toda la superficie del
+     * contrato.
+     */
+    public static String tipoDeSesion(HttpSession sesion) {
+        String tipo = (String) sesion.getAttribute(ATRIBUTO_SESION_TIPO);
+        return tipo == null ? TIPO_PRINCIPAL : tipo;
+    }
+
+    /**
      * Usuario al que pertenece una sesión: vacío si no hay sesión o si la
      * sesión no tiene usuario (todavía no completó el login).
      */
@@ -401,4 +443,205 @@ public class CuentaService {
         }
         return Optional.ofNullable(em.find(Usuario.class, usuarioId));
     }
+
+    /**
+     * Usuario al que pertenece la sesión HTTP del request: vacío si no
+     * hay sesión o si no tiene usuario.
+     */
+    @Transactional(readOnly = true)
+    public Optional<Usuario> usuarioDeSesion(HttpSession sesion) {
+        if (sesion == null) {
+            return Optional.empty();
+        }
+        return usuarioDeSesion((Long) sesion.getAttribute(ATRIBUTO_USUARIO_ID));
+    }
+
+    /**
+     * Materializa la sesión del usuario con la misma forma que graba el
+     * login ({@code principal}) y el consumo de la vinculación
+     * ({@code vinculada}): su id, el tipo, el índice
+     * {@code principal_name} que deja ubicables sus sesiones y la
+     * inactividad máxima configurada según el tipo.
+     */
+    public void registrarSesion(HttpSession sesion, Usuario usuario, String tipo,
+                              Duration inactividadMaxima) {
+        sesion.setAttribute(ATRIBUTO_USUARIO_ID, usuario.getId());
+        sesion.setAttribute(ATRIBUTO_SESION_TIPO, tipo);
+        sesion.setAttribute(FindByIndexNameSessionRepository.PRINCIPAL_NAME_INDEX_NAME,
+                usuario.getId().toString());
+        sesion.setMaxInactiveInterval((int) inactividadMaxima.getSeconds());
+    }
+
+    // ---------------------------------------------------------------
+    // Vinculación por QR (issue #22, ADR 0007): el dispositivo que espera
+    // pide un código de un solo uso que vence a los `link-code-ttl`, lo
+    // muestra como QR con la URL de confirmación y consulta su estado;
+    // una sesión principal lo aprueba y la consulta siguiente lo consume
+    // y abre la sesión vinculada.
+    // ---------------------------------------------------------------
+
+    /**
+     * Emite un código de vinculación pendiente: 256 bits aleatorios en
+     * base64url (inadivinable) y la URL de confirmación compuesta sobre
+     * {@code public-base-url} con {@code /vincular/{codigo}}, que es lo
+     * que codifica el QR. El vencimiento es el {@code link-code-ttl}
+     * configurado desde la creación.
+     */
+    public CodigoVinculacionCreado crearVinculacion() {
+        byte[] aleatorio = new byte[CODIGO_BYTES];
+        ALEATORIO.nextBytes(aleatorio);
+        String codigo = Base64.getUrlEncoder().withoutPadding().encodeToString(aleatorio);
+        Instant creadaEn = clock.instant();
+        Instant venceEn = creadaEn.plus(properties.linkCodeTtl());
+        transacciones.executeWithoutResult(status -> {
+            em.persist(new CodigoVinculacion(codigo, creadaEn, venceEn));
+            em.flush();
+        });
+        return new CodigoVinculacionCreado(codigo, direccionBase() + "/vincular/" + codigo,
+                venceEn);
+    }
+
+    /**
+     * Presentación de la confirmación al usuario de la sesión que la
+     * abre: la primera sesión principal que la consulta liga el código a
+     * su usuario en {@code presentado_a} (la primera se queda) y solo él
+     * puede aprobarlo después — a otro usuario la confirmación responde
+     * {@link PresentacionVinculacion#PRESENTADA_A_OTRO} y el POST del
+     * código le sale como a uno inválido. Una sesión vinculada recibe el
+     * estado sin ligar nada: nunca puede aprobar. El bloqueo pesimista
+     * de la fila serializa dos presentaciones simultáneas.
+     */
+    public PresentacionVinculacion presentarVinculacion(String codigo, Long usuarioId,
+                                                      boolean sesionPrincipal) {
+        return transacciones.execute(status -> {
+            CodigoVinculacion vinculacion =
+                    em.find(CodigoVinculacion.class, codigo, LockModeType.PESSIMISTIC_WRITE);
+            if (vinculacion == null) {
+                return PresentacionVinculacion.INVALIDO;
+            }
+            EstadoVinculacion estado = estadoEfectivo(vinculacion, clock.instant());
+            if (estado == EstadoVinculacion.VENCIDA) {
+                return PresentacionVinculacion.INVALIDO;
+            }
+            if (estado == EstadoVinculacion.APROBADA || !sesionPrincipal) {
+                return estado == EstadoVinculacion.APROBADA
+                        ? PresentacionVinculacion.APROBADA
+                        : PresentacionVinculacion.PENDIENTE;
+            }
+            if (vinculacion.getPresentadoA() == null) {
+                vinculacion.setPresentadoA(usuarioId);
+            }
+            return usuarioId.equals(vinculacion.getPresentadoA())
+                    ? PresentacionVinculacion.PENDIENTE
+                    : PresentacionVinculacion.PRESENTADA_A_OTRO;
+        });
+    }
+
+    /**
+     * Aprobación desde la sesión principal del usuario: solo un código
+     * pendiente y vigente presentado a ese usuario queda aprobado;
+     * cualquier otro estado (vencido, ya aprobado, ya consumido o
+     * inexistente), un código presentado a otro usuario o una aprobación
+     * sin presentación previa devuelven {@code false} y no abren nada.
+     * El bloqueo pesimista de la fila serializa dos aprobaciones
+     * simultáneas y la carrera con la consulta que consume.
+     */
+    public boolean aprobarVinculacion(String codigo, Long usuarioId) {
+        return Boolean.TRUE.equals(transacciones.execute(status -> {
+            CodigoVinculacion vinculacion =
+                    em.find(CodigoVinculacion.class, codigo, LockModeType.PESSIMISTIC_WRITE);
+            if (vinculacion == null
+                    || estadoEfectivo(vinculacion, clock.instant())
+                            != EstadoVinculacion.PENDIENTE
+                    || !usuarioId.equals(vinculacion.getPresentadoA())) {
+                return false;
+            }
+            vinculacion.setEstado(CodigoVinculacion.Estado.APROBADA);
+            vinculacion.setUsuarioId(usuarioId);
+            return true;
+        }));
+    }
+
+    /**
+     * Consulta del dispositivo que espera: responde el estado efectivo y,
+     * cuando es {@code APROBADA}, consume el código (de un solo uso) y
+     * materializa la sesión vinculada del usuario que aprobó. La consulta
+     * corre dentro de la transacción que abre el filtro del pedido
+     * ({@code TransaccionVinculacionConfig}), así que el consumo confirma
+     * junto con los atributos que Spring Session graba al cerrar la
+     * respuesta: si esa persistencia falla, el consumo también revierte
+     * y la próxima consulta puede reintentar. La consulta siguiente con
+     * el mismo código responde {@code VENCIDA}. El bloqueo pesimista
+     * garantiza que solo una consulta consume la aprobación.
+     *
+     * <p>Si el dispositivo que consulta ya trae una sesión con usuario,
+     * la vinculación la reemplaza: queda invalidada y se abre la sesión
+     * vinculada del aprobador, cuyos atributos de usuario, tipo e índice
+     * son los de esa sesión. Una sesión anónima se reutiliza.</p>
+     */
+    public ResultadoVinculacion consumirVinculacion(String codigo, HttpServletRequest request,
+                                                     HttpSession sesion,
+                                                     Duration inactividadMaxima) {
+        return transacciones.execute(status -> {
+            CodigoVinculacion vinculacion =
+                    em.find(CodigoVinculacion.class, codigo, LockModeType.PESSIMISTIC_WRITE);
+            if (vinculacion == null) {
+                return new ResultadoVinculacion(EstadoVinculacion.INEXISTENTE, null);
+            }
+            EstadoVinculacion estado = estadoEfectivo(vinculacion, clock.instant());
+            if (estado != EstadoVinculacion.APROBADA) {
+                return new ResultadoVinculacion(estado, null);
+            }
+            vinculacion.setEstado(CodigoVinculacion.Estado.CONSUMIDA);
+            HttpSession sesionVinculada = sesion;
+            if (sesionVinculada != null
+                    && sesionVinculada.getAttribute(ATRIBUTO_USUARIO_ID) != null) {
+                // La sesión que traía ya tenía usuario: se invalida (su
+                // baja corre en la misma transacción del pedido) y la
+                // reemplaza la vinculada del que aprobó.
+                sesionVinculada.invalidate();
+                sesionVinculada = null;
+            }
+            if (sesionVinculada == null) {
+                sesionVinculada = request.getSession();
+            }
+            Usuario aprobador = em.find(Usuario.class, vinculacion.getUsuarioId());
+            registrarSesion(sesionVinculada, aprobador, TIPO_VINCULADA, inactividadMaxima);
+            return new ResultadoVinculacion(EstadoVinculacion.APROBADA, aprobador);
+        });
+    }
+
+    /**
+     * Estado efectivo: el vencimiento se evalúa en el instante del
+     * servidor, como las asignaciones. Un código usado equivale a uno
+     * vencido para el que espera: tampoco abre sesión.
+     */
+    private EstadoVinculacion estadoEfectivo(CodigoVinculacion vinculacion, Instant ahora) {
+        if (!vinculacion.getVenceEn().isAfter(ahora)) {
+            return EstadoVinculacion.VENCIDA;
+        }
+        return switch (vinculacion.getEstado()) {
+            case PENDIENTE -> EstadoVinculacion.PENDIENTE;
+            case APROBADA -> EstadoVinculacion.APROBADA;
+            case CONSUMIDA -> EstadoVinculacion.VENCIDA;
+        };
+    }
+
+    /** Dirección pública del servicio sin barra final, como en AcortadorService. */
+    private String direccionBase() {
+        String base = shortener.publicBaseUrl().toString();
+        return base.endsWith("/") ? base.substring(0, base.length() - 1) : base;
+    }
+
+    /** Invalida las sesiones vinculadas del usuario, conservando las principales. */
+    public void cerrarSesionesVinculadas(Long usuarioId) {
+        Map<String, ?> sesionesDelUsuario = sesiones.findByPrincipalName(usuarioId.toString());
+        for (Object valor : sesionesDelUsuario.values()) {
+            if (valor instanceof Session sesion
+                    && TIPO_VINCULADA.equals(sesion.getAttribute(ATRIBUTO_SESION_TIPO))) {
+                sesiones.deleteById(sesion.getId());
+            }
+        }
+    }
+
 }

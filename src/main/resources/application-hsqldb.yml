@@ -14,8 +14,8 @@ spring:
     init:
       mode: always
       schema-locations: classpath:db/hsqldb/schema.sql
-      # En reinicios el ALTER de la FK ya declarada falla y se tolera.
-      continue-on-error: true
+      # El script es idempotente (IF NOT EXISTS / WHERE NOT EXISTS):
+      # un error de inicialización es un fallo real y aborta el arranque.
   jpa:
     hibernate:
       ddl-auto: none

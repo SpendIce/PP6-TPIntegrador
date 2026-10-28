@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Vincular dispositivo</title>
+    <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<main>
+    <h1>Vincular dispositivo</h1>
+    <!-- Vinculación por QR (issue #22): es la página que abre el celular
+         al escanear el QR del dispositivo que espera. Exige sesión (sin
+         ella el servidor manda al login con Google y vuelve acá), muestra
+         el usuario que aprobaría —namespace o email— y pide la acción
+         explícita: solo el botón aprueba. -->
+    <p id="vincular-cargando" class="notice">Consultando el código…</p>
+    <section id="vincular-confirmar" hidden>
+        <p>
+            ¿Iniciar sesión en este dispositivo como
+            <strong id="vincular-usuario"></strong>?
+        </p>
+        <button id="vincular-aprobar" type="button">Vincular</button>
+    </section>
+    <p id="vincular-listo" class="notice" hidden></p>
+    <p id="vincular-error" class="error" hidden></p>
+</main>
+<script src="/vincular.js"></script>
+</body>
+</html>

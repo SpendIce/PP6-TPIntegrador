@@ -23,7 +23,14 @@ info:
     enlaces personales: `POST /api/links` acepta un `aliasPersonalizado`
     opcional (con sesión y namespace elegido) y `GET
     /{namespace}/{aliasPersonalizado}` lo resuelve igual que el enlace
-    acortado de un segmento.
+    acortado de un segmento. El issue #22 suma la vinculación por QR: el
+    dispositivo que espera pide un código de un solo uso con `POST
+    /api/vinculacion`, muestra el QR de la URL de confirmación
+    (`/vincular/{codigo}`, sobre `PUBLIC_BASE_URL`) y consulta su estado
+    con `GET /api/vinculacion/{codigo}`; una sesión principal lo aprueba
+    con `POST /api/vinculacion/{codigo}/aprobar` desde la página de
+    confirmación y la consulta siguiente abre la sesión vinculada en el
+    dispositivo que esperaba.
 servers:
   - url: /
     description: Mismo origen que sirve la web; la dirección pública del servicio es configurable por despliegue.
@@ -247,9 +254,11 @@ paths:
         proveedor vuelve por `/login/oauth2/code/google`, que deja una
         sesión principal persistida (sobrevive a los reinicios del
         servicio y vence tras la inactividad máxima configurada, 30 días
-        por defecto). `tipo` identifica cómo se abrió la sesión: hoy solo
-        existe `principal` (login directo con Google); la vinculación por
-        QR sumará `vinculada`.
+        por defecto). `tipo` identifica cómo se abrió la sesión:
+        `principal` es el login directo con Google y `vinculada` la
+        abierta por la vinculación por QR (issue #22), que dura menos
+        (12 horas de inactividad por defecto) y no puede aprobar otras
+        vinculaciones.
       operationId: sesionActual
       responses:
         '200':
@@ -488,6 +497,397 @@ paths:
                   value:
                     error: CSRF_TOKEN_INVALID
                     message: "La solicitud no trae un token CSRF válido; se obtiene con GET /api/csrf."
+  /api/sesiones-vinculadas/cerrar:
+    post:
+      summary: Cerrar todas las sesiones vinculadas
+      description: >
+        Desde una sesión principal, invalida todas las sesiones vinculadas
+        del usuario autenticado. La sesión principal que realiza la solicitud
+        y las sesiones de otros usuarios permanecen activas. Una sesión
+        vinculada no puede ejecutar esta operación y recibe
+        `SESSION_NOT_PRIMARY`. Exige el token CSRF del doble envío.
+      operationId: cerrarSesionesVinculadas
+      parameters:
+        - name: X-XSRF-TOKEN
+          in: header
+          required: true
+          description: Valor de la cookie `XSRF-TOKEN` de la misma solicitud.
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Sesiones vinculadas cerradas; no devuelve cuerpo.
+        '401':
+          description: No hay sesión con usuario autenticado.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+              examples:
+                sinSesion:
+                  value:
+                    error: NOT_AUTHENTICATED
+                    message: "Iniciá sesión con Google para cerrar las sesiones vinculadas."
+        '403':
+          description: >
+            La sesión actual es vinculada (`SESSION_NOT_PRIMARY`) o el token
+            CSRF es ausente o inválido (`CSRF_TOKEN_INVALID`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+              examples:
+                sesionVinculada:
+                  value:
+                    error: SESSION_NOT_PRIMARY
+                    message: "Solo una sesión principal puede cerrar las sesiones vinculadas."
+                csrfInvalido:
+                  value:
+                    error: CSRF_TOKEN_INVALID
+                    message: "La solicitud no trae un token CSRF válido; se obtiene con GET /api/csrf."
+  /api/vinculacion:
+    post:
+      summary: Pedir un código de vinculación por QR
+      description: >
+        Crea un código de vinculación de un solo uso (issue #22): el
+        dispositivo que quiere iniciar sesión lo pide, muestra el QR con
+        la `confirmacionUrl` y consulta el estado con
+        `GET /api/vinculacion/{codigo}` cada 2 segundos. El código vence
+        a los 60 segundos (`cuenta.link-code-ttl`, configurable, mínimo 5
+        segundos): la web
+        pide uno nuevo antes de que venza y el QR se renueva solo. No
+        exige sesión: quien espera todavía no inició sesión. La solicitud
+        exige el token CSRF del doble envío, como todo POST.
+      operationId: crearCodigoVinculacion
+      parameters:
+        - name: X-XSRF-TOKEN
+          in: header
+          required: true
+          description: Valor de la cookie `XSRF-TOKEN` de la misma solicitud.
+          schema:
+            type: string
+      responses:
+        '201':
+          description: Código creado, pendiente de aprobación.
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+                example: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CodigoVinculacion'
+              examples:
+                creado:
+                  value:
+                    codigo: "Hv7Zk9Qm2LwR8xYb4N0pUaS3dF6gJhK1eM5cV7iB9oE"
+                    confirmacionUrl: "https://demo.example.ts.net/vincular/Hv7Zk9Qm2LwR8xYb4N0pUaS3dF6gJhK1eM5cV7iB9oE"
+                    expiresAt: "2026-10-27T12:01:00Z"
+        '403':
+          description: Token CSRF ausente o inválido.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+              examples:
+                csrfInvalido:
+                  value:
+                    error: CSRF_TOKEN_INVALID
+                    message: "La solicitud no trae un token CSRF válido; se obtiene con GET /api/csrf."
+  /api/vinculacion/{codigo}:
+    get:
+      summary: Consultar el estado del código de vinculación
+      description: >
+        Estado del código para el dispositivo que espera (issue #22):
+        `pendiente` mientras nadie lo aprobó, `vencida` cuando venció o ya
+        se usó, y `aprobada` una única vez: esa respuesta abre la sesión
+        vinculada del usuario que aprobó. El alta de sus atributos y el
+        consumo del código son atómicos (corren en la transacción del
+        pedido): si falla la persistencia, una consulta posterior puede
+        reintentar (cookie `SESSION`, inactividad
+        máxima de `cuenta.linked-session-idle-timeout`, 12 horas por
+        defecto). Una consulta posterior con el mismo
+        código responde `vencida` y no abre ninguna sesión. Un
+        dispositivo que ya trae una sesión con usuario la pierde: el
+        consumo la invalida y abre la sesión vinculada del que aprobó.
+        Un código que no existe responde `404`.
+      operationId: estadoVinculacion
+      parameters:
+        - name: codigo
+          in: path
+          required: true
+          description: Código devuelto por `POST /api/vinculacion`.
+          schema:
+            type: string
+      responses:
+        '200':
+          description: >
+            Estado del código. `aprobada` incluye la cookie `SESSION` de
+            la sesión vinculada recién abierta.
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+                example: no-store
+            Set-Cookie:
+              description: >
+                `SESSION=<id>; Path=/; HttpOnly` — solo cuando el estado
+                es `aprobada`: la respuesta materializa la sesión
+                vinculada.
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EstadoVinculacion'
+              examples:
+                pendiente:
+                  value:
+                    estado: "pendiente"
+                vencida:
+                  value:
+                    estado: "vencida"
+                aprobada:
+                  value:
+                    estado: "aprobada"
+        '404':
+          description: El código no existe.
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+                example: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+              examples:
+                inexistente:
+                  value:
+                    error: LINK_CODE_INVALID
+                    message: "El código de vinculación no existe o ya no sirve; pedí uno nuevo."
+  /api/vinculacion/{codigo}/confirmacion:
+    get:
+      summary: Datos para la confirmación en el dispositivo que aprueba
+      description: >
+        Lo que necesita la página de confirmación `/vincular/{codigo}`
+        (issue #22): el estado del código y el usuario de la sesión que
+        aprobaría. La confirmación muestra el namespace del usuario o, si
+        todavía no lo eligió, su email. Exige una sesión con usuario: sin
+        ella responde `401` y la página redirige al login con Google,
+        que vuelve a la confirmación al completarse. La primera sesión
+        principal que la consulta liga el código a su usuario: a otra
+        sesión le responde `404` con `LINK_CODE_INVALID` y esa sesión
+        tampoco lo puede aprobar.
+      operationId: confirmacionVinculacion
+      parameters:
+        - name: codigo
+          in: path
+          required: true
+          description: Código del QR escaneado.
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Estado del código y usuario que aprobaría.
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+                example: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConfirmacionVinculacion'
+              examples:
+                pendiente:
+                  summary: Código pendiente; la página exige la acción explícita
+                  value:
+                    estado: "pendiente"
+                    usuario:
+                      email: "juan@ejemplo.com"
+                      namespace: "juan"
+                      tipo: "principal"
+                      sugerencia: ""
+                pendienteSinNamespace:
+                  summary: Sin namespace elegido se muestra el email
+                  value:
+                    estado: "pendiente"
+                    usuario:
+                      email: "juan@ejemplo.com"
+                      namespace: ""
+                      tipo: "principal"
+                      sugerencia: "juan"
+                aprobada:
+                  summary: Ya confirmado
+                  value:
+                    estado: "aprobada"
+                    usuario:
+                      email: "juan@ejemplo.com"
+                      namespace: "juan"
+                      tipo: "principal"
+                      sugerencia: ""
+        '401':
+          description: No hay sesión con usuario autenticado.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+              examples:
+                sinSesion:
+                  value:
+                    error: NOT_AUTHENTICATED
+                    message: "Iniciá sesión con Google para aprobar una vinculación."
+        '404':
+          description: >
+            El código no existe, venció, ya se usó o se presentó a otra
+            sesión.
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+                example: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+              examples:
+                inexistente:
+                  value:
+                    error: LINK_CODE_INVALID
+                    message: "El código de vinculación no existe o ya no sirve; pedí uno nuevo."
+  /api/vinculacion/{codigo}/aprobar:
+    post:
+      summary: Aprobar la vinculación desde una sesión principal
+      description: >
+        Confirmación explícita de la vinculación (issue #22): la sesión
+        del que aprueba debe ser principal; una sesión vinculada recibe
+        `403` con `NOT_PRINCIPAL_SESSION`. Solo un código `pendiente`,
+        vigente y presentado a esta sesión (la consulta de la
+        confirmación lo ligó a su usuario) se puede aprobar: usado,
+        vencido, inexistente, presentado a otro usuario o sin
+        presentación previa responde `404` con `LINK_CODE_INVALID` y no
+        abre ninguna sesión (la sesión vinculada la abre el dispositivo
+        que espera en su siguiente consulta del estado). Exige el token
+        CSRF del doble envío, como todo POST.
+      operationId: aprobarVinculacion
+      parameters:
+        - name: codigo
+          in: path
+          required: true
+          description: Código del QR escaneado.
+          schema:
+            type: string
+        - name: X-XSRF-TOKEN
+          in: header
+          required: true
+          description: Valor de la cookie `XSRF-TOKEN` de la misma solicitud.
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Código aprobado; el dispositivo que espera abre su sesión en la siguiente consulta.
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+                example: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EstadoVinculacion'
+              examples:
+                aprobada:
+                  value:
+                    estado: "aprobada"
+        '401':
+          description: No hay sesión con usuario autenticado.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+              examples:
+                sinSesion:
+                  value:
+                    error: NOT_AUTHENTICATED
+                    message: "Iniciá sesión con Google para aprobar una vinculación."
+        '403':
+          description: >
+            Token CSRF ausente o inválido (`CSRF_TOKEN_INVALID`) o la
+            sesión que aprueba es vinculada (`NOT_PRINCIPAL_SESSION`):
+            solo una sesión principal puede aprobar una vinculación.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+              examples:
+                csrfInvalido:
+                  value:
+                    error: CSRF_TOKEN_INVALID
+                    message: "La solicitud no trae un token CSRF válido; se obtiene con GET /api/csrf."
+                sesionVinculada:
+                  value:
+                    error: NOT_PRINCIPAL_SESSION
+                    message: "Solo una sesión principal puede aprobar una vinculación por QR."
+        '404':
+          description: >
+            El código no existe, venció, ya se usó o no se presentó a
+            esta sesión.
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+                example: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+              examples:
+                inexistente:
+                  value:
+                    error: LINK_CODE_INVALID
+                    message: "El código de vinculación no existe o ya no sirve; pedí uno nuevo."
+  /vincular/{codigo}:
+    get:
+      summary: Página de confirmación de la vinculación por QR
+      description: >
+        Página que abre el celular al escanear el QR del dispositivo que
+        espera (issue #22). Exige sesión: sin ella el servidor redirige al
+        login con Google y, completado, la navegación vuelve a esta misma
+        dirección. Con sesión muestra «¿Iniciar sesión en este
+        dispositivo como …?» con el namespace del usuario o, si no lo
+        eligió, su email, y el botón que envía
+        `POST /api/vinculacion/{codigo}/aprobar`. Desde una sesión
+        vinculada la página informa que no puede aprobar otra vinculación,
+        y con un código vencido, inexistente o presentado a otra sesión
+        pide uno nuevo.
+      operationId: paginaVinculacion
+      parameters:
+        - name: codigo
+          in: path
+          required: true
+          description: Código de vinculación codificado en el QR.
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Página HTML de confirmación.
+          content:
+            text/html:
+              schema:
+                type: string
+                description: Página que muestra el usuario y exige la acción explícita de aprobar.
+        '302':
+          description: >
+            Sin sesión: redirección al inicio del login con Google
+            (`/oauth2/authorization/google`); al completarse, la
+            navegación vuelve a esta misma página.
+          headers:
+            Location:
+              required: true
+              schema:
+                type: string
   /{namespace}/{aliasPersonalizado}:
     get:
       summary: Resolver un enlace personal
@@ -777,6 +1177,95 @@ components:
             Nombre sugerido a partir de la parte local del email, adaptado
             al formato del namespace. No se reserva automáticamente.
           example: "juan-perez"
+    CodigoVinculacion:
+      type: object
+      required:
+        - codigo
+        - confirmacionUrl
+        - expiresAt
+      properties:
+        codigo:
+          type: string
+          description: >
+            Código de vinculación de un solo uso: 256 bits aleatorios
+            codificados en base64url. No se puede adivinar ni reutilizar.
+          example: "Hv7Zk9Qm2LwR8xYb4N0pUaS3dF6gJhK1eM5cV7iB9oE"
+        confirmacionUrl:
+          type: string
+          format: uri
+          description: >
+            URL de la página de confirmación, compuesta sobre la
+            dirección pública configurada (`PUBLIC_BASE_URL`) más
+            `/vincular/{codigo}`. Es el contenido que el QR codifica.
+          example: "https://demo.example.ts.net/vincular/Hv7Zk9Qm2LwR8xYb4N0pUaS3dF6gJhK1eM5cV7iB9oE"
+        expiresAt:
+          type: string
+          format: date-time
+          description: >
+            Instante de vencimiento del código, `link-code-ttl` (60
+            segundos por defecto, mínimo 5) después de su creación.
+          example: "2026-10-27T12:01:00Z"
+    EstadoVinculacion:
+      type: object
+      required:
+        - estado
+      properties:
+        estado:
+          type: string
+          description: >
+            `pendiente`: nadie lo aprobó todavía. `aprobada`: una sesión
+            principal lo acaba de aprobar — en la consulta del estado es
+            la respuesta que abre la sesión vinculada, una única vez.
+            `vencida`: venció o ya se usó; no abre ninguna sesión.
+          enum:
+            - pendiente
+            - aprobada
+            - vencida
+          example: "pendiente"
+    ConfirmacionVinculacion:
+      type: object
+      required:
+        - estado
+        - usuario
+      properties:
+        estado:
+          type: string
+          description: >
+            Estado del código desde la vista del que aprueba:
+            `pendiente` puede confirmarse; `aprobada` ya quedó
+            confirmado (códigos vencidos o usados responden 404).
+          enum:
+            - pendiente
+            - aprobada
+          example: "pendiente"
+        usuario:
+          type: object
+          description: >
+            Usuario de la sesión que aprobaría: la página muestra su
+            `namespace` o, si está vacío, su `email`. Si `tipo` no es
+            `principal`, la sesión no puede aprobar.
+          required:
+            - email
+            - namespace
+            - tipo
+            - sugerencia
+          properties:
+            email:
+              type: string
+              format: email
+              example: "juan@ejemplo.com"
+            namespace:
+              type: string
+              example: "juan"
+            tipo:
+              type: string
+              enum:
+                - principal
+                - vinculada
+              example: "principal"
+            sugerencia:
+              type: string
+              example: ""
     SesionActual:
       type: object
       required:
@@ -819,8 +1308,8 @@ components:
               type: string
               description: >
                 Tipo de la sesión actual: `principal` es la abierta con login
-                directo de Google; `vinculada` se reserva para la vinculación
-                por QR.
+                directo de Google; `vinculada` la abierta por la vinculación
+                por QR (issue #22).
               enum:
                 - principal
                 - vinculada
@@ -849,6 +1338,9 @@ components:
             - NAMESPACE_NOT_CHOSEN
             - ALIAS_INVALID
             - ALIAS_TAKEN
+            - LINK_CODE_INVALID
+            - NOT_PRINCIPAL_SESSION
+            - SESSION_NOT_PRIMARY
         message:
           type: string
           description: Descripción legible del problema para mostrar al usuario.
