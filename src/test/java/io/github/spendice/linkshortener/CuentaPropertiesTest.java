@@ -20,20 +20,23 @@ class CuentaPropertiesTest {
 
     private static final List<String> RESERVADOS = List.of("api", "login");
     private static final Duration SESION_PRINCIPAL = Duration.ofDays(30);
+    private static final Duration GRACIA = Duration.ofHours(1);
     private static final Duration SESION_VINCULADA = Duration.ofHours(12);
     private static final Duration CODIGO = Duration.ofSeconds(60);
 
     private static CuentaProperties propiedades(Duration principal, List<String> reservados,
-                                                Duration vinculada, Duration codigo) {
-        return new CuentaProperties(principal, reservados, vinculada, codigo);
+                                                Duration gracia, Duration vinculada,
+                                                Duration codigo) {
+        return new CuentaProperties(principal, reservados, gracia, vinculada, codigo);
     }
 
     @Test
     void aceptaDuracionesRepresentables() {
         CuentaProperties propiedades =
-                propiedades(SESION_PRINCIPAL, RESERVADOS, SESION_VINCULADA, CODIGO);
+                propiedades(SESION_PRINCIPAL, RESERVADOS, GRACIA, SESION_VINCULADA, CODIGO);
 
         assertThat(propiedades.mainSessionIdleTimeout()).isEqualTo(SESION_PRINCIPAL);
+        assertThat(propiedades.namespaceGracePeriod()).isEqualTo(GRACIA);
         assertThat(propiedades.linkedSessionIdleTimeout()).isEqualTo(SESION_VINCULADA);
         assertThat(propiedades.linkCodeTtl()).isEqualTo(CODIGO);
     }
@@ -43,28 +46,28 @@ class CuentaPropertiesTest {
         // La web consulta cada 2 s con un piso de renovación de 2,5 s: un
         // código que vence antes nunca llega a consultarse.
         assertThatThrownBy(() -> propiedades(SESION_PRINCIPAL, RESERVADOS,
-                SESION_VINCULADA, Duration.ofSeconds(4)))
+                GRACIA, SESION_VINCULADA, Duration.ofSeconds(4)))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("link-code-ttl")
                 .hasMessageContaining("al menos 5 segundos");
 
         // En el mínimo admitido la configuración construye.
-        assertThat(propiedades(SESION_PRINCIPAL, RESERVADOS, SESION_VINCULADA,
+        assertThat(propiedades(SESION_PRINCIPAL, RESERVADOS, GRACIA, SESION_VINCULADA,
                 Duration.ofSeconds(5)).linkCodeTtl()).isEqualTo(Duration.ofSeconds(5));
     }
 
     @Test
     void rechazaDuracionesQueNoLleganAUnSegundo() {
         assertThatThrownBy(() -> propiedades(Duration.ofMillis(500), RESERVADOS,
-                SESION_VINCULADA, CODIGO))
+                GRACIA, SESION_VINCULADA, CODIGO))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("entre 1 segundo");
         assertThatThrownBy(() -> propiedades(SESION_PRINCIPAL, RESERVADOS,
-                Duration.ofMillis(500), CODIGO))
+                GRACIA, Duration.ofMillis(500), CODIGO))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("entre 1 segundo");
         assertThatThrownBy(() -> propiedades(SESION_PRINCIPAL, RESERVADOS,
-                SESION_VINCULADA, Duration.ofMillis(500)))
+                GRACIA, SESION_VINCULADA, Duration.ofMillis(500)))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("entre 1 segundo");
     }
@@ -74,28 +77,28 @@ class CuentaPropertiesTest {
         Duration desborda = Duration.ofDays(24_856);
 
         assertThatThrownBy(() -> propiedades(desborda, RESERVADOS,
-                SESION_VINCULADA, CODIGO))
+                GRACIA, SESION_VINCULADA, CODIGO))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("entre 1 segundo");
         assertThatThrownBy(() -> propiedades(SESION_PRINCIPAL, RESERVADOS,
-                desborda, CODIGO))
+                GRACIA, desborda, CODIGO))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("entre 1 segundo");
         assertThatThrownBy(() -> propiedades(SESION_PRINCIPAL, RESERVADOS,
-                SESION_VINCULADA, desborda))
+                GRACIA, SESION_VINCULADA, desborda))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("entre 1 segundo");
     }
 
     @Test
     void lasDuracionesSonObligatorias() {
-        assertThatThrownBy(() -> propiedades(null, RESERVADOS, SESION_VINCULADA, CODIGO))
+        assertThatThrownBy(() -> propiedades(null, RESERVADOS, GRACIA, SESION_VINCULADA, CODIGO))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("main-session-idle-timeout");
-        assertThatThrownBy(() -> propiedades(SESION_PRINCIPAL, RESERVADOS, null, CODIGO))
+        assertThatThrownBy(() -> propiedades(SESION_PRINCIPAL, RESERVADOS, GRACIA, null, CODIGO))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("linked-session-idle-timeout");
-        assertThatThrownBy(() -> propiedades(SESION_PRINCIPAL, RESERVADOS, SESION_VINCULADA, null))
+        assertThatThrownBy(() -> propiedades(SESION_PRINCIPAL, RESERVADOS, GRACIA, SESION_VINCULADA, null))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("link-code-ttl");
     }
@@ -103,7 +106,7 @@ class CuentaPropertiesTest {
     @Test
     void normalizaLosNombresReservadosAMinusculas() {
         CuentaProperties propiedades = propiedades(SESION_PRINCIPAL,
-                List.of(" API ", "Login", "api", ""), SESION_VINCULADA, CODIGO);
+                List.of(" API ", "Login", "api", ""), GRACIA, SESION_VINCULADA, CODIGO);
 
         assertThat(propiedades.namespaceReservedNames()).containsExactly("api", "login");
     }
@@ -111,8 +114,16 @@ class CuentaPropertiesTest {
     @Test
     void exigeAlMenosUnNombreReservado() {
         assertThatThrownBy(() -> propiedades(SESION_PRINCIPAL, List.of(),
-                SESION_VINCULADA, CODIGO))
+                GRACIA, SESION_VINCULADA, CODIGO))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("namespace-reserved-names");
+    }
+
+    @Test
+    void exigeUnPeriodoDeGraciaPositivo() {
+        assertThatThrownBy(() -> propiedades(SESION_PRINCIPAL, RESERVADOS,
+                Duration.ZERO, SESION_VINCULADA, CODIGO))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("namespace-grace-period");
     }
 }

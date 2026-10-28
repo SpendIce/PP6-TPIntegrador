@@ -26,11 +26,17 @@ import java.util.Locale;
  *   puede elegir como namespace porque chocan con rutas del sistema
  *   ({@code NAMESPACE_RESERVED_NAMES}, {@code api,login,logout,vincular,oauth2,error}
  *   por defecto).</li>
+ *   <li>{@code namespace-grace-period}: tiempo que un namespace anterior
+ *   queda reservado para su dueño después de un cambio
+ *   ({@code NAMESPACE_GRACE_PERIOD}, {@code PT1H} por defecto). Debe ser
+ *   positivo; el fin se calcula al cambiar y modificar esta configuración
+ *   no altera las gracias en curso.</li>
  * </ul>
  */
 @ConfigurationProperties(prefix = "cuenta")
 public record CuentaProperties(Duration mainSessionIdleTimeout,
                                List<String> namespaceReservedNames,
+                               Duration namespaceGracePeriod,
                                Duration linkedSessionIdleTimeout,
                                Duration linkCodeTtl) {
 
@@ -79,6 +85,11 @@ public record CuentaProperties(Duration mainSessionIdleTimeout,
             throw new IllegalArgumentException(
                     "cuenta.namespace-reserved-names no puede quedar vacía"
                             + " (NAMESPACE_RESERVED_NAMES)");
+        }
+        if (namespaceGracePeriod == null || namespaceGracePeriod.isNegative()
+                || namespaceGracePeriod.isZero()) {
+            throw new IllegalArgumentException(
+                    "cuenta.namespace-grace-period debe ser positiva (NAMESPACE_GRACE_PERIOD, p. ej. PT1H)");
         }
     }
 

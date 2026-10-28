@@ -3,6 +3,7 @@ package io.github.spendice.linkshortener.controller;
 import io.github.spendice.linkshortener.controller.dto.ApiErrorResponse;
 import io.github.spendice.linkshortener.controller.dto.ElegirNamespaceRequest;
 import io.github.spendice.linkshortener.controller.dto.NamespaceSugerenciaResponse;
+import io.github.spendice.linkshortener.controller.dto.NamespaceAnteriorResponse;
 import io.github.spendice.linkshortener.controller.dto.SesionActualResponse;
 import io.github.spendice.linkshortener.controller.dto.UsuarioSesion;
 import io.github.spendice.linkshortener.mappings.Usuario;
@@ -18,12 +19,15 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.List;
+import java.util.Map;
+
 /**
- * Elección del namespace en el primer login (issue #20). El alta exige
+ * Elección y cambio del namespace (issues #20 y #24). La operación exige
  * una sesión con usuario: sin sesión responde {@code 401} con el mismo
  * formato de error del contrato, y la web solo muestra la pantalla a
- * quien inició sesión. Los rechazos de formato, nombre reservado, nombre
- * tomado y usuario que ya eligió salen del service con código propio.
+ * quien inició sesión. Los rechazos de formato, nombre reservado y
+ * nombre tomado salen del service con código propio.
  */
 @RestController
 class NamespaceController {
@@ -45,7 +49,7 @@ class NamespaceController {
     }
 
     @PostMapping("/api/namespace")
-    ResponseEntity<?> elegir(@RequestBody ElegirNamespaceRequest propuesta,
+    ResponseEntity<?> cambiar(@RequestBody ElegirNamespaceRequest propuesta,
                              HttpServletRequest request) {
         HttpSession sesion = request.getSession(false);
         Usuario usuario = cuentas.usuarioDeSesion(sesion).orElse(null);
@@ -61,6 +65,30 @@ class NamespaceController {
                         CuentaService.tipoDeSesion(sesion),
                         "")));
     }
+
+    @GetMapping("/api/namespace/anteriores")
+    ResponseEntity<?> anteriores(HttpServletRequest request) {
+        HttpSession sesion = request.getSession(false);
+        Usuario usuario = usuarioDe(sesion);
+        if (usuario == null) {
+            return sinSesion();
+        }
+        List<NamespaceAnteriorResponse> anteriores = cuentas.namespacesAnteriores(usuario.getId())
+                .stream()
+                .map(n -> new NamespaceAnteriorResponse(n.getNamespace(), n.getGraceEndsAt()))
+                .toList();
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore())
+                .body(Map.of("namespaces", anteriores));
+    }
+
+    private Usuario usuarioDe(HttpSession sesion) {
+        if (sesion == null) {
+            return null;
+        }
+        Long usuarioId = (Long) sesion.getAttribute(CuentaService.ATRIBUTO_USUARIO_ID);
+        return cuentas.usuarioDeSesion(usuarioId).orElse(null);
+    }
+
 
     private static ResponseEntity<ApiErrorResponse> sinSesion() {
         return ResponseEntity.status(HttpStatus.UNAUTHORIZED)

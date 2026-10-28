@@ -16,6 +16,11 @@ const namespaceSection = document.getElementById("namespace");
 const namespaceForm = document.getElementById("namespace-form");
 const namespaceInput = document.getElementById("namespace-input");
 const namespaceError = document.getElementById("namespace-error");
+const namespaceTitle = document.getElementById("namespace-title");
+const namespaceSubmit = document.getElementById("namespace-submit");
+const miNamespace = document.getElementById("mi-namespace");
+const namespaceActual = document.getElementById("namespace-actual");
+const namespacesAnteriores = document.getElementById("namespaces-anteriores");
 const aliasPersonal = document.getElementById("alias-personal");
 const aliasInput = document.getElementById("alias-personalizado");
 const vinculacionSection = document.getElementById("vinculacion");
@@ -50,6 +55,12 @@ const vinculacionEstado = document.getElementById("vinculacion-estado");
             // Con namespace elegido el formulario suma el campo opcional
             // del alias personalizado (issue #21).
             aliasPersonal.hidden = false;
+            namespaceTitle.textContent = "Cambiar mi namespace";
+            namespaceSubmit.textContent = "Cambiar";
+            namespaceSection.hidden = false;
+            miNamespace.hidden = false;
+            namespaceActual.textContent = "Actual: " + sesion.usuario.namespace;
+            cargarNamespacesAnteriores();
         }
     } catch (error) {
         console.warn("No se pudo consultar la sesión actual", error);
@@ -92,10 +103,43 @@ namespaceForm.addEventListener("submit", async (event) => {
         return;
     }
     mostrarUsuario(body.usuario);
-    namespaceSection.hidden = true;
+    namespaceInput.value = "";
+    namespaceTitle.textContent = "Cambiar mi namespace";
+    namespaceSubmit.textContent = "Cambiar";
+    namespaceActual.textContent = "Actual: " + body.usuario.namespace;
+    miNamespace.hidden = false;
+    cargarNamespacesAnteriores();
     // Recién elegido el namespace ya se pueden crear enlaces personales.
     aliasPersonal.hidden = false;
 });
+
+async function cargarNamespacesAnteriores() {
+    namespacesAnteriores.replaceChildren();
+    try {
+        const respuesta = await fetch("/api/namespace/anteriores", {
+            headers: { "Accept": "application/json" }
+        });
+        if (!respuesta.ok) return;
+        const body = await respuesta.json();
+        NamespaceGracia.renderAnteriores(
+                document, namespacesAnteriores, body.namespaces, Date.now(),
+                (namespace) => {
+                    namespaceInput.value = namespace;
+                    namespaceForm.requestSubmit();
+                });
+    } catch (error) {
+        console.warn("No se pudieron consultar los namespaces anteriores", error);
+    }
+}
+
+function actualizarTiempoRestante() {
+    for (const elemento of namespacesAnteriores.querySelectorAll(".grace-remaining")) {
+        elemento.textContent = NamespaceGracia.tiempoRestante(
+                elemento.dataset.endsAt, Date.now());
+    }
+}
+
+setInterval(actualizarTiempoRestante, 30000);
 
 function mostrarUsuario(usuario) {
     cuentaUsuario.textContent = usuario.namespace

@@ -139,6 +139,7 @@ recorre con `bash scripts/wizard-funnel-google.sh`.
 | `LINKED_SESSION_IDLE_TIMEOUT` | `cuenta.linked-session-idle-timeout` | `PT12H` | Inactividad máxima de la sesión vinculada por QR (ISO-8601); se aplica al abrirla la consulta que consume el código aprobado. |
 | `LINK_CODE_TTL` | `cuenta.link-code-ttl` | `PT60S` | Vigencia del código de vinculación de un solo uso (ISO-8601); la web lo renueva antes de que venza. Mínimo `PT5S`: por debajo el código vence antes de que la web consulte su estado una vez. |
 | `NAMESPACE_RESERVED_NAMES` | `cuenta.namespace-reserved-names` | `api,login,logout,vincular,oauth2,error` | Nombres que ningún usuario puede elegir como namespace porque chocan con rutas del propio servicio (CSV, se normalizan a minúsculas). |
+| `NAMESPACE_GRACE_PERIOD` | `cuenta.namespace-grace-period` | `PT1H` | Período durante el que cada namespace anterior queda reservado para su usuario. Se calcula al cambiar; cambiar esta configuración no afecta las reservas existentes. |
 | `DB_HOST` `DB_PORT` `DB_NAME` `DB_USER` `DB_PASSWORD` | `spring.datasource.*` | `localhost` `5432` `acortador` | Conexión a PostgreSQL. |
 
 En una pantalla sin sesión, la web solicita un código de vinculación y

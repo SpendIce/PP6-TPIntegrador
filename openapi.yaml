@@ -15,7 +15,10 @@ info:
     `/login/oauth2/code/google` y deja una sesión principal persistida;
     `GET /api/sesion` la consulta y `POST /api/logout` la cierra. El issue
     #20 suma la elección del namespace del primer login: `POST
-    /api/namespace` lo registra y `GET /api/namespace/sugerencia` propone
+    /api/namespace` lo registra. El issue #24 permite cambiarlo con
+    período de gracia y lista los anteriores en `GET
+    /api/namespace/anteriores`. `GET
+    /api/namespace/sugerencia` propone
     un nombre derivado de la parte local del email. El issue #21 suma los
     enlaces personales: `POST /api/links` acepta un `aliasPersonalizado`
     opcional (con sesión y namespace elegido) y `GET
@@ -286,13 +289,11 @@ paths:
                       sugerencia: "juan"
   /api/namespace:
     post:
-      summary: Elegir el namespace en el primer login
+      summary: Elegir o cambiar el namespace
       description: >
-        Registra el namespace del usuario de la sesión actual, que no
-        puede tener otro: la repetición del mismo nombre es idempotente y
-        cualquier nombre distinto se rechaza con
-        `NAMESPACE_ALREADY_CHOSEN` (el cambio llega en otro Change). El
-        nombre se normaliza a minúsculas antes de validar y guardar, así
+        Registra el namespace si el usuario todavía no tiene uno, o lo
+        cambia si ya tiene. La repetición del mismo nombre es idempotente.
+        El nombre se normaliza a minúsculas antes de validar y guardar, así
         que `Juan` es válido y ocupa `juan`. El formato es de 3 a 30
         caracteres `a-z`, `0-9` y `-`, sin guion inicial ni final; los
         nombres reservados por configuración (`NAMESPACE_RESERVED_NAMES`,
@@ -301,9 +302,15 @@ paths:
         es sin distinguir mayúsculas: si `juan` existe, `JUAN` se rechaza
         con `NAMESPACE_TAKEN`. Dos usuarios que piden el mismo nombre a la
         vez nunca terminan ambos con él: la restricción única de la base
-        decide y el perdedor recibe `NAMESPACE_TAKEN`. Exige el token CSRF
+        decide y el perdedor recibe `NAMESPACE_TAKEN`. Al cambiar, el
+        namespace anterior queda reservado hasta su fin de gracia y el
+        usuario puede recuperarlo desde la lista de namespaces anteriores.
+        `NAMESPACE_GRACE_PERIOD` (`PT1H` por defecto) fija el instante de
+        liberación al hacer cada cambio; modificarla no altera reservas
+        ya iniciadas.
+        Exige el token CSRF
         del doble envío, como todo POST.
-      operationId: elegirNamespace
+      operationId: cambiarNamespace
       parameters:
         - name: X-XSRF-TOKEN
           in: header
@@ -323,7 +330,7 @@ paths:
                   namespace: "juan"
       responses:
         '200':
-          description: Namespace elegido; devuelve la sesión actual ya actualizada.
+          description: Namespace elegido o cambiado; devuelve la sesión actual ya actualizada.
           headers:
             Cache-Control:
               schema:
@@ -383,8 +390,8 @@ paths:
                     message: "La solicitud no trae un token CSRF válido; se obtiene con GET /api/csrf."
         '409':
           description: >
-            El nombre ya lo tiene otro usuario (`NAMESPACE_TAKEN`) o el
-            usuario de la sesión ya eligió otro (`NAMESPACE_ALREADY_CHOSEN`).
+            El nombre ya lo tiene otro usuario o está en gracia para otra
+            persona (`NAMESPACE_TAKEN`).
           content:
             application/json:
               schema:
@@ -394,10 +401,29 @@ paths:
                   value:
                     error: NAMESPACE_TAKEN
                     message: "El namespace 'juan' ya está tomado; probá con otro."
-                yaElegido:
-                  value:
-                    error: NAMESPACE_ALREADY_CHOSEN
-                    message: "Ya elegiste el namespace 'juan'; cambiarlo llega en otro ticket."
+  /api/namespace/anteriores:
+    get:
+      summary: Listar namespaces anteriores recuperables
+      description: Devuelve los namespaces anteriores del usuario que aún están en período de gracia, con el instante UTC en que cada reserva termina. Exige sesión autenticada y responde Cache-Control no-store.
+      operationId: listarNamespacesAnteriores
+      responses:
+        '200':
+          description: Namespaces anteriores en gracia.
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+                example: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NamespacesAnteriores'
+        '401':
+          description: No hay sesión con usuario autenticado.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
   /api/namespace/sugerencia:
     get:
       summary: Sugerir un namespace para el primer login
@@ -1119,6 +1145,27 @@ components:
             el formato es de 3 a 30 caracteres `a-z`, `0-9` y `-`, sin
             guion inicial ni final.
           example: "juan"
+    NamespacesAnteriores:
+      type: object
+      required:
+        - namespaces
+      properties:
+        namespaces:
+          type: array
+          items:
+            type: object
+            required:
+              - namespace
+              - graceEndsAt
+            properties:
+              namespace:
+                type: string
+                example: "juan"
+              graceEndsAt:
+                type: string
+                format: date-time
+                description: Instante UTC inmutable en que el namespace queda libre.
+                example: "2026-10-27T13:00:00Z"
     NamespaceSugerencia:
       type: object
       required:
@@ -1288,7 +1335,6 @@ components:
             - NAMESPACE_INVALID
             - NAMESPACE_RESERVED
             - NAMESPACE_TAKEN
-            - NAMESPACE_ALREADY_CHOSEN
             - NAMESPACE_NOT_CHOSEN
             - ALIAS_INVALID
             - ALIAS_TAKEN

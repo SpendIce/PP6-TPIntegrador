@@ -108,21 +108,22 @@ class NamespaceHttpTest extends HttpApiFixture {
     }
 
     @Test
-    void unUsuarioQueYaEligioNoPuedeElegirOtroPorEstaVia() throws Exception {
+    void usuarioPuedeCambiarNamespaceYRepetirElActualEsIdempotente() throws Exception {
         HttpClient juan = sesionDe(SUB_JUAN, EMAIL_JUAN);
         assertThat(elegir(juan, "juan").statusCode()).isEqualTo(200);
 
-        assertError(elegir(juan, "juanito"), 409, "NAMESPACE_ALREADY_CHOSEN");
-        // El rechazo por "ya elegido" gana sobre el formato o la reserva:
-        // por esta vía no hay cambio de namespace, cualquiera sea el nombre.
-        assertError(elegir(juan, "ab"), 409, "NAMESPACE_ALREADY_CHOSEN");
-        assertError(elegir(juan, "api"), 409, "NAMESPACE_ALREADY_CHOSEN");
+        assertError(elegir(juan, "ab"), 400, "NAMESPACE_INVALID");
+        assertError(elegir(juan, "api"), 400, "NAMESPACE_RESERVED");
 
         // Repetir el mismo nombre es idempotente y no se interpreta como cambio.
         assertThat(elegir(juan, "JUAN").statusCode()).isEqualTo(200);
         assertThat(db.queryForObject(
                 "SELECT namespace FROM usuario WHERE google_sub = ?", String.class, SUB_JUAN))
                 .isEqualTo("juan");
+        assertThat(elegir(juan, "juanito").statusCode()).isEqualTo(200);
+        assertThat(db.queryForObject(
+                "SELECT namespace FROM usuario WHERE google_sub = ?", String.class, SUB_JUAN))
+                .isEqualTo("juanito");
     }
 
     @Test

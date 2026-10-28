@@ -4,6 +4,8 @@ import io.github.spendice.linkshortener.config.CuentaProperties;
 import io.github.spendice.linkshortener.config.ShortenerProperties;
 import io.github.spendice.linkshortener.mappings.CodigoVinculacion;
 import io.github.spendice.linkshortener.mappings.Usuario;
+import io.github.spendice.linkshortener.mappings.NamespaceAnterior;
+import io.github.spendice.linkshortener.mappings.NombreNamespace;
 import io.github.spendice.linkshortener.service.InvalidNamespaceException.Reason;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.LockModeType;
@@ -28,6 +30,8 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.time.Clock;
+import java.time.Instant;
 
 /**
  * Service del área de cuentas (ADR 0008): concentra los casos de uso de
@@ -104,6 +108,7 @@ public class CuentaService {
 
     @Autowired
     FindByIndexNameSessionRepository<?> sesiones;
+
 
     /**
      * Caso de uso del login: devuelve el usuario de la identidad de
@@ -182,70 +187,122 @@ public class CuentaService {
     }
 
     /**
-     * Caso de uso de la elección de namespace en el primer login (issue
-     * #20): valida formato y nombres reservados, comprueba que el nombre
-     * esté libre sin distinguir mayúsculas y lo guarda normalizado.
+     * Caso de uso de elección o cambio de namespace (issues #20 y #24).
      *
      * <p>La elección corre en su propia transacción con la fila del
-     * usuario bloqueada (dos pedidos del mismo usuario no se pisan) y la
-     * unicidad final la impone {@code uq_usuario_namespace}. Si dos
-     * usuarios piden el mismo nombre a la vez, el perdedor recibe la
-     * violación de la restricción y se traduce a {@code
-     * NAMESPACE_TAKEN}: nunca terminan ambos con él. Un usuario que ya
-     * tiene namespace solo puede repetir el mismo; cualquier otro nombre
-     * se rechaza con {@code NAMESPACE_ALREADY_CHOSEN} porque el cambio
-     * llega en otro Change.</p>
+     * usuario bloqueada y la fila del nombre —si existe— bloqueada con
+     * {@code PESSIMISTIC_WRITE}: la verificación de dueño y la adopción
+     * ocurren sobre esa misma fila, así que nadie puede convertir en
+     * actual un nombre que otro acaba de reservar entre ambas sentencias.
+     * Si la fila no existe, la clave primaria de {@code nombre_namespace}
+     * cierra la carrera del alta. Todo nombre adoptado — en la primera
+     * elección o en un cambio — queda registrado ahí con
+     * {@code grace_ends_at} nulo, y solo recibe el fin de gracia cuando
+     * el usuario lo deja. Al cambiar, los enlaces personales no se
+     * modifican.
      */
     public Usuario elegirNamespace(Long usuarioId, String propuesta) {
         String namespace = normalizarNamespace(propuesta);
         try {
-            return transacciones.execute(status -> asignarNamespace(usuarioId, namespace));
+            return transacciones.execute(status -> cambiarNamespace(usuarioId, namespace));
         } catch (DataIntegrityViolationException | PersistenceException carrera) {
-            if (!esCarreraDeNamespace(carrera)) {
+            if (!esCarreraDeNombreNamespace(carrera)
+                    && !esCarreraDeNamespace(carrera)) {
                 throw carrera;
             }
             throw namespaceTomado(namespace);
         }
     }
 
-    private Usuario asignarNamespace(Long usuarioId, String namespace) {
+    private Usuario cambiarNamespace(Long usuarioId, String namespace) {
         Usuario usuario = em.find(Usuario.class, usuarioId, LockModeType.PESSIMISTIC_WRITE);
         if (usuario == null) {
             throw new IllegalStateException(
                     "El usuario " + usuarioId + " de la sesión ya no existe");
         }
-        String actual = usuario.getNamespace();
-        if (actual != null) {
-            // El usuario ya eligió: repetir el mismo nombre es idempotente y
-            // cualquier otro se rechaza antes de validar su formato, porque
-            // por esta vía no hay cambio de namespace.
-            if (actual.equalsIgnoreCase(namespace)) {
-                return usuario;
-            }
-            throw new InvalidNamespaceException(Reason.NAMESPACE_ALREADY_CHOSEN,
-                    "Ya elegiste el namespace '" + actual
-                            + "'; cambiarlo llega en otro ticket.");
-        }
         validarFormatoNamespace(namespace);
         validarNamespaceReservado(namespace);
-        if (estaTomado(namespace)) {
+        NamespaceAnterior propio = anteriorEnGracia(usuario, namespace);
+        if (namespace.equals(usuario.getNamespace())) {
+            return usuario;
+        }
+        Instant ahora = clock.instant();
+        // La fila del nombre se bloquea antes de decidir si puede
+        // adoptarse: si otra transacción está soltando o tomando ese
+        // nombre, esta espera su commit y reevalúa dueño y gracia. Sin
+        // ese bloqueo, una verificación de disponibilidad y un em.find
+        // posteriores podían pisar la reserva ajena recién confirmada.
+        NombreNamespace nombreNuevo = em.find(
+                NombreNamespace.class, namespace, LockModeType.PESSIMISTIC_WRITE);
+        boolean ajeno = nombreNuevo != null
+                && !nombreNuevo.getUsuario().getId().equals(usuarioId);
+        if (ajeno && (nombreNuevo.getGraceEndsAt() == null
+                || nombreNuevo.getGraceEndsAt().isAfter(ahora))) {
             throw namespaceTomado(namespace);
         }
+        boolean recuperarAnterior = propio != null;
+        if (recuperarAnterior) {
+            borrarNamespaceAnterior(namespace);
+        } else if (nombreNuevo != null
+                && nombreNuevo.getGraceEndsAt() != null
+                && !nombreNuevo.getGraceEndsAt().isAfter(ahora)) {
+            // La reserva ajena (o propia) ya venció: se libera la fila
+            // antes de registrar al nuevo dueño.
+            borrarNamespaceAnterior(namespace);
+            em.remove(nombreNuevo);
+            em.flush();
+            nombreNuevo = null;
+        }
+        String actual = usuario.getNamespace();
+        if (actual != null) {
+            Instant finGracia = ahora.plus(properties.namespaceGracePeriod());
+            NombreNamespace nombreActual = em.find(NombreNamespace.class, actual);
+            if (nombreActual == null) {
+                em.persist(new NombreNamespace(actual, usuario, finGracia));
+            } else {
+                nombreActual.setGraceEndsAt(finGracia);
+            }
+            em.persist(new NamespaceAnterior(usuario, actual, finGracia));
+        }
+        // Todo nombre adoptado queda registrado con grace nulo: es lo que
+        // distingue un nombre actual de una reserva anterior.
+        if (nombreNuevo == null) {
+            em.persist(new NombreNamespace(namespace, usuario, null));
+        } else {
+            nombreNuevo.setGraceEndsAt(null);
+        }
         usuario.setNamespace(namespace);
-        // El flush dentro de la transacción hace saltar la restricción
-        // única antes del commit, para poder traducir la carrera.
         em.flush();
         return usuario;
     }
 
-    private boolean estaTomado(String namespace) {
-        return !em.createQuery(
-                        "select u.id from Usuario u where lower(u.namespace) = :namespace",
-                        Long.class)
+    private void borrarNamespaceAnterior(String namespace) {
+        em.createQuery("delete from NamespaceAnterior n where n.namespace = :namespace")
                 .setParameter("namespace", namespace)
+                .executeUpdate();
+        em.flush();
+    }
+
+    private NamespaceAnterior anteriorEnGracia(Usuario usuario, String namespace) {
+        List<NamespaceAnterior> resultados = em.createQuery(
+                        "select n from NamespaceAnterior n where n.usuario.id = :usuarioId "
+                                + "and n.namespace = :namespace and n.graceEndsAt > :ahora",
+                        NamespaceAnterior.class)
+                .setParameter("usuarioId", usuario.getId())
+                .setParameter("namespace", namespace)
+                .setParameter("ahora", clock.instant())
                 .setMaxResults(1)
-                .getResultList()
-                .isEmpty();
+                .getResultList();
+        return resultados.isEmpty() ? null : resultados.get(0);
+    }
+
+    @Transactional(readOnly = true)
+    public List<NamespaceAnterior> namespacesAnteriores(Long usuarioId) {
+        return em.createQuery("select n from NamespaceAnterior n where n.usuario.id = :usuarioId "
+                        + "and n.graceEndsAt > :ahora order by n.graceEndsAt", NamespaceAnterior.class)
+                .setParameter("usuarioId", usuarioId)
+                .setParameter("ahora", clock.instant())
+                .getResultList();
     }
 
     private static InvalidNamespaceException namespaceTomado(String namespace) {
@@ -253,7 +310,7 @@ public class CuentaService {
                 "El namespace '" + namespace + "' ya está tomado; probá con otro.");
     }
 
-    /** ¿La excepción es la violación única de {@code uq_usuario_namespace}? */
+    /** ¿La excepción es la violación única del namespace actual heredado? */
     private static boolean esCarreraDeNamespace(Throwable error) {
         for (Throwable actual = error; actual != null; actual = actual.getCause()) {
             if (actual instanceof ConstraintViolationException violacion
@@ -268,6 +325,40 @@ public class CuentaService {
             }
         }
         return false;
+    }
+
+    private static boolean esCarreraDeNombreNamespace(Throwable error) {
+        for (Throwable actual = error; actual != null; actual = actual.getCause()) {
+            if (actual instanceof ConstraintViolationException violacion
+                    && ("nombre_namespace_pkey".equalsIgnoreCase(violacion.getConstraintName())
+                            || "uq_namespace_anterior_namespace"
+                                    .equalsIgnoreCase(violacion.getConstraintName()))) {
+                return true;
+            }
+            String mensaje = actual.getMessage();
+            if (mensaje != null && esViolacionUnicaDelRegistroDeNombres(mensaje)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Solo las violaciones de unicidad del registro de nombres son la
+     * carrera que hay que traducir: una violación de clave foránea (p.
+     * ej. {@code fk_namespace_anterior_usuario}) es un defecto de
+     * integridad y no puede disfrazarse de {@code NAMESPACE_TAKEN}.
+     * Postgres nombra la restricción ({@code nombre_namespace_pkey}) y
+     * HSQLDB nombra la tabla cuando la clave primaria tiene nombre
+     * generado, así que el mensaje se reconoce por la unicidad y la
+     * tabla, no por la tabla sola.
+     */
+    private static boolean esViolacionUnicaDelRegistroDeNombres(String mensaje) {
+        String minusculas = mensaje.toLowerCase(Locale.ROOT);
+        boolean unica = minusculas.contains("unique")
+                || minusculas.contains("duplicate");
+        return unica && (minusculas.contains("nombre_namespace")
+                || minusculas.contains("uq_namespace_anterior_namespace"));
     }
 
     private static String normalizarNamespace(String propuesta) {

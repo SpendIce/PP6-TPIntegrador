@@ -69,3 +69,6 @@ cuenta:
   # Nombres que ningún usuario puede elegir como namespace porque chocan
   # con rutas del propio servicio (issue #20).
   namespace-reserved-names: ${NAMESPACE_RESERVED_NAMES:api,login,logout,vincular,oauth2,error}
+  # Duración de la reserva al cambiar de namespace (issue #24). Se copia
+  # como instante al cambiar; modificar esta opción no altera reservas activas.
+  namespace-grace-period: ${NAMESPACE_GRACE_PERIOD:PT1H}
