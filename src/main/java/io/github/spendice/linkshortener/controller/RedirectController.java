@@ -1,6 +1,7 @@
 package io.github.spendice.linkshortener.controller;
 
 import io.github.spendice.linkshortener.service.AcortadorService;
+import io.github.spendice.linkshortener.service.AvisoNamespaceAnterior;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.CacheControl;
 import org.springframework.http.HttpHeaders;
@@ -11,12 +12,20 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.time.Clock;
+import java.time.Duration;
+import java.time.ZoneOffset;
+import java.time.format.DateTimeFormatter;
+
 /**
  * Resolución pública: {@code GET /{alias}} redirige (302) al destino de
  * la asignación vigente o responde 404 con la página acordada, y
  * {@code GET /{namespace}/{aliasPersonalizado}} hace lo mismo con el
- * enlace personal del usuario (issue #21). El patrón de un segmento solo
- * admite símbolos del alfabeto configurado (placeholder
+ * enlace personal del usuario (issue #21) salvo que el nombre sea un
+ * namespace anterior en gracia (issue #25): entonces responde 200 con la
+ * página de aviso que anuncia la nueva dirección y redirige sola tras la
+ * demora configurada. El patrón de un segmento solo admite símbolos del
+ * alfabeto configurado (placeholder
  * {@code shortener.alias-route-pattern}, cuyo default vive en
  * {@code application.yml}) y el de dos letras, dígitos y guiones: las
  * rutas propias (archivos estáticos con extensión, {@code /api/...})
@@ -42,26 +51,33 @@ class RedirectController {
             </html>
             """;
 
+    /** La hora límite se muestra en UTC: el servidor no conoce la zona del visitante. */
+    private static final DateTimeFormatter HORA_UTC =
+            DateTimeFormatter.ofPattern("HH:mm 'UTC'").withZone(ZoneOffset.UTC);
+
     @Autowired
     AcortadorService service;
+
+    @Autowired
+    Clock clock;
 
     @GetMapping("/{alias:${shortener.alias-route-pattern}}")
     ResponseEntity<String> resolver(@PathVariable("alias") String alias) {
         return service.resolver(alias)
-                .map(asignacion -> ResponseEntity.status(HttpStatus.FOUND)
-                        .header(HttpHeaders.LOCATION, asignacion.getDestino())
-                        .cacheControl(CacheControl.noStore())
-                        .<String>build())
+                .map(asignacion -> redirigir(asignacion.getDestino()))
                 .orElseGet(RedirectController::noEncontrado);
     }
 
     /**
-     * Resolución de enlaces personales (issue #21):
-     * {@code GET /{namespace}/{aliasPersonalizado}} redirige al destino
-     * de la asignación vigente del usuario o responde el mismo 404 que
-     * el alias de un segmento. El patrón acota ambos segmentos a letras,
-     * dígitos y guiones — los alfabetos del namespace y del alias
-     * personalizado — para que los archivos con extensión
+     * Resolución de enlaces personales (issues #21 y #25):
+     * {@code GET /{namespace}/{aliasPersonalizado}} busca primero entre
+     * los namespaces actuales y redirige al destino de la asignación
+     * vigente; si el nombre no es actual, busca entre los anteriores en
+     * gracia y sirve la página de aviso con la nueva dirección, la hora
+     * límite y la demora configurada; en cualquier otro caso responde el
+     * mismo 404 que el alias de un segmento. El patrón acota ambos
+     * segmentos a letras, dígitos y guiones — los alfabetos del namespace
+     * y del alias personalizado — para que los archivos con extensión
      * ({@code /vendor/qrcode.js}) sigan llegando al manejador de
      * estáticos; las rutas literales como {@code /api/csrf} ganan por
      * ser más específicas.
@@ -71,11 +87,79 @@ class RedirectController {
             @PathVariable("namespace") String namespace,
             @PathVariable("aliasPersonalizado") String aliasPersonalizado) {
         return service.resolverEnlacePersonal(namespace, aliasPersonalizado)
-                .map(asignacion -> ResponseEntity.status(HttpStatus.FOUND)
-                        .header(HttpHeaders.LOCATION, asignacion.getDestino())
-                        .cacheControl(CacheControl.noStore())
-                        .<String>build())
-                .orElseGet(RedirectController::noEncontrado);
+                .map(asignacion -> redirigir(asignacion.getDestino()))
+                .orElseGet(() -> service
+                        .avisoDeEnlacePersonalAnterior(namespace, aliasPersonalizado)
+                        .map(this::aviso)
+                        .orElseGet(RedirectController::noEncontrado));
+    }
+
+    private static ResponseEntity<String> redirigir(String destino) {
+        return ResponseEntity.status(HttpStatus.FOUND)
+                .header(HttpHeaders.LOCATION, destino)
+                .cacheControl(CacheControl.noStore())
+                .build();
+    }
+
+    private ResponseEntity<String> aviso(AvisoNamespaceAnterior aviso) {
+        return ResponseEntity.ok()
+                .cacheControl(CacheControl.noStore())
+                .contentType(MediaType.TEXT_HTML)
+                .body(paginaAviso(aviso));
+    }
+
+    /**
+     * La página de aviso lleva la nueva dirección completa, la hora
+     * límite (la primera entre el fin de la gracia y el vencimiento del
+     * enlace) y la demora en segundos. «Ir ahora» es un enlace real a la
+     * nueva dirección, que conduce al destino sin JavaScript; el
+     * {@code meta refresh} repite la redirección automática tras la
+     * demora y {@code /aviso.js} la cuenta regresiva y el copiado.
+     */
+    private String paginaAviso(AvisoNamespaceAnterior aviso) {
+        long segundos = aviso.demora().getSeconds();
+        String nueva = aviso.nuevaDireccion();
+        Duration restante = Duration.between(clock.instant(), aviso.horaLimite());
+        String falta = restante.toMinutes() >= 1
+                ? "en " + restante.toMinutes() + " min"
+                : "en menos de un minuto";
+        return """
+                <!DOCTYPE html>
+                <html lang="es">
+                <head>
+                    <meta charset="utf-8">
+                    <meta name="viewport" content="width=device-width, initial-scale=1">
+                    <meta http-equiv="refresh" content="%d;url=%s">
+                    <title>Esta dirección cambió</title>
+                    <style>
+                        body { font-family: system-ui, sans-serif; margin: 2rem auto;
+                               max-width: 36rem; padding: 0 1rem; }
+                        a#ir-ahora { display: inline-block; padding: .6rem 1.2rem;
+                               background: #1d4ed8; color: #fff; border-radius: .4rem;
+                               text-decoration: none; }
+                        button { padding: .6rem 1.2rem; }
+                    </style>
+                </head>
+                <body>
+                    <main>
+                        <h1>Esta dirección cambió</h1>
+                        <p>Esta dirección deja de funcionar a las
+                            <time id="limite" datetime="%s">%s</time> (%s).
+                            La nueva dirección es
+                            <a id="nueva" href="%s">%s</a>.</p>
+                        <p>Serás redirigido automáticamente en
+                            <span id="cuenta">%d</span> segundos.</p>
+                        <p>
+                            <a id="ir-ahora" href="%s">Ir ahora</a>
+                            <button id="copiar" type="button">Copiar la nueva dirección</button>
+                        </p>
+                    </main>
+                    <script src="/aviso.js"></script>
+                </body>
+                </html>
+                """.formatted(segundos, nueva, aviso.horaLimite(),
+                        HORA_UTC.format(aviso.horaLimite()), falta,
+                        nueva, nueva, segundos, nueva);
     }
 
     private static ResponseEntity<String> noEncontrado() {

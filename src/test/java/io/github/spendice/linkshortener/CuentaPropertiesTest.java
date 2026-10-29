@@ -23,11 +23,18 @@ class CuentaPropertiesTest {
     private static final Duration GRACIA = Duration.ofHours(1);
     private static final Duration SESION_VINCULADA = Duration.ofHours(12);
     private static final Duration CODIGO = Duration.ofSeconds(60);
+    private static final Duration DEMORA = Duration.ofSeconds(5);
 
     private static CuentaProperties propiedades(Duration principal, List<String> reservados,
                                                 Duration gracia, Duration vinculada,
                                                 Duration codigo) {
-        return new CuentaProperties(principal, reservados, gracia, vinculada, codigo);
+        return new CuentaProperties(principal, reservados, gracia, vinculada, codigo, DEMORA);
+    }
+
+    private static CuentaProperties propiedades(Duration principal, List<String> reservados,
+                                                Duration gracia, Duration vinculada,
+                                                Duration codigo, Duration demora) {
+        return new CuentaProperties(principal, reservados, gracia, vinculada, codigo, demora);
     }
 
     @Test
@@ -39,6 +46,7 @@ class CuentaPropertiesTest {
         assertThat(propiedades.namespaceGracePeriod()).isEqualTo(GRACIA);
         assertThat(propiedades.linkedSessionIdleTimeout()).isEqualTo(SESION_VINCULADA);
         assertThat(propiedades.linkCodeTtl()).isEqualTo(CODIGO);
+        assertThat(propiedades.namespaceNoticeDelay()).isEqualTo(DEMORA);
     }
 
     @Test
@@ -125,5 +133,22 @@ class CuentaPropertiesTest {
                 Duration.ZERO, SESION_VINCULADA, CODIGO))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("namespace-grace-period");
+    }
+
+    @Test
+    void exigeUnaDemoraDeAvisoRepresentableEnSegundos() {
+        // La página embebe la demora en segundos enteros: menos de uno
+        // vence al instante y un desborde pierde el vencimiento.
+        assertThatThrownBy(() -> propiedades(SESION_PRINCIPAL, RESERVADOS,
+                GRACIA, SESION_VINCULADA, CODIGO, null))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("namespace-notice-delay");
+        assertThatThrownBy(() -> propiedades(SESION_PRINCIPAL, RESERVADOS,
+                GRACIA, SESION_VINCULADA, CODIGO, Duration.ofMillis(500)))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("namespace-notice-delay");
+        assertThat(propiedades(SESION_PRINCIPAL, RESERVADOS, GRACIA,
+                SESION_VINCULADA, CODIGO, Duration.ofSeconds(12))
+                .namespaceNoticeDelay()).isEqualTo(Duration.ofSeconds(12));
     }
 }

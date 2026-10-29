@@ -23,7 +23,10 @@ info:
     enlaces personales: `POST /api/links` acepta un `aliasPersonalizado`
     opcional (con sesión y namespace elegido) y `GET
     /{namespace}/{aliasPersonalizado}` lo resuelve igual que el enlace
-    acortado de un segmento. El issue #22 suma la vinculación por QR: el
+    acortado de un segmento, salvo que el nombre sea un namespace anterior
+    en gracia (issue #25): entonces responde una página de aviso con la
+    nueva dirección y redirige sola tras una demora configurable. El issue
+    #22 suma la vinculación por QR: el
     dispositivo que espera pide un código de un solo uso con `POST
     /api/vinculacion`, muestra el QR de la URL de confirmación
     (`/vincular/{codigo}`, sobre `PUBLIC_BASE_URL`) y consulta su estado
@@ -892,30 +895,49 @@ paths:
     get:
       summary: Resolver un enlace personal
       description: >
-        Si el namespace identifica a un usuario y su enlace personal con
-        ese alias tiene una asignación vigente en el instante de
+        Si el namespace es el actual de un usuario y su enlace personal
+        con ese alias tiene una asignación vigente en el instante de
         resolución del servidor, responde HTTP 302 hacia la URL de
-        destino conservada verbatim. Sin usuario con ese namespace, sin
-        enlace personal con ese alias o con la asignación vencida,
-        responde HTTP 404 con la página «Este enlace no existe o
-        venció», igual que el enlace acortado de un segmento. Las
-        asignaciones personales pertenecen al usuario y se conservan en
-        el historial: al vencer, el mismo usuario puede volver a usar el
-        alias, y otro usuario con el mismo texto de namespace crea una
-        asignación distinta. La comparación no distingue mayúsculas:
-        ambos segmentos se normalizan a minúsculas. Ambas respuestas
-        usan `Cache-Control: no-store`. Un camino de un solo segmento
-        sigue resolviendo los alias de los enlaces acortados aunque
-        coincida con un namespace: `/juan` es el alias `juan` y nunca un
-        perfil.
+        destino conservada verbatim. Si el nombre no es un namespace
+        actual pero sí un namespace anterior dentro de su período de
+        gracia (issue #25), cualquier enlace personal vigente del mismo
+        usuario responde HTTP 200 con la página de aviso en vez de
+        redirigir: lleva la nueva dirección completa (la dirección base
+        más `/{namespace actual}/{aliasPersonalizado}`), la hora límite
+        en que la dirección deja de funcionar —la que ocurra primero
+        entre el fin de la gracia y el vencimiento del enlace—, la
+        demora de la redirección automática (`cuenta.namespace-notice-delay`,
+        `PT5S` por defecto), una cuenta regresiva, un botón para copiar
+        la nueva dirección y un enlace «Ir ahora» hacia ella, que
+        funciona sin JavaScript; la página también se recarga sola hacia
+        la nueva dirección con `meta refresh`. Con cambios encadenados
+        cada nombre conserva su propia gracia y todos llevan al
+        namespace actual. La resolución busca primero entre los
+        namespaces actuales y después entre los anteriores en gracia: un
+        nombre que el usuario recuperó vuelve a redirigir directamente.
+        Sin namespace actual ni anterior en gracia, sin enlace personal
+        con ese alias o con la asignación vencida, responde HTTP 404 con
+        la página «Este enlace no existe o venció», igual que el enlace
+        acortado de un segmento: al terminar la gracia el nombre queda
+        libre y, si otro usuario lo toma y crea el mismo alias
+        personalizado, la dirección conduce a su destino con 302 como
+        cualquier namespace actual. Las asignaciones personales
+        pertenecen al usuario y se conservan en el historial: al vencer,
+        el mismo usuario puede volver a usar el alias, y otro usuario
+        con el mismo texto de namespace crea una asignación distinta. La
+        comparación no distingue mayúsculas: ambos segmentos se
+        normalizan a minúsculas. Todas las respuestas usan
+        `Cache-Control: no-store`. Un camino de un solo segmento sigue
+        resolviendo los alias de los enlaces acortados aunque coincida
+        con un namespace: `/juan` es el alias `juan` y nunca un perfil.
       operationId: resolverEnlacePersonal
       parameters:
         - name: namespace
           in: path
           required: true
           description: >
-            Namespace del usuario dueño del enlace personal. Se
-            normaliza a minúsculas.
+            Namespace actual o anterior en gracia del usuario dueño del
+            enlace personal. Se normaliza a minúsculas.
           schema:
             type: string
             pattern: '^[a-zA-Z0-9-]{3,30}$'
@@ -930,7 +952,7 @@ paths:
             pattern: '^[a-zA-Z0-9-]{1,50}$'
       responses:
         '302':
-          description: Asignación vigente; redirección al destino registrado.
+          description: Asignación vigente bajo el namespace actual; redirección al destino registrado.
           headers:
             Location:
               required: true
@@ -943,8 +965,30 @@ paths:
               schema:
                 type: string
                 example: no-store
+        '200':
+          description: >
+            El namespace es un nombre anterior dentro de su período de
+            gracia y el enlace personal del usuario está vigente: página
+            de aviso con la nueva dirección completa, la hora límite (la
+            primera entre el fin de la gracia y el vencimiento del
+            enlace), la demora de la redirección automática, cuenta
+            regresiva, botón para copiar la dirección y el enlace «Ir
+            ahora» que funciona sin JavaScript.
+          headers:
+            Cache-Control:
+              required: true
+              schema:
+                type: string
+                example: no-store
+          content:
+            text/html:
+              schema:
+                type: string
+                description: Página de aviso del cambio de dirección con la nueva dirección, la hora límite, la demora y el enlace «Ir ahora».
         '404':
-          description: Alias desconocido o sin asignación vigente.
+          description: >
+            Alias desconocido o sin asignación vigente, namespace
+            inexistente o anterior con la gracia terminada.
           headers:
             Cache-Control:
               required: true

@@ -31,6 +31,10 @@ import java.util.Locale;
  *   ({@code NAMESPACE_GRACE_PERIOD}, {@code PT1H} por defecto). Debe ser
  *   positivo; el fin se calcula al cambiar y modificar esta configuración
  *   no altera las gracias en curso.</li>
+ *   <li>{@code namespace-notice-delay}: demora de la redirección
+ *   automática de la página de aviso que sirve la dirección anterior
+ *   durante la gracia ({@code NAMESPACE_NOTICE_DELAY}, {@code PT5S} por
+ *   defecto).</li>
  * </ul>
  */
 @ConfigurationProperties(prefix = "cuenta")
@@ -38,7 +42,8 @@ public record CuentaProperties(Duration mainSessionIdleTimeout,
                                List<String> namespaceReservedNames,
                                Duration namespaceGracePeriod,
                                Duration linkedSessionIdleTimeout,
-                               Duration linkCodeTtl) {
+                               Duration linkCodeTtl,
+                               Duration namespaceNoticeDelay) {
 
     /**
      * TTL mínimo del código: el cliente web consulta el estado cada 2 s y
@@ -91,6 +96,12 @@ public record CuentaProperties(Duration mainSessionIdleTimeout,
             throw new IllegalArgumentException(
                     "cuenta.namespace-grace-period debe ser positiva (NAMESPACE_GRACE_PERIOD, p. ej. PT1H)");
         }
+        // La página de aviso embebe la demora en segundos enteros (meta
+        // refresh y cuenta regresiva): fuera de ese rango no se puede
+        // servir una demora válida.
+        namespaceNoticeDelay = validarDuracion(
+                "cuenta.namespace-notice-delay", "NAMESPACE_NOTICE_DELAY",
+                namespaceNoticeDelay, "PT5S");
     }
 
     /**

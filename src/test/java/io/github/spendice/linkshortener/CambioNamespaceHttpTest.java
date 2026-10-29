@@ -45,18 +45,18 @@ class CambioNamespaceHttpTest extends HttpApiFixture {
     @Test
     void cambiaNamespaceReservaCadaNombreYPermiteRecuperarlo() throws Exception {
         clock.set(T0);
-        HttpClient juan = usuario("google-sub-gracia-juan", "juan@ejemplo.com", "juan");
+        HttpClient juan = usuarioConNamespace("google-sub-gracia-juan", "juan@ejemplo.com", "juan");
         HttpClient pedro = sesionDe("google-sub-gracia-pedro", "pedro@ejemplo.com");
 
         // juan -> juani a las 12:00: «juan» queda reservado hasta las 13:00
         // y nadie más puede tomarlo mientras tanto.
-        assertThat(cambiar(juan, "juani").statusCode()).isEqualTo(200);
-        assertError(cambiar(pedro, "juan"), 409, "NAMESPACE_TAKEN");
+        assertThat(postNamespace(juan, "juani").statusCode()).isEqualTo(200);
+        assertError(postNamespace(pedro, "juan"), 409, "NAMESPACE_TAKEN");
 
         // juani -> juanito media hora después: «juani» se reserva con su
         // propio fin de gracia sin tocar el de «juan».
         clock.set(T0.plusSeconds(1800));
-        assertThat(cambiar(juan, "juanito").statusCode()).isEqualTo(200);
+        assertThat(postNamespace(juan, "juanito").statusCode()).isEqualTo(200);
         JsonNode lista = json.readTree(get(juan, "/api/namespace/anteriores").body())
                 .get("namespaces");
         assertThat(lista.size()).isEqualTo(2);
@@ -70,12 +70,12 @@ class CambioNamespaceHttpTest extends HttpApiFixture {
         // A las 13:00 la gracia de «juan» ya terminó y la de «juani» sigue:
         // Pedro puede tomar el primero y no el segundo.
         clock.set(T0.plusSeconds(3600));
-        assertThat(cambiar(pedro, "juan").statusCode()).isEqualTo(200);
-        assertError(cambiar(pedro, "juani"), 409, "NAMESPACE_TAKEN");
+        assertThat(postNamespace(pedro, "juan").statusCode()).isEqualTo(200);
+        assertError(postNamespace(pedro, "juani"), 409, "NAMESPACE_TAKEN");
 
         // Su usuario sí vuelve a «juani» dentro de la gracia, y «juanito»
         // pasa a anterior con una gracia nueva calculada en ese instante.
-        assertThat(cambiar(juan, "juani").statusCode()).isEqualTo(200);
+        assertThat(postNamespace(juan, "juani").statusCode()).isEqualTo(200);
         assertThat(db.queryForList("SELECT namespace FROM namespace_anterior ORDER BY namespace",
                 String.class)).containsExactly("juanito");
         JsonNode restantes = json.readTree(get(juan, "/api/namespace/anteriores").body())
@@ -92,7 +92,7 @@ class CambioNamespaceHttpTest extends HttpApiFixture {
     @Test
     void nombreQuedaLibreAlFinDeLaGraciaYNoCambiaVencimientosPersonales() throws Exception {
         clock.set(T0);
-        HttpClient juan = usuario("google-sub-gracia-juan2", "juan2@ejemplo.com", "juan");
+        HttpClient juan = usuarioConNamespace("google-sub-gracia-juan2", "juan2@ejemplo.com", "juan");
         HttpClient pedro = sesionDe("google-sub-gracia-pedro2", "pedro2@ejemplo.com");
         HttpResponse<String> creado = postJson(juan, "/api/links",
                 "{\"destination\":\"https://ejemplo.com\",\"aliasPersonalizado\":\"doc\"}");
@@ -101,13 +101,13 @@ class CambioNamespaceHttpTest extends HttpApiFixture {
                 "SELECT vence_en FROM asignacion_personal WHERE alias_personalizado = 'doc'",
                 java.sql.Timestamp.class);
 
-        assertThat(cambiar(juan, "juani").statusCode()).isEqualTo(200);
+        assertThat(postNamespace(juan, "juani").statusCode()).isEqualTo(200);
         HttpResponse<String> enlaceBajoNuevoNombre = get(client, "/juani/doc");
         assertThat(enlaceBajoNuevoNombre.statusCode()).isEqualTo(302);
         assertThat(enlaceBajoNuevoNombre.headers().firstValue("Location").orElseThrow())
                 .isEqualTo("https://ejemplo.com");
         clock.set(T0.plusSeconds(3600));
-        assertThat(cambiar(pedro, "juan").statusCode()).isEqualTo(200);
+        assertThat(postNamespace(pedro, "juan").statusCode()).isEqualTo(200);
         assertThat(db.queryForObject(
                 "SELECT vence_en FROM asignacion_personal WHERE alias_personalizado = 'doc'",
                 java.sql.Timestamp.class)).isEqualTo(vencimiento);
@@ -129,8 +129,8 @@ class CambioNamespaceHttpTest extends HttpApiFixture {
         var pool = Executors.newFixedThreadPool(2);
         inspeccion.armar(new CyclicBarrier(2));
         try {
-            var primera = pool.submit(() -> cambiar(uno, "libre"));
-            var segunda = pool.submit(() -> cambiar(dos, "libre"));
+            var primera = pool.submit(() -> postNamespace(uno, "libre"));
+            var segunda = pool.submit(() -> postNamespace(dos, "libre"));
             HttpResponse<String> respuestaUno = primera.get(20, TimeUnit.SECONDS);
             HttpResponse<String> respuestaDos = segunda.get(20, TimeUnit.SECONDS);
             assertThat(List.of(respuestaUno.statusCode(), respuestaDos.statusCode()))
@@ -158,22 +158,22 @@ class CambioNamespaceHttpTest extends HttpApiFixture {
     @Test
     void elNombreQueDejaUnCambioSigueReservadoAnteUnaAdopcionConcurrente() throws Exception {
         clock.set(T0);
-        HttpClient juan = usuario("google-sub-gracia-carrera-juan",
+        HttpClient juan = usuarioConNamespace("google-sub-gracia-carrera-juan",
                 "carrera-juan@ejemplo.com", "juan-inicial");
-        HttpClient pedro = usuario("google-sub-gracia-carrera-pedro",
+        HttpClient pedro = usuarioConNamespace("google-sub-gracia-carrera-pedro",
                 "carrera-pedro@ejemplo.com", "pedro-inicial");
-        assertThat(cambiar(juan, "medio").statusCode()).isEqualTo(200);
+        assertThat(postNamespace(juan, "medio").statusCode()).isEqualTo(200);
 
         var barrera = new CyclicBarrier(2);
         var pool = Executors.newFixedThreadPool(2);
         try {
             var suelta = pool.submit(() -> {
                 barrera.await(10, TimeUnit.SECONDS);
-                return cambiar(juan, "juan-final");
+                return postNamespace(juan, "juan-final");
             });
             var intenta = pool.submit(() -> {
                 barrera.await(10, TimeUnit.SECONDS);
-                return cambiar(pedro, "medio");
+                return postNamespace(pedro, "medio");
             });
             HttpResponse<String> deJuan = suelta.get(20, TimeUnit.SECONDS);
             HttpResponse<String> dePedro = intenta.get(20, TimeUnit.SECONDS);
@@ -210,12 +210,12 @@ class CambioNamespaceHttpTest extends HttpApiFixture {
     @Test
     void laAdopcionEsperaElBloqueoDelNamespaceAntesDeDecidir() throws Exception {
         clock.set(T0);
-        HttpClient juan = usuario("google-sub-gracia-adopcion-juan",
+        HttpClient juan = usuarioConNamespace("google-sub-gracia-adopcion-juan",
                 "adopcion-juan@ejemplo.com", "juan-inicial");
-        HttpClient pedro = usuario("google-sub-gracia-adopcion-pedro",
+        HttpClient pedro = usuarioConNamespace("google-sub-gracia-adopcion-pedro",
                 "adopcion-pedro@ejemplo.com", "pedro-inicial");
-        assertThat(cambiar(juan, "medio").statusCode()).isEqualTo(200);
-        assertThat(cambiar(juan, "juan-final").statusCode()).isEqualTo(200);
+        assertThat(postNamespace(juan, "medio").statusCode()).isEqualTo(200);
+        assertThat(postNamespace(juan, "juan-final").statusCode()).isEqualTo(200);
         Timestamp finGracia = db.queryForObject(
                 "SELECT grace_ends_at FROM namespace_anterior WHERE namespace = 'medio'",
                 Timestamp.class);
@@ -229,7 +229,7 @@ class CambioNamespaceHttpTest extends HttpApiFixture {
                                  + " WHERE namespace = 'medio' FOR UPDATE")) {
                 assertThat(fila.next()).isTrue();
             }
-            var intentoPedro = pool.submit(() -> cambiar(pedro, "medio"));
+            var intentoPedro = pool.submit(() -> postNamespace(pedro, "medio"));
             Thread.sleep(500);
             assertThat(intentoPedro.isDone()).isFalse();
             bloqueo.commit();
@@ -248,9 +248,9 @@ class CambioNamespaceHttpTest extends HttpApiFixture {
 
     @Test
     void cambioAplicaFormatoYNombresReservados() throws Exception {
-        HttpClient juan = usuario("google-sub-gracia-validacion", "valida@ejemplo.com", "juan");
-        assertError(cambiar(juan, "-mal"), 400, "NAMESPACE_INVALID");
-        assertError(cambiar(juan, "api"), 400, "NAMESPACE_RESERVED");
+        HttpClient juan = usuarioConNamespace("google-sub-gracia-validacion", "valida@ejemplo.com", "juan");
+        assertError(postNamespace(juan, "-mal"), 400, "NAMESPACE_INVALID");
+        assertError(postNamespace(juan, "api"), 400, "NAMESPACE_RESERVED");
         assertThat(db.queryForObject(
                 "SELECT namespace FROM usuario WHERE google_sub = 'google-sub-gracia-validacion'",
                 String.class)).isEqualTo("juan");
@@ -278,8 +278,8 @@ class CambioNamespaceHttpTest extends HttpApiFixture {
     @Test
     void cambiarLaConfiguracionNoAlteraLasGraciasEnCurso() throws Exception {
         clock.set(Instant.now());
-        HttpClient juan = usuario("google-sub-gracia-config", "config@ejemplo.com", "juan");
-        assertThat(cambiar(juan, "juani").statusCode()).isEqualTo(200);
+        HttpClient juan = usuarioConNamespace("google-sub-gracia-config", "config@ejemplo.com", "juan");
+        assertThat(postNamespace(juan, "juani").statusCode()).isEqualTo(200);
         Timestamp finOriginal = db.queryForObject(
                 "SELECT grace_ends_at FROM namespace_anterior WHERE namespace = 'juan'",
                 Timestamp.class);
@@ -298,7 +298,7 @@ class CambioNamespaceHttpTest extends HttpApiFixture {
             assertThat(Instant.parse(anteriores.get(0).get("graceEndsAt").asText()))
                     .isEqualTo(finOriginal.toInstant());
 
-            assertThat(cambiar(juan, base, "juanito").statusCode()).isEqualTo(200);
+            assertThat(postNamespace(juan, base, "juanito").statusCode()).isEqualTo(200);
             assertThat(db.queryForObject(
                     "SELECT grace_ends_at FROM namespace_anterior WHERE namespace = 'juan'",
                     Timestamp.class)).isEqualTo(finOriginal);
@@ -343,7 +343,7 @@ class CambioNamespaceHttpTest extends HttpApiFixture {
         return cliente.send(request, BodyHandlers.ofString());
     }
 
-    private HttpResponse<String> cambiar(HttpClient cliente, String base, String namespace)
+    private HttpResponse<String> postNamespace(HttpClient cliente, String base, String namespace)
             throws Exception {
         String csrf = Csrf.obtener(cliente, base);
         HttpRequest request = Csrf.aplicar(cliente,
@@ -355,19 +355,4 @@ class CambioNamespaceHttpTest extends HttpApiFixture {
         return cliente.send(request, BodyHandlers.ofString());
     }
 
-    private HttpClient usuario(String sub, String email, String namespace) throws Exception {
-        HttpClient cliente = sesionDe(sub, email);
-        assertThat(cambiar(cliente, namespace).statusCode()).isEqualTo(200);
-        return cliente;
-    }
-
-    private HttpClient sesionDe(String sub, String email) throws Exception {
-        HttpClient dispositivo = nuevoClienteDispositivo();
-        GoogleSimulado.login(dispositivo, baseUrl(), sub, email);
-        return dispositivo;
-    }
-
-    private HttpResponse<String> cambiar(HttpClient cliente, String namespace) throws Exception {
-        return postJson(cliente, "/api/namespace", "{\"namespace\":\"" + namespace + "\"}");
-    }
 }

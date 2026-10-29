@@ -45,10 +45,4 @@ class NamespaceReservadosConfiguradosHttpTest extends HttpApiFixture {
         assertThat(json.readTree(alta.body()).get("usuario").get("namespace").asText())
                 .isEqualTo("docs");
     }
-
-    private HttpClient sesionDe(String sub, String email) throws Exception {
-        HttpClient dispositivo = nuevoClienteDispositivo();
-        GoogleSimulado.login(dispositivo, baseUrl(), sub, email);
-        return dispositivo;
-    }
 }

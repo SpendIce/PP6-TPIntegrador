@@ -43,7 +43,7 @@ class EnlacePersonalHttpTest extends HttpApiFixture {
         HttpClient juan = usuarioConNamespace(SUB_JUAN, EMAIL_JUAN, "juan");
         Instant antes = Instant.now();
 
-        HttpResponse<String> respuesta = crearPersonal(juan,
+        HttpResponse<String> respuesta = postEnlacePersonal(juan,
                 "https://docs.ejemplo.com/manual.pdf", "mi-doc");
 
         assertThat(respuesta.statusCode()).isEqualTo(201);
@@ -88,7 +88,7 @@ class EnlacePersonalHttpTest extends HttpApiFixture {
     void normalizaAMinusculasAlCrearYAlResolver() throws Exception {
         HttpClient juan = usuarioConNamespace(SUB_JUAN, EMAIL_JUAN, "juan");
 
-        HttpResponse<String> respuesta = crearPersonal(juan,
+        HttpResponse<String> respuesta = postEnlacePersonal(juan,
                 "https://ejemplo.com/mayusculas", "Mi-Doc");
 
         assertThat(respuesta.statusCode()).isEqualTo(201);
@@ -122,7 +122,7 @@ class EnlacePersonalHttpTest extends HttpApiFixture {
                 "\u212A");
 
         for (String invalido : invalidos) {
-            assertError(crearPersonal(juan, "https://ejemplo.com/ok", invalido),
+            assertError(postEnlacePersonal(juan, "https://ejemplo.com/ok", invalido),
                     400, "ALIAS_INVALID");
         }
         // Ningún rechazo creó una asignación personal.
@@ -134,11 +134,11 @@ class EnlacePersonalHttpTest extends HttpApiFixture {
     void aceptaLosLimitesDeUnoYCincuentaCaracteres() throws Exception {
         HttpClient juan = usuarioConNamespace(SUB_JUAN, EMAIL_JUAN, "juan");
 
-        assertThat(crearPersonal(juan, "https://ejemplo.com/uno", "a").statusCode())
+        assertThat(postEnlacePersonal(juan, "https://ejemplo.com/uno", "a").statusCode())
                 .isEqualTo(201);
         String cincuenta = "a".repeat(49) + "b";
         assertThat(cincuenta).hasSize(50);
-        assertThat(crearPersonal(juan, "https://ejemplo.com/cincuenta", cincuenta)
+        assertThat(postEnlacePersonal(juan, "https://ejemplo.com/cincuenta", cincuenta)
                 .statusCode()).isEqualTo(201);
     }
 
@@ -146,11 +146,11 @@ class EnlacePersonalHttpTest extends HttpApiFixture {
     void losDestinosSeValidanConLasReglasDeLaEtapa1() throws Exception {
         HttpClient juan = usuarioConNamespace(SUB_JUAN, EMAIL_JUAN, "juan");
 
-        assertError(crearPersonal(juan, "", "mio"), "EMPTY_DESTINATION");
-        assertError(crearPersonal(juan, "ftp://ejemplo.com/x", "mio"), "UNSUPPORTED_SCHEME");
-        assertError(crearPersonal(juan, "https://ejemplo.com/con espacios", "mio"),
+        assertError(postEnlacePersonal(juan, "", "mio"), "EMPTY_DESTINATION");
+        assertError(postEnlacePersonal(juan, "ftp://ejemplo.com/x", "mio"), "UNSUPPORTED_SCHEME");
+        assertError(postEnlacePersonal(juan, "https://ejemplo.com/con espacios", "mio"),
                 "MALFORMED_DESTINATION");
-        assertError(crearPersonal(juan, PUBLIC_BASE + "/propio", "mio"), "OWN_ORIGIN");
+        assertError(postEnlacePersonal(juan, PUBLIC_BASE + "/propio", "mio"), "OWN_ORIGIN");
 
         // Los rechazos no crearon asignaciones personales.
         assertThat(db.queryForObject(
@@ -161,7 +161,7 @@ class EnlacePersonalHttpTest extends HttpApiFixture {
     void conAliasPersonalizadoYSinSesionResponde401() throws Exception {
         HttpClient dispositivo = nuevoClienteDispositivo();
 
-        HttpResponse<String> respuesta = crearPersonal(dispositivo,
+        HttpResponse<String> respuesta = postEnlacePersonal(dispositivo,
                 "https://ejemplo.com/x", "mio");
 
         assertError(respuesta, 401, "NOT_AUTHENTICATED");
@@ -176,7 +176,7 @@ class EnlacePersonalHttpTest extends HttpApiFixture {
     void conSesionSinNamespaceRespondeQueHayQueElegirlo() throws Exception {
         HttpClient juan = sesionDe(SUB_JUAN, EMAIL_JUAN);
 
-        HttpResponse<String> respuesta = crearPersonal(juan,
+        HttpResponse<String> respuesta = postEnlacePersonal(juan,
                 "https://ejemplo.com/x", "mio");
 
         assertError(respuesta, 409, "NAMESPACE_NOT_CHOSEN");
@@ -187,10 +187,10 @@ class EnlacePersonalHttpTest extends HttpApiFixture {
     @Test
     void repetirUnAliasPersonalizadoVigenteResponde409() throws Exception {
         HttpClient juan = usuarioConNamespace(SUB_JUAN, EMAIL_JUAN, "juan");
-        assertThat(crearPersonal(juan, "https://ejemplo.com/uno", "mio").statusCode())
+        assertThat(postEnlacePersonal(juan, "https://ejemplo.com/uno", "mio").statusCode())
                 .isEqualTo(201);
 
-        HttpResponse<String> repetido = crearPersonal(juan, "https://ejemplo.com/dos", "MIO");
+        HttpResponse<String> repetido = postEnlacePersonal(juan, "https://ejemplo.com/dos", "MIO");
 
         assertError(repetido, 409, "ALIAS_TAKEN");
         // El rechazo no pisó la asignación vigente: sigue conduciendo al
@@ -204,11 +204,11 @@ class EnlacePersonalHttpTest extends HttpApiFixture {
     @Test
     void alVencerElMismoUsuarioReusaElAliasYElHistorialConservaAmbas() throws Exception {
         HttpClient juan = usuarioConNamespace(SUB_JUAN, EMAIL_JUAN, "juan");
-        assertThat(crearPersonal(juan, "https://ejemplo.com/primero", "mio").statusCode())
+        assertThat(postEnlacePersonal(juan, "https://ejemplo.com/primero", "mio").statusCode())
                 .isEqualTo(201);
         marcarVencidoPersonal("mio");
 
-        HttpResponse<String> segunda = crearPersonal(juan, "https://ejemplo.com/segundo", "mio");
+        HttpResponse<String> segunda = postEnlacePersonal(juan, "https://ejemplo.com/segundo", "mio");
 
         assertThat(segunda.statusCode()).isEqualTo(201);
         // Las dos asignaciones quedan en el historial (ADR 0003): la
@@ -228,10 +228,10 @@ class EnlacePersonalHttpTest extends HttpApiFixture {
     void otroUsuarioPuedeUsarElMismoAliasEnSuPropioNamespace() throws Exception {
         HttpClient juan = usuarioConNamespace(SUB_JUAN, EMAIL_JUAN, "juan");
         HttpClient pedro = usuarioConNamespace(SUB_PEDRO, EMAIL_PEDRO, "pedro");
-        assertThat(crearPersonal(juan, "https://ejemplo.com/de-juan", "compartido")
+        assertThat(postEnlacePersonal(juan, "https://ejemplo.com/de-juan", "compartido")
                 .statusCode()).isEqualTo(201);
 
-        HttpResponse<String> dePedro = crearPersonal(pedro,
+        HttpResponse<String> dePedro = postEnlacePersonal(pedro,
                 "https://ejemplo.com/de-pedro", "compartido");
 
         assertThat(dePedro.statusCode()).isEqualTo(201);
@@ -247,7 +247,7 @@ class EnlacePersonalHttpTest extends HttpApiFixture {
     @Test
     void inexistenteOVencidoResponde404ConLaPaginaAcordada() throws Exception {
         HttpClient juan = usuarioConNamespace(SUB_JUAN, EMAIL_JUAN, "juan");
-        assertThat(crearPersonal(juan, "https://ejemplo.com/corto", "mio").statusCode())
+        assertThat(postEnlacePersonal(juan, "https://ejemplo.com/corto", "mio").statusCode())
                 .isEqualTo(201);
 
         for (String ruta : List.of("/juan/nada", "/nadie/mio", "/juan/otro-alias")) {
@@ -296,11 +296,11 @@ class EnlacePersonalHttpTest extends HttpApiFixture {
         try {
             Callable<HttpResponse<String>> desdeA = () -> {
                 salida.await(10, TimeUnit.SECONDS);
-                return crearPersonal(dispositivoA, "https://ejemplo.com/carrera", "mismo");
+                return postEnlacePersonal(dispositivoA, "https://ejemplo.com/carrera", "mismo");
             };
             Callable<HttpResponse<String>> desdeB = () -> {
                 salida.await(10, TimeUnit.SECONDS);
-                return crearPersonal(dispositivoB, "https://ejemplo.com/carrera", "mismo");
+                return postEnlacePersonal(dispositivoB, "https://ejemplo.com/carrera", "mismo");
             };
             Future<HttpResponse<String>> primero = pool.submit(desdeA);
             Future<HttpResponse<String>> segundo = pool.submit(desdeB);
@@ -352,30 +352,6 @@ class EnlacePersonalHttpTest extends HttpApiFixture {
     }
 
     // ---- Helpers ----
-
-    /** Inicia sesión con Google simulado y deja la cookie en el cliente. */
-    private HttpClient sesionDe(String sub, String email) throws Exception {
-        HttpClient dispositivo = nuevoClienteDispositivo();
-        GoogleSimulado.login(dispositivo, baseUrl(), sub, email);
-        return dispositivo;
-    }
-
-    /** Sesión del usuario con su namespace ya elegido. */
-    private HttpClient usuarioConNamespace(String sub, String email, String namespace)
-            throws Exception {
-        HttpClient dispositivo = sesionDe(sub, email);
-        HttpResponse<String> alta = postJson(dispositivo, "/api/namespace",
-                "{\"namespace\":\"" + namespace + "\"}");
-        assertThat(alta.statusCode()).as("alta del namespace %s", namespace).isEqualTo(200);
-        return dispositivo;
-    }
-
-    private HttpResponse<String> crearPersonal(HttpClient dispositivo, String destino,
-                                               String alias) throws Exception {
-        return postJson(dispositivo, "/api/links",
-                "{\"destination\":\"" + destino + "\",\"aliasPersonalizado\":\""
-                        + alias + "\"}");
-    }
 
     private Long idDeUsuario(String sub) {
         return db.queryForObject(
