@@ -22,6 +22,8 @@
   // Cambia con la sesion o la API: las respuestas de una epoca anterior
   // (creacion, consulta de sesion) se descartan sin renderizarse.
   let epoch = 0;
+  // Identifica la ultima creacion pedida: las anteriores no renderizan.
+  let creationSeq = 0;
 
   function bindElements() {
     for (const id of [
@@ -132,9 +134,16 @@
 
   async function shortenActiveTab() {
     const mine = epoch;
+    const mineCreation = ++creationSeq;
+    // Vigente: misma API/sesion y ninguna creacion posterior la reemplazo.
+    const current = () => mine === epoch && mineCreation === creationSeq;
     try {
       setStatus("Leyendo la pestaña activa…");
+      const alias = currentUser ? el.alias.value.trim() : "";
       const url = await activeTabUrl();
+      if (!current()) {
+        return;
+      }
       if (!LinkApi.isShortenableTabUrl(url)) {
         throw new LinkApi.ApiError(
           "TAB_NOT_SHORTENABLE",
@@ -143,14 +152,16 @@
       }
 
       const apiBase = await configuredApiBase();
+      if (!current()) {
+        return;
+      }
       setStatus(`Acortando en ${apiBase}…`);
-      const alias = currentUser ? el.alias.value.trim() : "";
       const link = await LinkApi.createLink(apiBase, url, undefined, alias);
-      if (mine === epoch) {
+      if (current()) {
         renderLink(url, link);
       }
     } catch (err) {
-      if (mine === epoch) {
+      if (current()) {
         showError(err);
       }
     }
@@ -165,15 +176,22 @@
   }
 
   async function endSession() {
+    epoch += 1;
+    const mine = epoch;
     try {
-      epoch += 1;
       setStatus("Cerrando sesión…");
-      await LinkApi.logout(await configuredApiBase());
+      const apiBase = await configuredApiBase();
+      await LinkApi.logout(apiBase);
+      if (mine !== epoch) {
+        return;
+      }
       el.alias.value = "";
       renderSession(null);
       await shortenActiveTab();
     } catch (err) {
-      showError(err);
+      if (mine === epoch) {
+        showError(err);
+      }
     }
   }
 
@@ -207,7 +225,7 @@
       epoch += 1;
       el.alias.value = "";
       renderSession(null);
-      await refreshSession();
+      await start();
     } catch (err) {
       setConfigStatus(err && err.message ? err.message : String(err));
     }
@@ -232,11 +250,18 @@
     start();
   }
 
-  // Con sesion espera el alias opcional; sin sesion acorta de inmediato.
+  // Con sesion espera el alias opcional; sin sesion acorta de inmediato
+  // (tambien tras cambiar de API, cuando la nueva no tiene sesion).
   async function start() {
+    const mine = epoch;
     await refreshSession();
+    if (mine !== epoch) {
+      return;
+    }
     if (currentUser) {
       el.status.hidden = true;
+      el.result.hidden = true;
+      el.error.hidden = true;
     } else {
       await shortenActiveTab();
     }

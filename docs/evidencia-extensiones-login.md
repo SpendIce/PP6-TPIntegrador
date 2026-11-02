@@ -17,12 +17,13 @@ implementó el plan B QR/Bearer. Manifests y permisos no cambiaron.
 
 ## Automatizado
 
-`node --test` en `extensiones/` (54 pruebas) y en `src/test/js/` (38), sin
+`node --test` en `extensiones/` (61 pruebas aprobadas) y en `src/test/js/` (38) en la última ejecución, sin
 dependencias de navegador. Cubren: sesión con usuario / `null` / respuesta
 fuera de contrato / error de red; cuerpo sin alias, con alias vacío y con alias
 recortado; CSRF obtenido y enviado en el POST de enlace y en el de logout;
 propagación de `ALIAS_TAKEN`, `NAMESPACE_NOT_CHOSEN`, `ALIAS_INVALID`,
-`NOT_AUTHENTICATED` y `CSRF_TOKEN_INVALID`; cableado de ids del popup; copias
+`NOT_AUTHENTICATED` y `CSRF_TOKEN_INVALID`; cableado de ids del popup; `popup.js` bajo `node:vm` (cambio de API, logout
+y creaciones en vuelo descartados, creaciones concurrentes); copias
 idénticas a las fuentes.
 
 `./gradlew --no-daemon --console=plain test` lo ejecuta el Oracle; no se

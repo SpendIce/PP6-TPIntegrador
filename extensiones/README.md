@@ -169,7 +169,8 @@ cd extensiones
 node --test          # también: npm test
 ```
 
-42 pruebas, cero dependencias (Node >= 20, verificado con Node 26):
+Cero dependencias (Node >= 20, verificado con Node 26); la última ejecución
+dio 61 pruebas aprobadas:
 
 - `tests/api.test.js`: normalización de la dirección de API, construcción
   del `GET /api/csrf` y del POST con cookie y encabezado `X-XSRF-TOKEN`,
@@ -192,8 +193,14 @@ node --test          # también: npm test
 - `tests/popup-estatico.test.js`: cableado estático popup.html ↔ popup.js
   (ids, orden de scripts, APIs del navegador usadas).
 
-`popup.js` (pegado con `tabs`/`storage`/`downloads`) no es testeable en
-node: su verificación es el procedimiento manual siguiente.
+- `tests/popup-sesion.test.js`: ejecuta `popup.js` con `node:vm` y un DOM,
+  `storage` y `LinkApi` simulados (sin navegador): cambio de API (con y sin
+  sesión, con acorte anónimo inmediato), cierre de sesión en vuelo,
+  creación pendiente al cambiar de API y creaciones concurrentes (solo la
+  última renderiza).
+
+El pegado real con `tabs`/`storage`/`downloads` y la interacción visual se
+verifican con el procedimiento manual siguiente.
 
 El tramo que `node --test` no puede cubrir —que el navegador guarde la cookie
 `XSRF-TOKEN` de un `fetch` cross-origin y la reenvíe en el POST— se verifica a
