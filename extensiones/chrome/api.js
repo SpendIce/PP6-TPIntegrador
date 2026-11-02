@@ -245,7 +245,6 @@
   async function createLink(apiBase, destination, fetchImpl, aliasPersonalizado) {
     requireDestination(destination);
     const base = normalizeApiBase(apiBase);
-    requireDestination(destination);
     const doFetch = resolveFetch(fetchImpl);
 
     const csrfToken = await obtainCsrfToken(base, doFetch);
