@@ -18,3 +18,19 @@ Se prefirieron las sesiones persistidas frente a mantenerlas en memoria porque l
 - Las tablas de Spring Session y las nuevas del modelo también deben traducirse a `db/hsqldb/schema.sql` (ADR 0005).
 
 Acuerdos: respuestas Q2, Q3, Q4, Q13, Q14, Q16, R3, R3', R5, R6, R8', R9 y R10 de la entrevista de la etapa 2 iniciada el 2026-10-26; ver [requisitos de la etapa 2](../requisitos-etapa-2.md).
+
+## Resultado de la prueba de cookies en extensiones
+
+El 2026-11-02 se midieron Firefox 158.0.1 (MV2) y Google Chrome 156.0.8078.79
+(MV3), con las extensiones originales en perfiles aislados, sobre HTTP local
+y OIDC simulado. Desde `popup.html`, ambos recuperaron el usuario de la sesión
+web (200), crearon un enlace personal con CSRF (201) y rechazaron el POST sin
+CSRF (403, `CSRF_TOKEN_INVALID`). No hicieron falta cambios en permisos o
+políticas de cookies.
+
+Se elige reutilizar la sesión web mediante cookies y CSRF para #27. No hace
+falta el plan B de QR con Bearer en los entornos medidos. La corrida de Chrome
+conservó el particionamiento de almacenamiento predeterminado; el recorrido
+HTTPS con Google real y la verificación visual quedan en #29.
+Ver [entorno, método y límites de la
+medición](../evidencia-cookies-extensiones.md).
