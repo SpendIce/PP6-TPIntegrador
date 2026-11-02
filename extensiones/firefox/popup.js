@@ -19,6 +19,9 @@
   let lastQr = null;
   // Usuario de la sesion web (null sin sesion): decide si hay alias.
   let currentUser = null;
+  // Cambia con la sesion o la API: las respuestas de una epoca anterior
+  // (creacion, consulta de sesion) se descartan sin renderizarse.
+  let epoch = 0;
 
   function bindElements() {
     for (const id of [
@@ -114,16 +117,21 @@
   }
 
   async function refreshSession() {
+    const mine = epoch;
+    let user = null;
     try {
-      renderSession(await LinkApi.getSession(await configuredApiBase()));
+      user = await LinkApi.getSession(await configuredApiBase());
     } catch {
       // Sin respuesta de sesion se conserva el flujo de la etapa 1;
       // si la API no responde, shortenActiveTab muestra el error.
-      renderSession(null);
+    }
+    if (mine === epoch) {
+      renderSession(user);
     }
   }
 
   async function shortenActiveTab() {
+    const mine = epoch;
     try {
       setStatus("Leyendo la pestaña activa…");
       const url = await activeTabUrl();
@@ -138,9 +146,13 @@
       setStatus(`Acortando en ${apiBase}…`);
       const alias = currentUser ? el.alias.value.trim() : "";
       const link = await LinkApi.createLink(apiBase, url, undefined, alias);
-      renderLink(url, link);
+      if (mine === epoch) {
+        renderLink(url, link);
+      }
     } catch (err) {
-      showError(err);
+      if (mine === epoch) {
+        showError(err);
+      }
     }
   }
 
@@ -154,6 +166,7 @@
 
   async function endSession() {
     try {
+      epoch += 1;
       setStatus("Cerrando sesión…");
       await LinkApi.logout(await configuredApiBase());
       el.alias.value = "";
@@ -189,6 +202,12 @@
       await ext.storage.local.set({ [STORAGE_KEY]: normalized });
       el["api-base"].value = normalized;
       setConfigStatus(`Guardada: ${normalized}`);
+      // La cuenta mostrada pertenecia a la API anterior: se descarta y se
+      // consulta la sesion de la nueva antes de permitir crear o cerrar.
+      epoch += 1;
+      el.alias.value = "";
+      renderSession(null);
+      await refreshSession();
     } catch (err) {
       setConfigStatus(err && err.message ? err.message : String(err));
     }
