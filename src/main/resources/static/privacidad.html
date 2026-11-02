@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="es">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Privacidad · PP6 Acortador</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<main>
+    <h1>Política de privacidad</h1>
+    <p>PP6 Acortador es un trabajo práctico académico que permite crear enlaces
+        temporales y códigos QR. El equipo del TP administra esta demostración
+        y su base de datos. Última actualización: 2 de noviembre de 2026.</p>
+    <h2>Información que utiliza el servicio</h2>
+    <p>Acortar enlaces no requiere iniciar sesión. El servicio guarda la URL de
+        destino, el alias y las fechas de creación y vencimiento de cada
+        asignación.</p>
+    <p>Si elegís iniciar sesión con Google, solicitamos los permisos de identidad
+        <code>openid</code>, <code>email</code> y <code>profile</code>. Guardamos
+        tu identificador de Google y correo electrónico para reconocer tu usuario,
+        el namespace que elijas y sus cambios, y tus asignaciones de enlaces
+        personales. La sesión también conserva los datos de autenticación
+        necesarios para mantener el acceso. El servicio no recibe tu contraseña
+        de Google.</p>
+    <h2>Finalidad y almacenamiento</h2>
+    <p>Usamos estos datos para identificar al usuario, mantener sus sesiones,
+        administrar namespaces y resolver enlaces. Se almacenan en la base
+        PostgreSQL de la demostración. Las sesiones persisten entre reinicios
+        y vencen según los tiempos de inactividad configurados.</p>
+    <p>El vencimiento de un enlace impide usar su asignación anterior, pero no
+        borra su historial. Los usuarios y el historial de asignaciones se
+        conservan en la base de la demostración; la aplicación no ofrece borrado
+        automático de usuarios ni de ese historial.</p>
+    <h2>Cookies y servicios externos</h2>
+    <p>Usamos la cookie de sesión <code>SESSION</code> y la cookie
+        <code>XSRF-TOKEN</code> para mantener el acceso y proteger las solicitudes
+        que cambian datos. Cerrar sesión invalida la sesión de ese dispositivo.
+        También podés cerrar todas tus sesiones vinculadas desde la web.</p>
+    <p>Google proporciona el inicio de sesión y Tailscale Funnel transporta las
+        solicitudes HTTPS al servidor de la demostración. Al seguir un enlace,
+        el sitio de destino recibe tu visita y aplica sus propias prácticas de
+        privacidad. El namespace y el alias personalizado forman parte de una
+        dirección pública accesible por quien la conozca.</p>
+    <p>El equipo no vende los datos de Google ni los utiliza para publicidad.
+        Para consultas sobre tus datos o solicitudes de eliminación, contactá
+        al equipo responsable del TP por el correo de asistencia configurado
+        para la aplicación en Google.</p>
+    <p><a href="/">Volver al acortador</a> · <a href="condiciones.html">Condiciones de uso</a></p>
+</main>
+</body>
+</html>
