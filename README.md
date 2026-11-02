@@ -122,6 +122,12 @@ registrado. El procedimiento está en
 [`docs/despliegue-funnel-google.md`](docs/despliegue-funnel-google.md) y se
 recorre con `bash scripts/wizard-funnel-google.sh`.
 
+El [despliegue verificado de esta máquina](docs/evidencia-despliegue-google.md)
+usa el puerto 8081 para la app y PostgreSQL persistente en 55432. La web incluye
+[privacidad](src/main/resources/static/privacidad.html) y
+[condiciones de uso](src/main/resources/static/condiciones.html) para configurar
+los enlaces de la información de marca de Google.
+
 ## Configuración de despliegue
 
 | Variable | Propiedad | Defecto | Uso |

@@ -39,8 +39,19 @@ La URL resultante es `https://<máquina>.<tailnet>.ts.net`.
    consolas viejas): User type **External**.
 3. Publicar la app **In production**. Así cualquier cuenta pública de Google
    entra sin figurar como usuario de prueba.
-4. Data access: solo `openid`, `email` y `profile`. Los tres son no sensibles:
-   no requieren verificación de Google.
+4. Data access: solo `openid`, `email` y `profile`. Son permisos básicos de
+   identidad; no requieren verificación de acceso a scopes sensibles. La
+   publicación de marca puede pedir completar y verificar sus datos.
+5. En Branding, usar la URL pública como página principal, y las páginas
+   `${PUBLIC_BASE_URL}/privacidad.html` y
+   `${PUBLIC_BASE_URL}/condiciones.html` como privacidad y condiciones.
+   Guardar y volver a Audience para publicar la app. El logotipo puede
+   dejarse vacío.
+
+Los permisos básicos permiten entrar sin figurar como usuario de prueba
+incluso en estado Testing ([excepción documentada por Google](https://support.google.com/cloud/answer/15549945?hl=en)).
+Por eso un login exitoso por sí solo no demuestra que la app esté publicada:
+comprobar además el estado en Audience.
 
 ### 3. Google Cloud: cliente OAuth web
 
@@ -77,6 +88,9 @@ que se rechazan como destino.
   quedar bloqueada por la política de su organización.
 
 ## Cuando algo no responde
+
+El [registro de la publicación de esta máquina](evidencia-despliegue-google.md)
+detalla los puertos actuales, las comprobaciones y los pendientes de #28.
 
 | Síntoma | Causa probable |
 | --- | --- |
