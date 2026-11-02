@@ -8,6 +8,25 @@
 <body>
   <h1>Acortador de enlaces</h1>
 
+  <section id="account" hidden>
+    <p id="account-email" class="detail"></p>
+    <p id="account-namespace"></p>
+    <p id="namespace-notice" class="notice" hidden>Todavía no elegiste tu namespace. Elegilo en la web para crear enlaces personales; desde acá solo se crean enlaces acortados.</p>
+    <label for="alias">Alias personalizado (opcional)</label>
+    <input id="alias" type="text" spellcheck="false" autocomplete="off" maxlength="50" placeholder="vacío = enlace acortado">
+    <div class="actions">
+      <button id="create-link" type="button">Crear enlace de la pestaña activa</button>
+      <button id="logout" type="button">Cerrar sesión</button>
+    </div>
+  </section>
+
+  <section id="login" hidden>
+    <p class="hint">Con sesión podés crear enlaces personales con alias propio. Iniciá sesión en la web (se abre en otra pestaña) y volvé a abrir este popup.</p>
+    <div class="actions">
+      <button id="login-button" type="button">Iniciar sesión con Google</button>
+    </div>
+  </section>
+
   <p id="status" role="status">Preparando…</p>
 
   <section id="result" hidden>

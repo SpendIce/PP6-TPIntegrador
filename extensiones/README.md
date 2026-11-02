@@ -98,6 +98,29 @@ código (el popup ya usa la API de promesas compartida `browser`/`chrome`).
    el contrato, cada reintento puede crear una asignación nueva; el popup no
    promete idempotencia ni conserva el resultado anterior al cerrarse.
 
+### Sesión y enlaces personales (issue #27)
+
+El popup reutiliza la sesión web del mismo navegador: consulta
+`GET /api/sesion` con `credentials: 'include'` y manda el token de
+`GET /api/csrf` en `X-XSRF-TOKEN` en cada POST (decisión del ADR 0007,
+medida en [`docs/evidencia-cookies-extensiones.md`](../docs/evidencia-cookies-extensiones.md)).
+
+- **Sin sesión** (o si `/api/sesion` falla): flujo de la etapa 1, con acorte
+  inmediato, más el botón **Iniciar sesión con Google**, que abre
+  `/oauth2/authorization/google` en una pestaña. Al volver, reabrí el popup.
+- **Con sesión**: muestra el email y el namespace, y no acorta al abrir.
+  El campo **Alias personalizado** es opcional: vacío crea un enlace acortado
+  como en la etapa 1; con alias envía `aliasPersonalizado` y crea el enlace
+  personal `/{namespace}/{alias}`.
+- **Sin namespace elegido**: el popup avisa que se elige en la web y
+  deshabilita el alias. Elegir o cambiar el namespace solo se hace en la web.
+- **Cerrar sesión**: `POST /api/logout` con CSRF; el popup queda sin sesión
+  y vuelve al flujo de la etapa 1.
+
+Errores del contrato que muestra el popup con código y mensaje:
+`ALIAS_TAKEN` y `NAMESPACE_NOT_CHOSEN` (409), `ALIAS_INVALID` (400),
+`NOT_AUTHENTICATED` (401, sesión vencida) y `CSRF_TOKEN_INVALID` (403).
+
 ### Errores visibles
 
 Un fallo nunca se muestra como éxito. La sección de error muestra el código
@@ -200,8 +223,8 @@ mano en Chrome y Firefox con [`docs/verificacion-cookies-extensiones.md`](../doc
 - La instalación en Firefox es temporal (se pierde al reiniciar el
   navegador); la persistencia de la configuración dura lo que dure la sesión
   del complemento temporal.
-- Abrir el popup siempre solicita una creación: es la «acción única» de la
-  especificación; no hay resultado persistente entre aperturas.
+- Sin sesión, abrir el popup solicita una creación (la «acción única» de la
+  especificación); con sesión espera el alias y la acción explícita; no hay resultado persistente entre aperturas.
 - Los permisos de host son amplios (`http(s)://*/*`) a propósito, porque la
   API es configurable; no hay acceso a contenido de páginas más allá de la
   lectura de la URL de la pestaña invocada.
@@ -211,10 +234,12 @@ mano en Chrome y Firefox con [`docs/verificacion-cookies-extensiones.md`](../doc
   `REQUEST_TIMEOUT` no se produciría y una API colgada dejaría el popup
   esperando).
 
-## Antes de implementar el login (issue #26)
+## Sesión de la web en el popup (issues #26 y #27)
 
-La etapa 2 reutiliza la cookie de sesión de la web del mismo navegador para que
-el popup cree enlaces personales. Antes de implementarlo hay que comprobar en
-Chrome y Firefox que la cookie llega al popup y que un `POST` autenticado con
-CSRF funciona. El recorrido manual y la tabla de resultados están en
+La comprobación de #26 (cookie de sesión y CSRF desde el popup en Chrome y
+Firefox) está en
+[`docs/evidencia-cookies-extensiones.md`](../docs/evidencia-cookies-extensiones.md);
+el recorrido manual, en
 [`docs/verificacion-cookies-extensiones.md`](../docs/verificacion-cookies-extensiones.md).
+La evidencia de #27 está en
+[`docs/evidencia-extensiones-login.md`](../docs/evidencia-extensiones-login.md).

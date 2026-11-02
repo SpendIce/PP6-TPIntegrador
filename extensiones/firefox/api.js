@@ -22,6 +22,9 @@
   const DEFAULT_API_BASE = "http://localhost:8080";
   const CREATE_LINK_PATH = "/api/links";
   const CSRF_PATH = "/api/csrf";
+  const SESSION_PATH = "/api/sesion";
+  const LOGOUT_PATH = "/api/logout";
+  const LOGIN_PATH = "/oauth2/authorization/google";
   const CSRF_HEADER = "X-XSRF-TOKEN";
   const REQUEST_TIMEOUT_MS = 10000;
 
@@ -31,7 +34,8 @@
    * NETWORK_ERROR, REQUEST_TIMEOUT, INVALID_RESPONSE, CSRF_UNAVAILABLE
    * y HTTP_<estado>; los rechazos de la API conservan el `error` del
    * contrato (EMPTY_DESTINATION, MALFORMED_DESTINATION, OWN_ORIGIN,
-   * CSRF_TOKEN_INVALID, etc.).
+   * CSRF_TOKEN_INVALID, ALIAS_INVALID, ALIAS_TAKEN, NAMESPACE_NOT_CHOSEN,
+   * NOT_AUTHENTICATED, etc.).
    */
   class ApiError extends Error {
     constructor(code, message, httpStatus) {
@@ -116,14 +120,18 @@
    * buildCreateLinkRequest(apiBase, destination, csrfToken) -> { url, init }
    * Arma el POST del contrato: JSON con el destino verbatim y el token
    * CSRF repetido en el encabezado X-XSRF-TOKEN (doble envio); la cookie
-   * XSRF-TOKEN viaja por `credentials: "include"`.
+   * XSRF-TOKEN viaja por `credentials: "include"`. Con un alias
+   * personalizado no vacio agrega `aliasPersonalizado` (enlace personal,
+   * requiere sesion); vacio o ausente conserva el cuerpo de la etapa 1.
    */
-  function buildCreateLinkRequest(apiBase, destination, csrfToken) {
+  function buildCreateLinkRequest(apiBase, destination, csrfToken, aliasPersonalizado) {
     const base = normalizeApiBase(apiBase);
     requireDestination(destination);
     if (typeof csrfToken !== "string" || csrfToken === "") {
       throw new ApiError("CSRF_UNAVAILABLE", `La API en ${base} no entregó un token CSRF utilizable.`);
     }
+    const alias = typeof aliasPersonalizado === "string" ? aliasPersonalizado.trim() : "";
+    const body = alias ? { destination, aliasPersonalizado: alias } : { destination };
     return {
       url: `${base}${CREATE_LINK_PATH}`,
       init: {
@@ -134,7 +142,7 @@
           [CSRF_HEADER]: csrfToken
         },
         credentials: "include",
-        body: JSON.stringify({ destination })
+        body: JSON.stringify(body)
       }
     };
   }
@@ -232,21 +240,98 @@
    * y luego el POST con el token en X-XSRF-TOKEN. fetchImpl es
    * inyectable para las pruebas; por defecto usa el fetch global del
    * navegador con un timeout de REQUEST_TIMEOUT_MS en cada solicitud.
+   * `aliasPersonalizado` opcional crea un enlace personal.
    */
-  async function createLink(apiBase, destination, fetchImpl) {
+  async function createLink(apiBase, destination, fetchImpl, aliasPersonalizado) {
+    requireDestination(destination);
     const base = normalizeApiBase(apiBase);
     requireDestination(destination);
-    const doFetch = fetchImpl || (typeof fetch === "function" ? fetch.bind(globalThis) : null);
-    if (!doFetch) {
-      throw new ApiError("NETWORK_ERROR", "Este navegador no provee fetch para contactar la API.");
-    }
+    const doFetch = resolveFetch(fetchImpl);
 
     const csrfToken = await obtainCsrfToken(base, doFetch);
-    const { url, init } = buildCreateLinkRequest(base, destination, csrfToken);
+    const { url, init } = buildCreateLinkRequest(base, destination, csrfToken, aliasPersonalizado);
     const response = await fetchConTimeout(doFetch, url, init, base);
 
     const payload = await response.json().catch(() => undefined);
     return parseCreateLinkResponse(response.status, payload);
+  }
+
+  function resolveFetch(fetchImpl) {
+    const doFetch = fetchImpl || (typeof fetch === "function" ? fetch.bind(globalThis) : null);
+    if (!doFetch) {
+      throw new ApiError("NETWORK_ERROR", "Este navegador no provee fetch para contactar la API.");
+    }
+    return doFetch;
+  }
+
+  /*
+   * parseSessionResponse(status, payload) -> null | { email, namespace, tipo, sugerencia }
+   * El contrato no distingue «sin sesion» de «sesion sin usuario»: ambos
+   * son usuario null. Cualquier otra forma es INVALID_RESPONSE.
+   */
+  function parseSessionResponse(status, payload) {
+    if (status !== 200 || !payload || typeof payload !== "object" || !("usuario" in payload)) {
+      throw new ApiError("INVALID_RESPONSE", `La API respondió con un formato de sesión inesperado (estado ${status}).`, status);
+    }
+    const user = payload.usuario;
+    if (user === null) {
+      return null;
+    }
+    if (!user || typeof user !== "object" || typeof user.email !== "string" || user.email === ""
+      || typeof user.namespace !== "string") {
+      throw new ApiError("INVALID_RESPONSE", "La API respondió con un usuario de sesión incompleto.", status);
+    }
+    return {
+      email: user.email,
+      namespace: user.namespace,
+      tipo: typeof user.tipo === "string" ? user.tipo : "",
+      sugerencia: typeof user.sugerencia === "string" ? user.sugerencia : ""
+    };
+  }
+
+  /*
+   * getSession(apiBase, fetchImpl) -> Promise<null | usuario>
+   * GET /api/sesion con la cookie de sesion de la web del mismo
+   * navegador (credentials: "include"). null significa sin sesion.
+   */
+  async function getSession(apiBase, fetchImpl) {
+    const base = normalizeApiBase(apiBase);
+    const doFetch = resolveFetch(fetchImpl);
+    const response = await fetchConTimeout(doFetch, `${base}${SESSION_PATH}`, {
+      method: "GET",
+      headers: { Accept: "application/json" },
+      credentials: "include"
+    }, base);
+    const payload = await response.json().catch(() => undefined);
+    return parseSessionResponse(response.status, payload);
+  }
+
+  /* URL web que inicia el login con Google; se abre en una pestaña. */
+  function buildLoginUrl(apiBase) {
+    return `${normalizeApiBase(apiBase)}${LOGIN_PATH}`;
+  }
+
+  /*
+   * logout(apiBase, fetchImpl) -> Promise<void>
+   * POST /api/logout con CSRF de doble envio; el contrato responde 204.
+   */
+  async function logout(apiBase, fetchImpl) {
+    const base = normalizeApiBase(apiBase);
+    const doFetch = resolveFetch(fetchImpl);
+    const csrfToken = await obtainCsrfToken(base, doFetch);
+    const response = await fetchConTimeout(doFetch, `${base}${LOGOUT_PATH}`, {
+      method: "POST",
+      headers: { Accept: "application/json", [CSRF_HEADER]: csrfToken },
+      credentials: "include"
+    }, base);
+    if (response.status === 204) {
+      return;
+    }
+    const payload = await response.json().catch(() => undefined);
+    if (response.status >= 200 && response.status < 300) {
+      throw new ApiError("INVALID_RESPONSE", `La API respondió con estado ${response.status}, distinto del 204 del contrato.`, response.status);
+    }
+    parseCreateLinkResponse(response.status, payload);
   }
 
   /*
@@ -270,6 +355,9 @@
     CREATE_LINK_PATH,
     CSRF_PATH,
     CSRF_HEADER,
+    SESSION_PATH,
+    LOGOUT_PATH,
+    LOGIN_PATH,
     REQUEST_TIMEOUT_MS,
     ApiError,
     resolveApiBase,
@@ -280,6 +368,10 @@
     obtainCsrfToken,
     parseCreateLinkResponse,
     createLink,
+    parseSessionResponse,
+    getSession,
+    buildLoginUrl,
+    logout,
     formatExpiresAt
   };
 });

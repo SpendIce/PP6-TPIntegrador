@@ -48,3 +48,10 @@ test("los handlers del popup usan APIs disponibles en ambos navegadores", () => 
   }
   assert.ok(!popupJs.includes("chrome.") || popupJs.includes("typeof browser"), "namespace resuelto cross-browser");
 });
+
+test("popup.html declara la sesion, el alias opcional y el cierre de sesion", () => {
+  for (const id of ["account", "account-namespace", "namespace-notice", "alias", "create-link", "logout", "login-button"]) {
+    assert.ok(html.includes(`id="${id}"`), `popup.html: falta id="${id}"`);
+  }
+  assert.ok(popupJs.includes("LinkApi.getSession") && popupJs.includes("LinkApi.logout"));
+});

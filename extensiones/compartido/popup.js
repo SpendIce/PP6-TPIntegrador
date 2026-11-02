@@ -1,6 +1,8 @@
 /*
  * Popup del complemento: toma la URL de la pestaña activa, pide la
  * creacion a la API configurada y muestra el resultado con su QR.
+ * Con sesion de la web (cookie del mismo navegador) muestra el namespace
+ * y el alias personalizado opcional; sin sesion acorta como en la etapa 1.
  * Capa de integracion con las APIs del navegador; la logica testeable
  * vive en LinkApi (api.js) y en QrPng (qr-code.js, compartido con la
  * web desde src/main/resources/static/).
@@ -15,12 +17,16 @@
 
   const el = {};
   let lastQr = null;
+  // Usuario de la sesion web (null sin sesion): decide si hay alias.
+  let currentUser = null;
 
   function bindElements() {
     for (const id of [
       "status", "result", "destination", "short-url", "expires", "reuse-notice",
       "qr", "download-png", "again", "error", "error-code", "error-message",
-      "retry", "api-base", "save-config", "config-status"
+      "retry", "api-base", "save-config", "config-status",
+      "account", "account-email", "account-namespace", "namespace-notice",
+      "alias", "create-link", "logout", "login", "login-button"
     ]) {
       el[id] = document.getElementById(id);
     }
@@ -89,6 +95,34 @@
     return tab ? tab.url : undefined;
   }
 
+  function renderSession(user) {
+    currentUser = user;
+    el.account.hidden = !user;
+    el.login.hidden = Boolean(user);
+    if (!user) {
+      return;
+    }
+    const hasNamespace = user.namespace !== "";
+    el["account-email"].textContent = user.email;
+    el["account-namespace"].textContent = hasNamespace ? `Namespace: ${user.namespace}` : "Sin namespace elegido";
+    el["namespace-notice"].hidden = hasNamespace;
+    // Sin namespace el contrato rechaza el alias (NAMESPACE_NOT_CHOSEN).
+    el.alias.disabled = !hasNamespace;
+    if (!hasNamespace) {
+      el.alias.value = "";
+    }
+  }
+
+  async function refreshSession() {
+    try {
+      renderSession(await LinkApi.getSession(await configuredApiBase()));
+    } catch {
+      // Sin respuesta de sesion se conserva el flujo de la etapa 1;
+      // si la API no responde, shortenActiveTab muestra el error.
+      renderSession(null);
+    }
+  }
+
   async function shortenActiveTab() {
     try {
       setStatus("Leyendo la pestaña activa…");
@@ -102,8 +136,29 @@
 
       const apiBase = await configuredApiBase();
       setStatus(`Acortando en ${apiBase}…`);
-      const link = await LinkApi.createLink(apiBase, url);
+      const alias = currentUser ? el.alias.value.trim() : "";
+      const link = await LinkApi.createLink(apiBase, url, undefined, alias);
       renderLink(url, link);
+    } catch (err) {
+      showError(err);
+    }
+  }
+
+  async function openLogin() {
+    try {
+      await ext.tabs.create({ url: LinkApi.buildLoginUrl(await configuredApiBase()) });
+    } catch (err) {
+      showError(err);
+    }
+  }
+
+  async function endSession() {
+    try {
+      setStatus("Cerrando sesión…");
+      await LinkApi.logout(await configuredApiBase());
+      el.alias.value = "";
+      renderSession(null);
+      await shortenActiveTab();
     } catch (err) {
       showError(err);
     }
@@ -149,10 +204,23 @@
     bindElements();
     el.retry.addEventListener("click", shortenActiveTab);
     el.again.addEventListener("click", shortenActiveTab);
+    el["create-link"].addEventListener("click", shortenActiveTab);
+    el.logout.addEventListener("click", endSession);
+    el["login-button"].addEventListener("click", openLogin);
     el["download-png"].addEventListener("click", downloadQr);
     el["save-config"].addEventListener("click", saveConfig);
     loadConfig();
-    shortenActiveTab();
+    start();
+  }
+
+  // Con sesion espera el alias opcional; sin sesion acorta de inmediato.
+  async function start() {
+    await refreshSession();
+    if (currentUser) {
+      el.status.hidden = true;
+    } else {
+      await shortenActiveTab();
+    }
   }
 
   if (document.readyState === "loading") {
