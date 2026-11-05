@@ -268,3 +268,123 @@ test("formatExpiresAt tolera fechas invalidas", () => {
   assert.equal(local, "no-es-fecha");
   assert.equal(minutesLeft, null);
 });
+
+const USER = { email: "ana@ejemplo.com", namespace: "ana", tipo: "principal", sugerencia: "ana" };
+
+test("buildCreateLinkRequest sin alias o con alias vacio conserva el cuerpo de la etapa 1", () => {
+  for (const alias of [undefined, null, "", "   "]) {
+    const { init } = LinkApi.buildCreateLinkRequest("http://localhost:8080", "https://x.com/a", "tok", alias);
+    assert.deepEqual(JSON.parse(init.body), { destination: "https://x.com/a" });
+  }
+});
+
+test("buildCreateLinkRequest agrega aliasPersonalizado recortado", () => {
+  const { init } = LinkApi.buildCreateLinkRequest("http://localhost:8080", "https://x.com/a", "tok", "  mi-doc ");
+  assert.deepEqual(JSON.parse(init.body), { destination: "https://x.com/a", aliasPersonalizado: "mi-doc" });
+  assert.equal(init.headers["X-XSRF-TOKEN"], "tok");
+  assert.equal(init.credentials, "include");
+});
+
+test("createLink con alias personalizado envia el alias con CSRF y devuelve el enlace personal", async () => {
+  const personal = { ...VALID_LINK, shortUrl: "http://localhost:8080/ana/mi-doc", alias: "mi-doc" };
+  let posted;
+  const fetchImpl = csrfAwareFetch((url, init) => {
+    posted = { url, init };
+    return fakeResponse(201, personal);
+  });
+  const link = await LinkApi.createLink("http://localhost:8080", "https://x.com/a", fetchImpl, "mi-doc");
+  assert.deepEqual(link, personal);
+  assert.equal(posted.init.headers["X-XSRF-TOKEN"], "tok-csrf-1");
+  assert.equal(JSON.parse(posted.init.body).aliasPersonalizado, "mi-doc");
+});
+
+test("createLink con alias propaga ALIAS_TAKEN, NAMESPACE_NOT_CHOSEN, ALIAS_INVALID y NOT_AUTHENTICATED", async () => {
+  const casos = [
+    [409, "ALIAS_TAKEN"],
+    [409, "NAMESPACE_NOT_CHOSEN"],
+    [400, "ALIAS_INVALID"],
+    [401, "NOT_AUTHENTICATED"],
+    [403, "CSRF_TOKEN_INVALID"]
+  ];
+  for (const [status, error] of casos) {
+    const fetchImpl = csrfAwareFetch(fakeResponse(status, { error, message: `m ${error}` }));
+    await assert.rejects(
+      LinkApi.createLink("http://localhost:8080", "https://x.com/a", fetchImpl, "mi-doc"),
+      (e) => e.code === error && e.httpStatus === status && e.message === `m ${error}`
+    );
+  }
+});
+
+test("getSession pide /api/sesion con cookies y devuelve el usuario", async () => {
+  let call;
+  const fetchImpl = async (url, init) => {
+    call = { url, init };
+    return fakeResponse(200, { usuario: USER });
+  };
+  const user = await LinkApi.getSession("http://localhost:8080/", fetchImpl);
+  assert.deepEqual(user, USER);
+  assert.equal(call.url, "http://localhost:8080/api/sesion");
+  assert.equal(call.init.method, "GET");
+  assert.equal(call.init.credentials, "include");
+});
+
+test("getSession devuelve null sin sesion y conserva el namespace vacio", async () => {
+  assert.equal(await LinkApi.getSession("http://localhost:8080", async () => fakeResponse(200, { usuario: null })), null);
+  const sinNs = { ...USER, namespace: "" };
+  const user = await LinkApi.getSession("http://localhost:8080", async () => fakeResponse(200, { usuario: sinNs }));
+  assert.equal(user.namespace, "");
+});
+
+test("getSession rechaza respuestas fuera del contrato", async () => {
+  for (const response of [
+    fakeResponse(500, { error: "X" }),
+    fakeResponse(200, {}),
+    fakeResponse(200, { usuario: { namespace: "a" } }),
+    fakeResponse(200, undefined, { failJson: true })
+  ]) {
+    await assert.rejects(
+      LinkApi.getSession("http://localhost:8080", async () => response),
+      (e) => e.code === "INVALID_RESPONSE"
+    );
+  }
+});
+
+test("getSession reporta error de red", async () => {
+  await assert.rejects(
+    LinkApi.getSession("http://localhost:8080", async () => { throw new TypeError("fail"); }),
+    (e) => e.code === "NETWORK_ERROR"
+  );
+});
+
+test("buildLoginUrl apunta al inicio del login con Google de la web", () => {
+  assert.equal(LinkApi.buildLoginUrl("192.168.1.5:8080/"), "http://192.168.1.5:8080/oauth2/authorization/google");
+});
+
+test("logout obtiene CSRF y hace POST /api/logout con el encabezado", async () => {
+  const calls = [];
+  const fetchImpl = async (url, init) => {
+    calls.push({ url, init });
+    return url.endsWith("/api/csrf") ? fakeResponse(200, { token: "t-9" }) : fakeResponse(204);
+  };
+  await LinkApi.logout("http://localhost:8080", fetchImpl);
+  assert.equal(calls[0].url, "http://localhost:8080/api/csrf");
+  assert.equal(calls[1].url, "http://localhost:8080/api/logout");
+  assert.equal(calls[1].init.method, "POST");
+  assert.equal(calls[1].init.credentials, "include");
+  assert.equal(calls[1].init.headers["X-XSRF-TOKEN"], "t-9");
+});
+
+test("logout propaga 403 CSRF y falla sin token CSRF", async () => {
+  await assert.rejects(
+    LinkApi.logout("http://localhost:8080", csrfAwareFetch(fakeResponse(403, { error: "CSRF_TOKEN_INVALID", message: "m" }))),
+    (e) => e.code === "CSRF_TOKEN_INVALID" && e.httpStatus === 403
+  );
+  await assert.rejects(
+    LinkApi.logout("http://localhost:8080", async () => fakeResponse(500, {})),
+    (e) => e.code === "CSRF_UNAVAILABLE"
+  );
+  await assert.rejects(
+    LinkApi.logout("http://localhost:8080", csrfAwareFetch(fakeResponse(200, {}))),
+    (e) => e.code === "INVALID_RESPONSE"
+  );
+});

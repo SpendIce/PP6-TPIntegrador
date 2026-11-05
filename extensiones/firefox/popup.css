@@ -96,7 +96,8 @@ button {
   font-weight: 600;
 }
 
-#api-base {
+#api-base,
+#alias {
   box-sizing: border-box;
   width: 100%;
   margin: 6px 0;
